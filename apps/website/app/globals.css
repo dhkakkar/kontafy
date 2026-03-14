@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+/* ── Brand tokens ── */
+:root {
+  --color-navy: #0F2D5E;
+  --color-navy-light: #1A3F7A;
+  --color-green: #0A8A54;
+  --color-green-accent: #2ECC8A;
+  --color-ink: #0D1B2E;
+  --color-muted: #5A7A9A;
+  --color-surface: #F5F7FA;
+  --color-border: #DDE3ED;
+  --color-white: #FFFFFF;
+
+  --font-heading: var(--font-jakarta);
+  --font-body: var(--font-inter);
+}
+
+@theme inline {
+  /* Colors */
+  --color-navy: #0F2D5E;
+  --color-navy-light: #1A3F7A;
+  --color-green: #0A8A54;
+  --color-green-accent: #2ECC8A;
+  --color-ink: #0D1B2E;
+  --color-muted: #5A7A9A;
+  --color-surface: #F5F7FA;
+  --color-border: #DDE3ED;
+  --color-white: #FFFFFF;
+
+  /* Fonts */
+  --font-heading: var(--font-jakarta);
+  --font-body: var(--font-inter);
+
+  /* Animations */
+  --animate-float: float 3s ease-in-out infinite;
+  --animate-fade-up: fade-up 0.6s ease-out both;
+  --animate-slide-in-left: slide-in-left 0.6s ease-out both;
+  --animate-slide-in-right: slide-in-right 0.6s ease-out both;
+}
+
+/* ── Keyframes ── */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ── Global styles ── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Custom scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-navy);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-navy-light);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-navy) var(--color-surface);
+}
+
+/* ── Selection ── */
+::selection {
+  background: var(--color-green-accent);
+  color: var(--color-ink);
+}

@@ -1,0 +1,10 @@
+services:
+  kontafy-web:
+    build:
+      context: .
+    container_name: kontafy-web
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
