@@ -1,0 +1,103 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kontafy-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kontafy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-kontafy_prod}
+    volumes:
+      - kontafy_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kontafy} -d ${POSTGRES_DB:-kontafy_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - kontafy-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: kontafy-redis
+    restart: always
+    volumes:
+      - kontafy_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - kontafy-net
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: kontafy-api
+    restart: always
+    ports:
+      - "5002:5002"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      API_PORT: 5002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kontafy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kontafy_prod}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - kontafy-net
+
+  website:
+    build:
+      context: .
+      dockerfile: apps/website/Dockerfile
+    container_name: kontafy-website
+    restart: always
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+    depends_on:
+      - api
+    networks:
+      - kontafy-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: kontafy-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/kontafy-platform.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+      - website
+    networks:
+      - kontafy-net
+
+volumes:
+  kontafy_pgdata:
+    driver: local
+  kontafy_redis:
+    driver: local
+
+networks:
+  kontafy-net:
+    driver: bridge

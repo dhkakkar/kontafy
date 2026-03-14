@@ -1,0 +1,767 @@
+// Kontafy — Prisma Schema
+// Cloud-native accounting platform for Indian businesses
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CORE: Organizations & Members
+// ═══════════════════════════════════════════════════════════════
+
+model Organization {
+  id               String    @id @default(uuid()) @db.Uuid
+  name             String
+  legal_name       String?
+  gstin            String?   @db.VarChar(15)
+  pan              String?   @db.VarChar(10)
+  cin              String?   @db.VarChar(21)
+  business_type    String?
+  industry         String?
+  address          Json      @default("{}")
+  phone            String?   @db.VarChar(15)
+  email            String?
+  logo_url         String?
+  fiscal_year_start Int      @default(4)
+  currency         String    @default("INR") @db.VarChar(3)
+  plan             String    @default("starter")
+  plan_expires_at  DateTime? @db.Timestamptz
+  settings         Json      @default("{}")
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  // Relations
+  members               OrgMember[]
+  accounts              Account[]
+  journal_entries       JournalEntry[]
+  contacts              Contact[]
+  invoices              Invoice[]
+  products              Product[]
+  warehouses            Warehouse[]
+  stock_movements       StockMovement[]
+  stock_levels          StockLevel[]
+  gst_returns           GstReturn[]
+  tds_entries           TdsEntry[]
+  bank_accounts         BankAccount[]
+  bank_transactions     BankTransaction[]
+  payments              Payment[]
+  payment_links         PaymentLink[]
+  marketplace_connections MarketplaceConnection[]
+  marketplace_orders    MarketplaceOrder[]
+  reports               Report[]
+  ai_forecasts          AiForecast[]
+  ai_insights           AiInsight[]
+  ca_invitations        CaInvitation[]
+  ca_annotations        CaAnnotation[]
+  audit_logs            AuditLog[]
+  notifications         Notification[]
+  email_logs            EmailLog[]
+  file_attachments      FileAttachment[]
+  whatsapp_messages     WhatsAppMessage[]
+
+  @@map("organizations")
+}
+
+model OrgMember {
+  id           String   @id @default(uuid()) @db.Uuid
+  org_id       String   @db.Uuid
+  user_id      String   @db.Uuid
+  role         String
+  permissions  Json     @default("{}")
+  invited_by   String?  @db.Uuid
+  joined_at    DateTime @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@unique([org_id, user_id])
+  @@map("org_members")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Books (Chart of Accounts & General Ledger)
+// ═══════════════════════════════════════════════════════════════
+
+model Account {
+  id              String   @id @default(uuid()) @db.Uuid
+  org_id          String   @db.Uuid
+  code            String?  @db.VarChar(20)
+  name            String
+  type            String
+  sub_type        String?
+  parent_id       String?  @db.Uuid
+  is_system       Boolean  @default(false)
+  opening_balance Decimal  @default(0) @db.Decimal(15, 2)
+  description     String?
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  organization  Organization   @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  parent        Account?       @relation("AccountHierarchy", fields: [parent_id], references: [id])
+  children      Account[]      @relation("AccountHierarchy")
+  journal_lines JournalLine[]
+  bank_accounts BankAccount[]
+
+  @@index([org_id, type])
+  @@index([org_id, code])
+  @@map("accounts")
+}
+
+model JournalEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  org_id         String   @db.Uuid
+  entry_number   Int      @default(autoincrement())
+  date           DateTime @db.Date
+  narration      String?
+  reference      String?
+  reference_type String?
+  reference_id   String?  @db.Uuid
+  is_posted      Boolean  @default(false)
+  created_by     String?  @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz
+
+  organization      Organization       @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  lines             JournalLine[]
+  invoices          Invoice[]
+  bank_transactions BankTransaction[]
+  payments          Payment[]
+
+  @@index([org_id, date])
+  @@index([org_id, is_posted])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id          String  @id @default(uuid()) @db.Uuid
+  entry_id    String  @db.Uuid
+  account_id  String  @db.Uuid
+  debit       Decimal @default(0) @db.Decimal(15, 2)
+  credit      Decimal @default(0) @db.Decimal(15, 2)
+  description String?
+
+  entry   JournalEntry @relation(fields: [entry_id], references: [id], onDelete: Cascade)
+  account Account      @relation(fields: [account_id], references: [id])
+
+  @@index([entry_id])
+  @@index([account_id])
+  @@map("journal_lines")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Bill (Invoicing & Contacts)
+// ═══════════════════════════════════════════════════════════════
+
+model Contact {
+  id               String   @id @default(uuid()) @db.Uuid
+  org_id           String   @db.Uuid
+  type             String
+  name             String
+  company_name     String?
+  gstin            String?  @db.VarChar(15)
+  pan              String?  @db.VarChar(10)
+  email            String?
+  phone            String?  @db.VarChar(15)
+  whatsapp         String?  @db.VarChar(15)
+  billing_address  Json     @default("{}")
+  shipping_address Json     @default("{}")
+  payment_terms    Int      @default(30)
+  credit_limit     Decimal? @db.Decimal(15, 2)
+  opening_balance  Decimal  @default(0) @db.Decimal(15, 2)
+  notes            String?
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+  tds_entries  TdsEntry[]
+  payments     Payment[]
+
+  @@index([org_id, type])
+  @@index([org_id, is_active])
+  @@map("contacts")
+}
+
+model Invoice {
+  id              String    @id @default(uuid()) @db.Uuid
+  org_id          String    @db.Uuid
+  invoice_number  String
+  type            String
+  status          String    @default("draft")
+  contact_id      String?   @db.Uuid
+  date            DateTime  @db.Date
+  due_date        DateTime? @db.Date
+  place_of_supply String?   @db.VarChar(2)
+  is_igst         Boolean   @default(false)
+  subtotal        Decimal?  @db.Decimal(15, 2)
+  discount_amount Decimal   @default(0) @db.Decimal(15, 2)
+  tax_amount      Decimal   @default(0) @db.Decimal(15, 2)
+  total           Decimal?  @db.Decimal(15, 2)
+  amount_paid     Decimal   @default(0) @db.Decimal(15, 2)
+  balance_due     Decimal?  @db.Decimal(15, 2)
+  notes           String?
+  terms           String?
+  pdf_url         String?
+  e_invoice_irn   String?
+  e_invoice_ack   String?
+  eway_bill_no    String?
+  whatsapp_sent   Boolean   @default(false)
+  email_sent      Boolean   @default(false)
+  journal_id      String?   @db.Uuid
+  created_by      String?   @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  updated_at      DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  organization        Organization          @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  contact             Contact?              @relation(fields: [contact_id], references: [id])
+  journal_entry       JournalEntry?         @relation(fields: [journal_id], references: [id])
+  items               InvoiceItem[]
+  payment_allocations PaymentAllocation[]
+  payment_links       PaymentLink[]
+  marketplace_orders  MarketplaceOrder[]
+
+  @@index([org_id, status, date])
+  @@index([org_id, contact_id])
+  @@index([org_id, type])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  invoice_id     String  @db.Uuid
+  product_id     String? @db.Uuid
+  description    String
+  hsn_code       String? @db.VarChar(8)
+  quantity       Decimal @db.Decimal(10, 3)
+  unit           String  @default("pcs")
+  rate           Decimal @db.Decimal(15, 2)
+  discount_pct   Decimal @default(0) @db.Decimal(5, 2)
+  taxable_amount Decimal? @db.Decimal(15, 2)
+  cgst_rate      Decimal @default(0) @db.Decimal(5, 2)
+  cgst_amount    Decimal @default(0) @db.Decimal(15, 2)
+  sgst_rate      Decimal @default(0) @db.Decimal(5, 2)
+  sgst_amount    Decimal @default(0) @db.Decimal(15, 2)
+  igst_rate      Decimal @default(0) @db.Decimal(5, 2)
+  igst_amount    Decimal @default(0) @db.Decimal(15, 2)
+  cess_rate      Decimal @default(0) @db.Decimal(5, 2)
+  cess_amount    Decimal @default(0) @db.Decimal(15, 2)
+  total          Decimal? @db.Decimal(15, 2)
+
+  invoice Invoice  @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [product_id], references: [id])
+
+  @@index([invoice_id])
+  @@map("invoice_items")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Stock (Inventory)
+// ═══════════════════════════════════════════════════════════════
+
+model Product {
+  id              String   @id @default(uuid()) @db.Uuid
+  org_id          String   @db.Uuid
+  sku             String?
+  name            String
+  description     String?
+  type            String   @default("goods")
+  hsn_code        String?  @db.VarChar(8)
+  unit            String   @default("pcs")
+  purchase_price  Decimal? @db.Decimal(15, 2)
+  selling_price   Decimal? @db.Decimal(15, 2)
+  tax_rate        Decimal? @db.Decimal(5, 2)
+  track_inventory Boolean  @default(true)
+  reorder_level   Decimal? @db.Decimal(10, 3)
+  image_url       String?
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  organization    Organization    @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  invoice_items   InvoiceItem[]
+  stock_movements StockMovement[]
+  stock_levels    StockLevel[]
+
+  @@index([org_id, is_active])
+  @@index([org_id, sku])
+  @@map("products")
+}
+
+model Warehouse {
+  id         String  @id @default(uuid()) @db.Uuid
+  org_id     String  @db.Uuid
+  name       String
+  address    Json?
+  is_default Boolean @default(false)
+
+  organization    Organization    @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  stock_movements StockMovement[]
+  stock_levels    StockLevel[]
+
+  @@map("warehouses")
+}
+
+model StockMovement {
+  id             String   @id @default(uuid()) @db.Uuid
+  org_id         String   @db.Uuid
+  product_id     String   @db.Uuid
+  warehouse_id   String   @db.Uuid
+  type           String
+  quantity       Decimal  @db.Decimal(10, 3)
+  reference_type String?
+  reference_id   String?  @db.Uuid
+  batch_number   String?
+  serial_number  String?
+  cost_price     Decimal? @db.Decimal(15, 2)
+  notes          String?
+  created_at     DateTime @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [product_id], references: [id])
+  warehouse    Warehouse    @relation(fields: [warehouse_id], references: [id])
+
+  @@index([org_id, product_id])
+  @@map("stock_movements")
+}
+
+model StockLevel {
+  id           String   @id @default(uuid()) @db.Uuid
+  org_id       String   @db.Uuid
+  product_id   String   @db.Uuid
+  warehouse_id String   @db.Uuid
+  quantity     Decimal  @default(0) @db.Decimal(10, 3)
+  reserved     Decimal  @default(0) @db.Decimal(10, 3)
+  updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [product_id], references: [id])
+  warehouse    Warehouse    @relation(fields: [warehouse_id], references: [id])
+
+  @@unique([org_id, product_id, warehouse_id])
+  @@index([org_id, product_id])
+  @@map("stock_levels")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Tax (GST Returns & TDS)
+// ═══════════════════════════════════════════════════════════════
+
+model GstReturn {
+  id          String    @id @default(uuid()) @db.Uuid
+  org_id      String    @db.Uuid
+  return_type String
+  period      String
+  status      String    @default("draft")
+  data        Json?
+  filed_at    DateTime? @db.Timestamptz
+  arn         String?
+  created_at  DateTime  @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, return_type, period])
+  @@map("gst_returns")
+}
+
+model TdsEntry {
+  id               String   @id @default(uuid()) @db.Uuid
+  org_id           String   @db.Uuid
+  contact_id       String?  @db.Uuid
+  section          String
+  transaction_date DateTime @db.Date
+  gross_amount     Decimal? @db.Decimal(15, 2)
+  tds_rate         Decimal? @db.Decimal(5, 2)
+  tds_amount       Decimal? @db.Decimal(15, 2)
+  payment_id       String?  @db.Uuid
+  status           String   @default("pending")
+  created_at       DateTime @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  contact      Contact?     @relation(fields: [contact_id], references: [id])
+
+  @@index([org_id, status])
+  @@map("tds_entries")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Bank (Banking & Reconciliation)
+// ═══════════════════════════════════════════════════════════════
+
+model BankAccount {
+  id              String   @id @default(uuid()) @db.Uuid
+  org_id          String   @db.Uuid
+  account_name    String
+  bank_name       String?
+  account_number  String?
+  ifsc            String?  @db.VarChar(11)
+  account_type    String?
+  opening_balance Decimal  @default(0) @db.Decimal(15, 2)
+  current_balance Decimal  @default(0) @db.Decimal(15, 2)
+  account_id      String?  @db.Uuid
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  organization  Organization      @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  account       Account?          @relation(fields: [account_id], references: [id])
+  transactions  BankTransaction[]
+  payments      Payment[]
+
+  @@index([org_id])
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id               String   @id @default(uuid()) @db.Uuid
+  org_id           String   @db.Uuid
+  bank_account_id  String   @db.Uuid
+  date             DateTime @db.Date
+  description      String?
+  reference        String?
+  amount           Decimal  @db.Decimal(15, 2)
+  type             String
+  balance          Decimal? @db.Decimal(15, 2)
+  source           String   @default("manual")
+  is_reconciled    Boolean  @default(false)
+  matched_entry_id String?  @db.Uuid
+  ai_suggestion    Json?
+  created_at       DateTime @default(now()) @db.Timestamptz
+
+  organization  Organization  @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  bank_account  BankAccount   @relation(fields: [bank_account_id], references: [id])
+  matched_entry JournalEntry? @relation(fields: [matched_entry_id], references: [id])
+
+  @@index([org_id, bank_account_id, date])
+  @@index([org_id, is_reconciled])
+  @@map("bank_transactions")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Pay (Payments)
+// ═══════════════════════════════════════════════════════════════
+
+model Payment {
+  id              String   @id @default(uuid()) @db.Uuid
+  org_id          String   @db.Uuid
+  type            String
+  contact_id      String?  @db.Uuid
+  amount          Decimal  @db.Decimal(15, 2)
+  date            DateTime @db.Date
+  method          String?
+  reference       String?
+  bank_account_id String?  @db.Uuid
+  notes           String?
+  journal_id      String?  @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  organization Organization        @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  contact      Contact?             @relation(fields: [contact_id], references: [id])
+  bank_account BankAccount?         @relation(fields: [bank_account_id], references: [id])
+  journal      JournalEntry?        @relation(fields: [journal_id], references: [id])
+  allocations  PaymentAllocation[]
+
+  @@index([org_id, date])
+  @@index([org_id, contact_id])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id         String  @id @default(uuid()) @db.Uuid
+  payment_id String  @db.Uuid
+  invoice_id String  @db.Uuid
+  amount     Decimal @db.Decimal(15, 2)
+
+  payment Payment @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoice_id], references: [id])
+
+  @@map("payment_allocations")
+}
+
+model PaymentLink {
+  id          String    @id @default(uuid()) @db.Uuid
+  org_id      String    @db.Uuid
+  invoice_id  String?   @db.Uuid
+  amount      Decimal?  @db.Decimal(15, 2)
+  link_url    String?
+  status      String    @default("active")
+  expires_at  DateTime? @db.Timestamptz
+  paid_at     DateTime? @db.Timestamptz
+  gateway_ref String?
+  created_at  DateTime  @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  invoice      Invoice?     @relation(fields: [invoice_id], references: [id])
+
+  @@map("payment_links")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Commerce (E-commerce Sync)
+// ═══════════════════════════════════════════════════════════════
+
+model MarketplaceConnection {
+  id             String    @id @default(uuid()) @db.Uuid
+  org_id         String    @db.Uuid
+  platform       String
+  store_name     String?
+  credentials    Json?
+  settings       Json?
+  last_synced_at DateTime? @db.Timestamptz
+  is_active      Boolean   @default(true)
+  created_at     DateTime  @default(now()) @db.Timestamptz
+
+  organization Organization         @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  orders       MarketplaceOrder[]
+  sync_logs    EcommerceSyncLog[]
+
+  @@index([org_id, platform])
+  @@map("marketplace_connections")
+}
+
+model EcommerceSyncLog {
+  id              String    @id @default(uuid()) @db.Uuid
+  org_id          String    @db.Uuid
+  connection_id   String    @db.Uuid
+  type            String    // orders, settlements, products
+  status          String    @default("running") // running, success, failed
+  orders_created  Int       @default(0)
+  orders_updated  Int       @default(0)
+  errors          Json?
+  started_at      DateTime  @default(now()) @db.Timestamptz
+  completed_at    DateTime? @db.Timestamptz
+
+  connection MarketplaceConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, connection_id])
+  @@index([org_id, started_at])
+  @@map("ecommerce_sync_logs")
+}
+
+model MarketplaceOrder {
+  id                String    @id @default(uuid()) @db.Uuid
+  org_id            String    @db.Uuid
+  connection_id     String?   @db.Uuid
+  external_order_id String
+  platform          String
+  order_date        DateTime? @db.Timestamptz
+  status            String?
+  items             Json?
+  subtotal          Decimal?  @db.Decimal(15, 2)
+  platform_fees     Decimal?  @db.Decimal(15, 2)
+  shipping_fees     Decimal?  @db.Decimal(15, 2)
+  tax_amount        Decimal?  @db.Decimal(15, 2)
+  net_amount        Decimal?  @db.Decimal(15, 2)
+  settlement_id     String?
+  invoice_id        String?   @db.Uuid
+  synced_at         DateTime  @default(now()) @db.Timestamptz
+
+  organization Organization           @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  connection   MarketplaceConnection? @relation(fields: [connection_id], references: [id])
+  invoice      Invoice?               @relation(fields: [invoice_id], references: [id])
+
+  @@index([org_id, platform])
+  @@index([org_id, connection_id])
+  @@index([external_order_id, platform])
+  @@map("marketplace_orders")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Insight (AI & Reports)
+// ═══════════════════════════════════════════════════════════════
+
+model Report {
+  id           String   @id @default(uuid()) @db.Uuid
+  org_id       String   @db.Uuid
+  type         String
+  period_start DateTime? @db.Date
+  period_end   DateTime? @db.Date
+  data         Json?
+  generated_at DateTime @default(now()) @db.Timestamptz
+  generated_by String?  @db.Uuid
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, type])
+  @@map("reports")
+}
+
+model AiForecast {
+  id              String   @id @default(uuid()) @db.Uuid
+  org_id          String   @db.Uuid
+  type            String
+  forecast_date   DateTime? @db.Date
+  predicted_value Decimal?  @db.Decimal(15, 2)
+  confidence      Decimal?  @db.Decimal(5, 2)
+  factors         Json?
+  generated_at    DateTime @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("ai_forecasts")
+}
+
+model AiInsight {
+  id           String   @id @default(uuid()) @db.Uuid
+  org_id       String   @db.Uuid
+  type         String
+  title        String
+  description  String?
+  severity     String   @default("info")
+  data         Json?
+  is_read      Boolean  @default(false)
+  is_dismissed Boolean  @default(false)
+  created_at   DateTime @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, is_read])
+  @@map("ai_insights")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Connect (CA Portal)
+// ═══════════════════════════════════════════════════════════════
+
+model CaInvitation {
+  id          String    @id @default(uuid()) @db.Uuid
+  org_id      String    @db.Uuid
+  ca_user_id  String?   @db.Uuid
+  ca_email    String
+  permissions Json      @default("[]")
+  token       String    @unique
+  status      String    @default("pending") // pending, accepted, expired, revoked
+  created_at  DateTime  @default(now()) @db.Timestamptz
+  expires_at  DateTime  @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, status])
+  @@index([ca_email])
+  @@index([token])
+  @@map("ca_invitations")
+}
+
+model CaAnnotation {
+  id          String   @id @default(uuid()) @db.Uuid
+  org_id      String   @db.Uuid
+  ca_user_id  String   @db.Uuid
+  entity_type String   // journal_entry, invoice, contact
+  entity_id   String   @db.Uuid
+  comment     String
+  created_at  DateTime @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, entity_type, entity_id])
+  @@index([org_id, ca_user_id])
+  @@map("ca_annotations")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SHARED: Audit Log, Notifications, Files
+// ═══════════════════════════════════════════════════════════════
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  org_id      String?  @db.Uuid
+  user_id     String?  @db.Uuid
+  action      String
+  entity_type String?
+  entity_id   String?  @db.Uuid
+  changes     Json?
+  ip_address  String?
+  created_at  DateTime @default(now()) @db.Timestamptz
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, created_at])
+  @@index([org_id, entity_type])
+  @@map("audit_log")
+}
+
+model Notification {
+  id         String   @id @default(uuid()) @db.Uuid
+  org_id     String?  @db.Uuid
+  user_id    String?  @db.Uuid
+  type       String
+  title      String
+  body       String?
+  link       String?
+  data       Json?
+  channel    String   @default("in_app")
+  is_read    Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, is_read])
+  @@index([org_id, user_id])
+  @@map("notifications")
+}
+
+model EmailLog {
+  id         String    @id @default(uuid()) @db.Uuid
+  org_id     String?   @db.Uuid
+  to         String
+  subject    String
+  type       String
+  status     String    @default("queued")
+  error      String?
+  metadata   Json?
+  queued_at  DateTime  @default(now()) @db.Timestamptz
+  sent_at    DateTime? @db.Timestamptz
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, type])
+  @@index([org_id, status])
+  @@map("email_logs")
+}
+
+model FileAttachment {
+  id          String   @id @default(uuid()) @db.Uuid
+  org_id      String?  @db.Uuid
+  entity_type String?
+  entity_id   String?  @db.Uuid
+  file_name   String
+  file_url    String
+  file_size   Int?
+  mime_type   String?
+  uploaded_by String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, entity_type, entity_id])
+  @@map("file_attachments")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: WhatsApp (Business API Messaging)
+// ═══════════════════════════════════════════════════════════════
+
+model WhatsAppMessage {
+  id                  String    @id @default(uuid()) @db.Uuid
+  org_id              String    @db.Uuid
+  contact_id          String    @db.Uuid
+  invoice_id          String?   @db.Uuid
+  type                String    // invoice, reminder, receipt
+  status              String    @default("queued") // queued, sent, delivered, read, failed
+  provider_message_id String?
+  phone               String    @db.VarChar(15)
+  template            String
+  sent_at             DateTime? @db.Timestamptz
+  delivered_at        DateTime? @db.Timestamptz
+  read_at             DateTime? @db.Timestamptz
+  error               String?
+  created_at          DateTime  @default(now()) @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, contact_id])
+  @@index([org_id, status])
+  @@index([org_id, created_at])
+  @@index([provider_message_id])
+  @@map("whatsapp_messages")
+}

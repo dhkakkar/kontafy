@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kontafy — Website Build Roadmap</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --navy: #0F2D5E;
+      --navy-light: #1A3F7A;
+      --green: #0A8A54;
+      --green-accent: #2ECC8A;
+      --ink: #0D1B2E;
+      --muted: #5A7A9A;
+      --surface: #F5F7FA;
+      --border: #DDE3ED;
+      --white: #ffffff;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--surface);
+      color: var(--ink);
+      line-height: 1.6;
+    }
+
+    /* Header */
+    .header {
+      background: var(--navy);
+      padding: 40px 0 60px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -30px;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: var(--surface);
+      border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+    }
+    .header h1 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 2.5rem;
+      font-weight: 800;
+      color: var(--white);
+      margin-bottom: 8px;
+    }
+    .header h1 span { color: var(--green-accent); }
+    .header p {
+      color: rgba(255,255,255,0.7);
+      font-size: 1.1rem;
+      margin-bottom: 20px;
+    }
+    .header-meta {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+    .header-meta .badge {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 6px 16px;
+      border-radius: 100px;
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.9);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Tech Stack */
+    .tech-stack {
+      margin: 20px auto 48px;
+      max-width: 1100px;
+      padding: 0 24px;
+    }
+    .tech-stack h2 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 16px;
+    }
+    .stack-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .stack-item {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .stack-item .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .stack-item .value {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--navy);
+    }
+    .stack-item .note {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Timeline */
+    .timeline {
+      position: relative;
+      padding: 0 0 48px;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: linear-gradient(to bottom, var(--green-accent), var(--navy));
+      transform: translateX(-50%);
+      border-radius: 3px;
+    }
+    @media (max-width: 768px) {
+      .timeline::before { left: 24px; }
+    }
+
+    /* Phase */
+    .phase {
+      position: relative;
+      margin-bottom: 48px;
+    }
+    .phase-dot {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      width: 48px;
+      height: 48px;
+      background: var(--navy);
+      border: 4px solid var(--green-accent);
+      border-radius: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: var(--white);
+      z-index: 2;
+    }
+    @media (max-width: 768px) {
+      .phase-dot { left: 24px; }
+    }
+
+    .phase-header {
+      text-align: center;
+      padding-top: 64px;
+      margin-bottom: 24px;
+    }
+    .phase-header h2 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 800;
+      font-size: 1.75rem;
+      color: var(--navy);
+    }
+    .phase-header .timeline-label {
+      font-size: 0.9rem;
+      color: var(--green);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .phase-header .milestone {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--green), var(--green-accent));
+      color: white;
+      padding: 6px 20px;
+      border-radius: 100px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-top: 12px;
+    }
+    @media (max-width: 768px) {
+      .phase-header { text-align: left; padding-left: 60px; }
+    }
+
+    /* Cards Grid */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+      padding: 0 24px;
+    }
+    @media (max-width: 768px) {
+      .cards-grid { grid-template-columns: 1fr; padding-left: 60px; }
+    }
+
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(15,45,94,0.08);
+    }
+    .card-title {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--navy);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title .icon {
+      width: 28px;
+      height: 28px;
+      background: var(--surface);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .task-list {
+      list-style: none;
+      padding: 0;
+    }
+    .task-list li {
+      position: relative;
+      padding: 6px 0 6px 28px;
+      font-size: 0.9rem;
+      color: var(--ink);
+      border-bottom: 1px solid var(--surface);
+    }
+    .task-list li:last-child { border-bottom: none; }
+    .task-list li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-radius: 4px;
+      background: var(--white);
+    }
+    .task-list li.done::before {
+      background: var(--green);
+      border-color: var(--green);
+    }
+    .task-list li.done::after {
+      content: '✓';
+      position: absolute;
+      left: 3px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .task-list li .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 1px 8px;
+      border-radius: 100px;
+      font-weight: 600;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+    .tag-seo { background: #FFF3E0; color: #E65100; }
+    .tag-design { background: #E8F5E9; color: #2E7D32; }
+    .tag-dev { background: #E3F2FD; color: #1565C0; }
+    .tag-content { background: #F3E5F5; color: #7B1FA2; }
+    .tag-deploy { background: #FBE9E7; color: #BF360C; }
+
+    /* Summary */
+    .summary {
+      margin: 48px auto;
+      max-width: 1100px;
+      padding: 0 24px;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 768px) {
+      .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .summary-card {
+      background: var(--navy);
+      border-radius: 16px;
+      padding: 28px 24px;
+      text-align: center;
+      color: white;
+    }
+    .summary-card .num {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 800;
+      font-size: 2.5rem;
+      color: var(--green-accent);
+      line-height: 1;
+    }
+    .summary-card .label {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.7);
+      margin-top: 4px;
+    }
+
+    /* Pages Table */
+    .pages-section {
+      margin: 0 auto 48px;
+      max-width: 1100px;
+      padding: 0 24px;
+    }
+    .pages-section h2 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 16px;
+    }
+    .pages-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--white);
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .pages-table th {
+      background: var(--navy);
+      color: white;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 12px 16px;
+      text-align: left;
+    }
+    .pages-table td {
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      border-bottom: 1px solid var(--surface);
+    }
+    .pages-table tr:last-child td { border-bottom: none; }
+    .pages-table tr:hover td { background: var(--surface); }
+    .pages-table code {
+      font-size: 0.8rem;
+      background: var(--surface);
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: var(--navy);
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 32px 24px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .footer strong { color: var(--navy); }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Konta<span>fy</span> — Build Roadmap</h1>
+    <p>Multi-page production website for India's cloud-native accounting platform</p>
+    <div class="header-meta">
+      <span class="badge">8 Weeks</span>
+      <span class="badge">~35 Pages</span>
+      <span class="badge">4 Phases</span>
+      <span class="badge">~₹800/yr Total Cost</span>
+    </div>
+  </div>
+
+  <!-- Tech Stack -->
+  <div class="tech-stack container">
+    <h2>Tech Stack</h2>
+    <div class="stack-grid">
+      <div class="stack-item">
+        <div class="label">Framework</div>
+        <div class="value">Next.js 15</div>
+        <div class="note">App Router + Standalone</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">CMS</div>
+        <div class="value">Sanity v3</div>
+        <div class="note">Embedded at /studio</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">Styling</div>
+        <div class="value">Tailwind v4</div>
+        <div class="note">+ shadcn/ui</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">Animations</div>
+        <div class="value">Motion</div>
+        <div class="note">Framer Motion v12</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">Database</div>
+        <div class="value">Supabase</div>
+        <div class="note">PostgreSQL + Auth</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">Storage</div>
+        <div class="value">Cloudflare R2</div>
+        <div class="note">kontafy/ prefix</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">DNS + CDN</div>
+        <div class="value">Cloudflare</div>
+        <div class="note">Proxied + SSL</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">Hosting</div>
+        <div class="value">AWS EC2</div>
+        <div class="note">Docker + Nginx</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">Analytics</div>
+        <div class="value">GA4</div>
+        <div class="note">+ Search Console</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">Email</div>
+        <div class="value">Nodemailer</div>
+        <div class="note">Gmail SMTP</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">Domain</div>
+        <div class="value">Hostinger</div>
+        <div class="note">kontafy.com + .in</div>
+      </div>
+      <div class="stack-item">
+        <div class="label">Icons</div>
+        <div class="value">Lucide React</div>
+        <div class="note">Tree-shakeable</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Stats -->
+  <div class="summary">
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="num">35+</div>
+        <div class="label">Pages</div>
+      </div>
+      <div class="summary-card">
+        <div class="num">14</div>
+        <div class="label">Homepage Sections</div>
+      </div>
+      <div class="summary-card">
+        <div class="num">9</div>
+        <div class="label">Product Modules</div>
+      </div>
+      <div class="summary-card">
+        <div class="num">6</div>
+        <div class="label">Industry Verticals</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 1 -->
+  <div class="container">
+    <div class="timeline">
+
+      <div class="phase">
+        <div class="phase-dot">1</div>
+        <div class="phase-header">
+          <div class="timeline-label">WEEK 1–2</div>
+          <h2>Foundation + Homepage</h2>
+          <div class="milestone">🎯 kontafy.com goes LIVE</div>
+        </div>
+        <div class="cards-grid">
+          <div class="card">
+            <div class="card-title"><span class="icon">⚙️</span> Project Setup</div>
+            <ul class="task-list">
+              <li>Scaffold Next.js 15 (App Router) <span class="tag tag-dev">dev</span></li>
+              <li>Configure Tailwind v4 + shadcn/ui <span class="tag tag-design">design</span></li>
+              <li>Set up fonts (Jakarta + Inter) <span class="tag tag-design">design</span></li>
+              <li>Sanity v3 studio at /studio <span class="tag tag-dev">dev</span></li>
+              <li>Supabase project (DB + Auth) <span class="tag tag-dev">dev</span></li>
+              <li>Cloudflare R2 storage config <span class="tag tag-dev">dev</span></li>
+              <li>GA4 + Search Console <span class="tag tag-seo">seo</span></li>
+              <li>GitHub repo + CI/CD <span class="tag tag-deploy">deploy</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">🧱</span> Shared Components</div>
+            <ul class="task-list">
+              <li>Announcement Bar (dismissible) <span class="tag tag-design">design</span></li>
+              <li>Navbar — mega menu (desktop + mobile) <span class="tag tag-design">design</span></li>
+              <li>Footer — 4-column + bottom bar <span class="tag tag-design">design</span></li>
+              <li>Floating WhatsApp widget <span class="tag tag-design">design</span></li>
+              <li>CTA Button variants <span class="tag tag-design">design</span></li>
+              <li>Section heading component <span class="tag tag-design">design</span></li>
+              <li>SEO metadata + JSON-LD helpers <span class="tag tag-seo">seo</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">🏠</span> Homepage — 14 Sections</div>
+            <ul class="task-list">
+              <li>Hero (headline + dashboard mockup + trust) <span class="tag tag-design">design</span></li>
+              <li>Pain-to-Solution Bridge (Old vs New) <span class="tag tag-content">content</span></li>
+              <li>Module Carousel (9 cards) <span class="tag tag-design">design</span></li>
+              <li>WhatsApp Billing Spotlight <span class="tag tag-design">design</span></li>
+              <li>E-commerce Sync Spotlight <span class="tag tag-design">design</span></li>
+              <li>AI Insight Spotlight <span class="tag tag-design">design</span></li>
+              <li>Social Proof (story + testimonials + CA) <span class="tag tag-content">content</span></li>
+              <li>Industry Tabs (6 verticals) <span class="tag tag-design">design</span></li>
+              <li>Pricing Snapshot (3 plans) <span class="tag tag-design">design</span></li>
+              <li>Migration Section <span class="tag tag-content">content</span></li>
+              <li>Final CTA block <span class="tag tag-design">design</span></li>
+              <li>Scroll animations (Motion) <span class="tag tag-design">design</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">📄</span> Core Pages</div>
+            <ul class="task-list">
+              <li>Pricing — 5 plans + comparison + FAQ <span class="tag tag-design">design</span></li>
+              <li>Contact — form + WhatsApp + map <span class="tag tag-dev">dev</span></li>
+              <li>Signup — phone OTP (Supabase Auth) <span class="tag tag-dev">dev</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">🚀</span> Deploy</div>
+            <ul class="task-list">
+              <li>Dockerfile (standalone build) <span class="tag tag-deploy">deploy</span></li>
+              <li>docker-compose.yml <span class="tag tag-deploy">deploy</span></li>
+              <li>Nginx server block <span class="tag tag-deploy">deploy</span></li>
+              <li>kontafy.in → kontafy.com redirect <span class="tag tag-deploy">deploy</span></li>
+              <li>www → root redirect <span class="tag tag-deploy">deploy</span></li>
+              <li>First deploy to EC2 <span class="tag tag-deploy">deploy</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- PHASE 2 -->
+      <div class="phase">
+        <div class="phase-dot">2</div>
+        <div class="phase-header">
+          <div class="timeline-label">WEEK 3–4</div>
+          <h2>Product Pages + Trust</h2>
+          <div class="milestone">🎯 Full product story online. Comparison pages start ranking.</div>
+        </div>
+        <div class="cards-grid">
+          <div class="card">
+            <div class="card-title"><span class="icon">📦</span> Feature Pages (10 pages)</div>
+            <ul class="task-list">
+              <li>/features — overview page <span class="tag tag-design">design</span></li>
+              <li>/features/books — Accounting <span class="tag tag-content">content</span></li>
+              <li>/features/bill — Invoicing + WhatsApp <span class="tag tag-content">content</span></li>
+              <li>/features/stock — Inventory <span class="tag tag-content">content</span></li>
+              <li>/features/tax — GST & TDS <span class="tag tag-content">content</span></li>
+              <li>/features/bank — Reconciliation <span class="tag tag-content">content</span></li>
+              <li>/features/insight — AI Analytics <span class="tag tag-content">content</span></li>
+              <li>/features/pay — Payments <span class="tag tag-content">content</span></li>
+              <li>/features/commerce — E-commerce Sync <span class="tag tag-content">content</span></li>
+              <li>/features/connect — Integrations <span class="tag tag-content">content</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">⚔️</span> Comparison Pages (4 pages)</div>
+            <ul class="task-list">
+              <li>/compare/kontafy-vs-tally <span class="tag tag-seo">seo</span></li>
+              <li>/compare/kontafy-vs-busy <span class="tag tag-seo">seo</span></li>
+              <li>/compare/kontafy-vs-zoho-books <span class="tag tag-seo">seo</span></li>
+              <li>/compare/tally-alternative (listicle) <span class="tag tag-seo">seo</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">🛡️</span> Trust Pages (4 pages)</div>
+            <ul class="task-list">
+              <li>/about — Syscode story + team <span class="tag tag-content">content</span></li>
+              <li>/security — encryption, hosting, compliance <span class="tag tag-content">content</span></li>
+              <li>/terms — Terms of Service <span class="tag tag-content">content</span></li>
+              <li>/privacy — Privacy Policy <span class="tag tag-content">content</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- PHASE 3 -->
+      <div class="phase">
+        <div class="phase-dot">3</div>
+        <div class="phase-header">
+          <div class="timeline-label">WEEK 5–6</div>
+          <h2>Growth Engine</h2>
+          <div class="milestone">🎯 Content engine running. SEO pipeline active.</div>
+        </div>
+        <div class="cards-grid">
+          <div class="card">
+            <div class="card-title"><span class="icon">🏭</span> Industry Verticals (7 pages)</div>
+            <ul class="task-list">
+              <li>/industries — overview <span class="tag tag-design">design</span></li>
+              <li>/industries/retail — Retail & FMCG <span class="tag tag-content">content</span></li>
+              <li>/industries/manufacturing <span class="tag tag-content">content</span></li>
+              <li>/industries/services — Professional Services <span class="tag tag-content">content</span></li>
+              <li>/industries/ecommerce — E-commerce Sellers <span class="tag tag-content">content</span></li>
+              <li>/industries/traders — Traders & Distributors <span class="tag tag-content">content</span></li>
+              <li>/industries/freelancers <span class="tag tag-content">content</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">📝</span> Blog + Content (Sanity CMS)</div>
+            <ul class="task-list">
+              <li>/blog — listing page <span class="tag tag-dev">dev</span></li>
+              <li>/blog/[slug] — ISR via Sanity <span class="tag tag-dev">dev</span></li>
+              <li>Sanity schemas (post, author, category) <span class="tag tag-dev">dev</span></li>
+              <li>"GST Filing Guide 2026" <span class="tag tag-content">content</span></li>
+              <li>"5 Signs You've Outgrown Tally" <span class="tag tag-content">content</span></li>
+              <li>"Desktop vs Cloud Accounting" <span class="tag tag-content">content</span></li>
+              <li>"WhatsApp Billing — 60% Faster Payments" <span class="tag tag-content">content</span></li>
+              <li>"AI Cash Flow Forecasting Explained" <span class="tag tag-content">content</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">📚</span> Resources</div>
+            <ul class="task-list">
+              <li>/resources/gst-guide — pillar content <span class="tag tag-seo">seo</span></li>
+              <li>/resources/switch-from-tally — playbook <span class="tag tag-seo">seo</span></li>
+              <li>/resources/accounting-glossary — 100+ terms <span class="tag tag-seo">seo</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">🤝</span> Partnerships & Leads</div>
+            <ul class="task-list">
+              <li>/partners — CA partner program <span class="tag tag-content">content</span></li>
+              <li>/demo — calendar embed + form <span class="tag tag-dev">dev</span></li>
+              <li>Newsletter signup (Supabase + Nodemailer) <span class="tag tag-dev">dev</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">🔍</span> SEO Infrastructure</div>
+            <ul class="task-list">
+              <li>Auto sitemap.xml <span class="tag tag-seo">seo</span></li>
+              <li>robots.txt <span class="tag tag-seo">seo</span></li>
+              <li>JSON-LD on all pages <span class="tag tag-seo">seo</span></li>
+              <li>OG images for all pages <span class="tag tag-seo">seo</span></li>
+              <li>Submit to Search Console <span class="tag tag-seo">seo</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- PHASE 4 -->
+      <div class="phase">
+        <div class="phase-dot">4</div>
+        <div class="phase-header">
+          <div class="timeline-label">WEEK 7–8</div>
+          <h2>Polish + Optimize</h2>
+          <div class="milestone">🎯 Production-grade. Performance optimized. Ready to market.</div>
+        </div>
+        <div class="cards-grid">
+          <div class="card">
+            <div class="card-title"><span class="icon">⚡</span> Performance</div>
+            <ul class="task-list">
+              <li>Core Web Vitals audit (LCP < 2.5s) <span class="tag tag-dev">dev</span></li>
+              <li>Mobile responsiveness QA <span class="tag tag-design">design</span></li>
+              <li>Cross-browser testing <span class="tag tag-dev">dev</span></li>
+              <li>Image optimization audit <span class="tag tag-dev">dev</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">📊</span> Analytics + Conversion</div>
+            <ul class="task-list">
+              <li>GA4 conversion tracking <span class="tag tag-seo">seo</span></li>
+              <li>A/B test hero headlines <span class="tag tag-seo">seo</span></li>
+              <li>Exit-intent popup <span class="tag tag-design">design</span></li>
+              <li>Custom 404 page <span class="tag tag-design">design</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="icon">🧮</span> Free SEO Tools</div>
+            <ul class="task-list">
+              <li>GST Calculator (interactive) <span class="tag tag-seo">seo</span></li>
+              <li>Invoice Generator (PDF) <span class="tag tag-seo">seo</span></li>
+              <li>Social media meta verification <span class="tag tag-seo">seo</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SEO Keywords Table -->
+  <div class="pages-section">
+    <h2>SEO Target Keywords</h2>
+    <table class="pages-table">
+      <thead>
+        <tr>
+          <th>Page</th>
+          <th>Primary Keyword</th>
+          <th>Est. Monthly Searches</th>
+          <th>Priority</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>/resources/gst-guide</code></td><td>GST guide for small business</td><td>8,100</td><td>🔴 High</td></tr>
+        <tr><td><code>/features/bill</code></td><td>GST billing software</td><td>6,600</td><td>🔴 High</td></tr>
+        <tr><td><code>/compare/kontafy-vs-tally</code></td><td>tally alternative</td><td>5,400</td><td>🔴 High</td></tr>
+        <tr><td><code>/features/tax</code></td><td>GST filing software</td><td>4,400</td><td>🔴 High</td></tr>
+        <tr><td><code>/features/stock</code></td><td>inventory management software India</td><td>3,600</td><td>🟠 Med</td></tr>
+        <tr><td><code>/compare/tally-alternative</code></td><td>best tally alternative 2026</td><td>3,200</td><td>🔴 High</td></tr>
+        <tr><td><code>/</code></td><td>cloud accounting software India</td><td>2,400</td><td>🟠 Med</td></tr>
+        <tr><td><code>/industries/retail</code></td><td>accounting software for retail</td><td>1,900</td><td>🟠 Med</td></tr>
+        <tr><td><code>/resources/switch-from-tally</code></td><td>how to migrate from tally</td><td>1,600</td><td>🟠 Med</td></tr>
+        <tr><td><code>/pricing</code></td><td>accounting software price India</td><td>1,300</td><td>🟡 Low</td></tr>
+        <tr><td><code>/industries/ecommerce</code></td><td>accounting for Amazon sellers India</td><td>720</td><td>🟡 Low</td></tr>
+        <tr><td><code>/features/commerce</code></td><td>e-commerce accounting software</td><td>720</td><td>🟡 Low</td></tr>
+        <tr><td><code>/features/insight</code></td><td>cash flow forecasting software</td><td>590</td><td>🟡 Low</td></tr>
+        <tr><td><code>/features/connect</code></td><td>WhatsApp invoicing software</td><td>480</td><td>🟡 Low</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Differentiators -->
+  <div class="pages-section">
+    <h2>Competitive Differentiators</h2>
+    <table class="pages-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Tally</th>
+          <th>Busy</th>
+          <th>Zoho Books</th>
+          <th style="background: var(--green);">Kontafy</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Architecture</td><td>Desktop-first</td><td>Desktop + Cloud</td><td>Cloud</td><td><strong>Cloud-native</strong></td></tr>
+        <tr><td>WhatsApp Billing</td><td>❌</td><td>❌</td><td>❌</td><td><strong>✅ Built-in</strong></td></tr>
+        <tr><td>AI Cash Flow</td><td>❌</td><td>❌</td><td>Basic</td><td><strong>✅ 30+ day forecast</strong></td></tr>
+        <tr><td>E-commerce Sync</td><td>❌</td><td>BUSY Recom</td><td>Partial</td><td><strong>✅ Full</strong></td></tr>
+        <tr><td>UX / Design</td><td>Dated</td><td>Dated</td><td>Good</td><td><strong>Modern</strong></td></tr>
+        <tr><td>Free Plan</td><td>7-day trial</td><td>Express</td><td>Limited</td><td><strong>✅ Unlimited</strong></td></tr>
+        <tr><td>Migration</td><td>Manual</td><td>Manual</td><td>Assisted</td><td><strong>✅ Free, 48hr</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p><strong>Kontafy</strong> — A product of Syscode Technology Pvt Ltd · Yamunanagar, Haryana</p>
+    <p style="margin-top: 4px;">Roadmap created March 2026 · Internal document</p>
+  </div>
+
+</body>
+</html>
