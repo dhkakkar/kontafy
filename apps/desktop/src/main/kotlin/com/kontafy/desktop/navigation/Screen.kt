@@ -20,6 +20,7 @@ sealed class Screen(val route: String, val title: String) {
     data object ChartOfAccounts : Screen("chart-of-accounts", "Chart of Accounts")
     data object JournalEntries : Screen("journal-entries", "Journal Entries")
     data object CreateJournalEntry : Screen("create-journal-entry", "New Journal Entry")
+    data class EditJournalEntry(val entryId: String) : Screen("journal-entries/edit/$entryId", "Edit Journal Entry")
     data class JournalEntryDetail(val entryId: String) : Screen("journal-entry/$entryId", "Journal Entry Detail")
     data class Ledger(val accountId: String? = null) : Screen("ledger/${accountId ?: ""}", "Account Ledger")
     data object TrialBalance : Screen("trial-balance", "Trial Balance")
@@ -47,6 +48,7 @@ sealed class Screen(val route: String, val title: String) {
     // Payments
     data object Payments : Screen("payments", "Payments")
     data object RecordPayment : Screen("record-payment", "Record Payment")
+    data class EditPayment(val paymentId: String) : Screen("payments/edit/$paymentId", "Edit Payment")
 
     // Inventory / Stock
     data object ProductList : Screen("products", "Products")
@@ -70,6 +72,9 @@ sealed class Screen(val route: String, val title: String) {
     data class EditPurchaseOrder(val poId: String) : Screen("purchase-orders/edit/$poId", "Edit Purchase Order")
     data object RecurringInvoices : Screen("recurring-invoices", "Recurring Invoices")
     data object CreateRecurringInvoice : Screen("recurring-invoices/create", "New Recurring Invoice")
+
+    // Audit Trail
+    data object AuditTrail : Screen("audit-trail", "Audit Trail")
 
     // Sync
     data object SyncStatus : Screen("sync-status", "Sync Status")

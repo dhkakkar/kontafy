@@ -217,13 +217,20 @@ class SyncEngine(
 
     private suspend fun pullChanges() {
         val lastSync = appSettingsRepository.get(LAST_SYNC_KEY)
+        val lastSyncTime = lastSync?.let { runCatching { LocalDateTime.parse(it) }.getOrNull() }
+
+        // Get current org ID for entities that need it during conversion
+        val currentOrgId = organizationRepository.getAll().firstOrNull()?.id ?: ""
 
         // Pull updated invoices from server
         val invoicesResult = apiClient.getInvoices(page = 1, pageSize = 100)
         invoicesResult.onSuccess { invoices ->
             for (dto in invoices) {
                 val model = dto.toInvoiceModel()
-                invoiceRepository.upsert(model)
+                val existing = invoiceRepository.getById(model.id)
+                if (existing == null || resolveConflicts(existing.updatedAt, model.updatedAt)) {
+                    invoiceRepository.upsert(model)
+                }
 
                 // Also upsert invoice items
                 for (itemDto in dto.items) {
@@ -238,7 +245,76 @@ class SyncEngine(
         customersResult.onSuccess { customers ->
             for (dto in customers) {
                 val model = dto.toContactModel()
-                contactRepository.upsert(model)
+                val existing = contactRepository.getById(model.id)
+                if (existing == null || resolveConflicts(existing.updatedAt, model.updatedAt)) {
+                    contactRepository.upsert(model)
+                }
+            }
+        }
+
+        // Pull payments
+        val paymentsResult = apiClient.getPayments()
+        paymentsResult.onSuccess { payments ->
+            for (dto in payments) {
+                val model = dto.toPaymentModel(currentOrgId)
+                val existing = paymentRepository.getById(model.id)
+                if (existing == null || resolveConflicts(existing.updatedAt, model.updatedAt)) {
+                    paymentRepository.upsert(model)
+                }
+            }
+        }
+
+        // Pull products
+        val productsResult = apiClient.getProducts()
+        productsResult.onSuccess { products ->
+            for (dto in products) {
+                val model = dto.toProductModel(currentOrgId)
+                val existing = productRepository.getById(model.id)
+                if (existing == null || resolveConflicts(existing.updatedAt, model.updatedAt)) {
+                    productRepository.upsert(model)
+                }
+            }
+        }
+
+        // Pull accounts
+        val accountsResult = apiClient.getAccounts()
+        accountsResult.onSuccess { accounts ->
+            for (dto in accounts) {
+                val model = dto.toAccountModel(currentOrgId)
+                val existing = accountRepository.getById(model.id)
+                if (existing == null || resolveConflicts(existing.updatedAt, model.updatedAt)) {
+                    accountRepository.upsert(model)
+                }
+            }
+        }
+
+        // Pull journal entries
+        val journalEntriesResult = apiClient.getJournalEntries(page = 1, pageSize = 100)
+        journalEntriesResult.onSuccess { entries ->
+            for (dto in entries) {
+                val model = dto.toJournalEntryModel(currentOrgId)
+                val existing = journalEntryRepository.getById(model.id)
+                if (existing == null || resolveConflicts(existing.updatedAt, model.updatedAt)) {
+                    journalEntryRepository.upsert(model)
+                }
+
+                // Also upsert journal lines
+                for (lineDto in dto.lines) {
+                    val lineModel = lineDto.toJournalLineModel(dto.id)
+                    journalLineRepository.upsert(lineModel)
+                }
+            }
+        }
+
+        // Pull bank accounts
+        val bankAccountsResult = apiClient.getBankAccounts()
+        bankAccountsResult.onSuccess { bankAccounts ->
+            for (dto in bankAccounts) {
+                val model = dto.toBankAccountModel(currentOrgId)
+                val existing = bankAccountRepository.getById(model.id)
+                if (existing == null || resolveConflicts(existing.updatedAt, model.updatedAt)) {
+                    bankAccountRepository.upsert(model)
+                }
             }
         }
     }

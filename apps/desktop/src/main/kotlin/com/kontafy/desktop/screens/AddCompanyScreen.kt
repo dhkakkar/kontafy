@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kontafy.desktop.api.OrganizationModel
+import com.kontafy.desktop.components.DropdownItem
+import com.kontafy.desktop.components.KontafyDropdown
 import com.kontafy.desktop.db.repositories.OrganizationRepository
 import com.kontafy.desktop.theme.KontafyColors
 
@@ -30,9 +32,32 @@ fun AddCompanyScreen(
     var gstin by remember { mutableStateOf("") }
     var pan by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
+    var selectedCountry by remember { mutableStateOf<DropdownItem<String>?>(DropdownItem("India", "India")) }
     var city by remember { mutableStateOf("") }
-    var state by remember { mutableStateOf("") }
+    var selectedState by remember { mutableStateOf<DropdownItem<String>?>(null) }
     var pincode by remember { mutableStateOf("") }
+
+    val countryItems = remember {
+        listOf(
+            "India", "United States", "United Kingdom", "Canada", "Australia",
+            "Singapore", "UAE", "Saudi Arabia", "Germany", "France",
+            "Japan", "China", "South Korea", "Brazil", "South Africa",
+            "Nepal", "Sri Lanka", "Bangladesh", "Malaysia", "Indonesia",
+        ).map { DropdownItem(it, it) }
+    }
+
+    val indianStates = remember {
+        listOf(
+            "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+            "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
+            "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+            "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+            "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+            "Uttar Pradesh", "Uttarakhand", "West Bengal",
+            "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
+            "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
+        ).map { DropdownItem(it, it) }
+    }
     var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var financialYearStart by remember { mutableStateOf("04-01") }
@@ -65,7 +90,7 @@ fun AddCompanyScreen(
                 pan = pan.uppercase().trim().ifBlank { null },
                 address = address.trim().ifBlank { null },
                 city = city.trim().ifBlank { null },
-                state = state.trim().ifBlank { null },
+                state = selectedState?.value?.trim()?.ifBlank { null },
                 pincode = pincode.trim().ifBlank { null },
                 phone = phone.trim().ifBlank { null },
                 email = email.trim().ifBlank { null },
@@ -191,6 +216,35 @@ fun AddCompanyScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    KontafyDropdown(
+                        items = countryItems,
+                        selectedItem = selectedCountry,
+                        onItemSelected = {
+                            selectedCountry = it
+                            selectedState = null // reset state when country changes
+                        },
+                        label = "Country",
+                        placeholder = "Select country",
+                        searchable = true,
+                        modifier = Modifier.weight(1f),
+                    )
+
+                    KontafyDropdown(
+                        items = if (selectedCountry?.value == "India") indianStates else emptyList(),
+                        selectedItem = selectedState,
+                        onItemSelected = { selectedState = it },
+                        label = "State",
+                        placeholder = if (selectedCountry?.value == "India") "Select state" else "N/A",
+                        searchable = true,
+                        modifier = Modifier.weight(1f),
+                        enabled = selectedCountry?.value == "India",
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     OutlinedTextField(
                         value = city,
                         onValueChange = { city = it },
@@ -201,20 +255,11 @@ fun AddCompanyScreen(
                     )
 
                     OutlinedTextField(
-                        value = state,
-                        onValueChange = { state = it },
-                        label = { Text("State") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                        colors = formFieldColors(),
-                    )
-
-                    OutlinedTextField(
                         value = pincode,
                         onValueChange = { pincode = it.filter { c -> c.isDigit() }.take(6) },
                         label = { Text("Pincode") },
                         singleLine = true,
-                        modifier = Modifier.weight(0.7f),
+                        modifier = Modifier.weight(1f),
                         colors = formFieldColors(),
                     )
                 }

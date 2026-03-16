@@ -16,8 +16,15 @@ object Accounts : Table("accounts") {
     val currentBalance = decimal("current_balance", 15, 2).default(java.math.BigDecimal.ZERO)
     val description = text("description").nullable()
     val isActive = bool("is_active").default(true)
+    val createdAt = datetime("created_at").default(LocalDateTime.now())
     val syncedAt = datetime("synced_at").nullable()
     val updatedAt = datetime("updated_at").default(LocalDateTime.now())
 
     override val primaryKey = PrimaryKey(id)
+
+    init {
+        index(isUnique = false, orgId)
+        index(isUnique = false, type)
+        index(isUnique = false, parentId)
+    }
 }

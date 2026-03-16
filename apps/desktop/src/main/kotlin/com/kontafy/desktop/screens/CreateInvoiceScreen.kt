@@ -22,10 +22,14 @@ import com.kontafy.desktop.api.InvoiceModel
 import com.kontafy.desktop.api.ProductDto
 import com.kontafy.desktop.api.toDto
 import com.kontafy.desktop.components.*
+import com.kontafy.desktop.db.repositories.AppSettingsRepository
 import com.kontafy.desktop.db.repositories.InvoiceRepository
 import com.kontafy.desktop.db.repositories.ContactRepository
 import com.kontafy.desktop.db.repositories.ProductRepository
+import com.kontafy.desktop.services.AccountingService
+import com.kontafy.desktop.shortcuts.LocalShortcutAction
 import com.kontafy.desktop.theme.KontafyColors
+import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -82,35 +86,72 @@ fun CreateInvoiceScreen(
     onSaveSuccess: (String) -> Unit = {},
     onNavigateToCreateCustomer: () -> Unit,
     orgState: String = "Maharashtra", // Organization's state for GST logic
+    accountingService: AccountingService = AccountingService(),
+    appSettingsRepository: AppSettingsRepository = AppSettingsRepository(),
 ) {
+    // Load invoice settings
+    val savedSettings = remember {
+        try { appSettingsRepository.getAll() } catch (e: Exception) { e.printStackTrace(); emptyMap() }
+    }
+    val invoicePrefix = savedSettings["invoice_prefix"] ?: "INV"
+    val numberingStyle = savedSettings["numbering_style"] ?: "sequential"
+    val defaultNotes = savedSettings["default_notes"] ?: ""
+    val defaultTermsText = savedSettings["default_terms_text"] ?: ""
+    val defaultPaymentTerms = savedSettings["default_terms"] ?: "net30"
+
+    // Generate serial invoice number
+    val generatedNumber = remember(invoicePrefix) {
+        try {
+            invoiceRepository.getNextNumber(currentOrgId, invoicePrefix)
+        } catch (e: Exception) {
+            "$invoicePrefix-0001"
+        }
+    }
+
+    // Map default terms to due days and dropdown
+    val (defaultTermsItem, defaultDueDays) = remember(defaultPaymentTerms) {
+        when (defaultPaymentTerms) {
+            "due-receipt" -> DropdownItem("Due on Receipt", "Due on Receipt") to 0L
+            "net15" -> DropdownItem("Net 15", "Net 15") to 15L
+            "net30" -> DropdownItem("Net 30", "Net 30") to 30L
+            "net45" -> DropdownItem("Net 45", "Net 45") to 45L
+            "net60" -> DropdownItem("Net 60", "Net 60") to 60L
+            else -> DropdownItem("Net 30", "Net 30") to 30L
+        }
+    }
+
     // Quick create customer dialog
     var showQuickCreateCustomer by remember { mutableStateOf(false) }
 
     // Form state
     var selectedCustomer by remember { mutableStateOf<DropdownItem<String>?>(null) }
-    var invoiceNumber by remember { mutableStateOf("INV-${System.currentTimeMillis().toString().takeLast(6)}") }
+    var invoiceNumber by remember { mutableStateOf(generatedNumber) }
     var issueDate by remember { mutableStateOf<LocalDate?>(LocalDate.now()) }
-    var dueDate by remember { mutableStateOf<LocalDate?>(LocalDate.now().plusDays(30)) }
-    var paymentTerms by remember { mutableStateOf<DropdownItem<String>?>(DropdownItem("Net 30", "Net 30")) }
+    var dueDate by remember { mutableStateOf<LocalDate?>(LocalDate.now().plusDays(defaultDueDays)) }
+    var paymentTerms by remember { mutableStateOf<DropdownItem<String>?>(defaultTermsItem) }
     var placeOfSupply by remember { mutableStateOf<DropdownItem<String>?>(null) }
     var lineItems by remember { mutableStateOf(listOf(LineItemState())) }
-    var notes by remember { mutableStateOf("") }
-    var terms by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf(defaultNotes) }
+    var terms by remember { mutableStateOf(defaultTermsText) }
     var isSaving by remember { mutableStateOf(false) }
 
     // Validation state
     var showValidation by remember { mutableStateOf(false) }
 
-    // Customer list (mutable to allow adding from quick create) — loaded from local DB
+    // Customer list (mutable to allow adding from quick create) — loaded from local DB, filtered to customer/both only
+    val allDbContacts = remember {
+        try { contactRepository.getByOrgId(currentOrgId) } catch (e: Exception) { e.printStackTrace(); emptyList() }
+    }
+    val contactStateMap = remember { allDbContacts.associate { it.id to it.state } }
     var customerList by remember {
-        val dbContacts = try { contactRepository.getByOrgId(currentOrgId) } catch (_: Exception) { emptyList() }
-        val items = dbContacts.map { DropdownItem(it.id, it.name, it.gstin) }
+        val items = allDbContacts.filter { it.type.uppercase() in listOf("CUSTOMER", "BOTH") }
+            .map { DropdownItem(it.id, it.name, it.gstin) }
         mutableStateOf(items)
     }
 
     // Product list for line item dropdown
     var productDtoList by remember {
-        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (_: Exception) { emptyList() }
+        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (e: Exception) { e.printStackTrace(); emptyList() }
         mutableStateOf(dbProducts)
     }
     val productDropdownItems = remember(productDtoList) {
@@ -138,7 +179,9 @@ fun CreateInvoiceScreen(
                         sku = null, description = product.description,
                         stockQuantity = BigDecimal.ZERO, reorderLevel = BigDecimal.ZERO, isActive = true,
                     ))
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 productDtoList = productDtoList + product
                 quickCreateProductCallback?.invoke(product)
                 showQuickCreateProduct = false
@@ -187,13 +230,98 @@ fun CreateInvoiceScreen(
     val igst = if (isInterState) totalTax else 0.0
     val grandTotal = subtotal + totalTax
 
+    // Snackbar
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackScope = rememberCoroutineScope()
+
     // Validation
+    val isInvoiceNumberValid = invoiceNumber.isNotBlank()
     val isCustomerValid = selectedCustomer != null
     val hasLineItems = lineItems.any { it.description.isNotBlank() && it.quantityNum > 0 && it.unitPriceNum > 0 }
-    val isFormValid = isCustomerValid && hasLineItems
+    val isFormValid = isInvoiceNumberValid && isCustomerValid && hasLineItems
 
+    fun saveInvoice(status: String): Boolean {
+        showValidation = true
+        if (!isFormValid) {
+            val errorMsg = when {
+                !isInvoiceNumberValid -> "Invoice number must not be blank"
+                !isCustomerValid -> "Please select a customer"
+                !hasLineItems -> "At least one line item is required"
+                else -> "Please fix validation errors"
+            }
+            snackScope.launch { snackbarHostState.showSnackbar(errorMsg) }
+            return false
+        }
+        isSaving = true
+        try {
+            val invoiceId = UUID.randomUUID().toString()
+            val model = InvoiceModel(
+                id = invoiceId,
+                orgId = currentOrgId,
+                invoiceNumber = invoiceNumber,
+                contactId = selectedCustomer?.value,
+                type = "invoice",
+                status = status,
+                issueDate = issueDate?.toString() ?: LocalDate.now().toString(),
+                dueDate = dueDate?.toString() ?: LocalDate.now().plusDays(30).toString(),
+                subtotal = BigDecimal.valueOf(subtotal),
+                discountAmount = BigDecimal.valueOf(totalDiscount),
+                taxAmount = BigDecimal.valueOf(totalTax),
+                totalAmount = BigDecimal.valueOf(grandTotal),
+                amountPaid = BigDecimal.ZERO,
+                amountDue = BigDecimal.valueOf(grandTotal),
+                currency = "INR",
+                notes = notes.ifBlank { null },
+                terms = terms.ifBlank { null },
+                placeOfSupply = placeOfSupply?.label,
+                reverseCharge = false,
+                updatedAt = LocalDateTime.now(),
+            )
+            val items = lineItems.mapIndexedNotNull { idx, li ->
+                if (li.description.isNotBlank()) {
+                    val halfTax = li.taxAmount / 2.0
+                    InvoiceItemModel(
+                        id = UUID.randomUUID().toString(),
+                        invoiceId = invoiceId,
+                        description = li.description,
+                        hsnCode = li.hsnSac.ifBlank { null },
+                        quantity = BigDecimal.valueOf(li.quantityNum),
+                        unitPrice = BigDecimal.valueOf(li.unitPriceNum),
+                        discountPercent = BigDecimal.valueOf(li.discountNum),
+                        taxRate = BigDecimal.valueOf(li.taxRate),
+                        cgstAmount = BigDecimal.valueOf(halfTax),
+                        sgstAmount = BigDecimal.valueOf(halfTax),
+                        totalAmount = BigDecimal.valueOf(li.totalAmount),
+                        sortOrder = idx,
+                    )
+                } else null
+            }
+            accountingService.createInvoiceWithItems(model, items)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            isSaving = false
+            return false
+        }
+        return true
+    }
+
+    // Handle Ctrl+S shortcut
+    val shortcutAction = LocalShortcutAction.current
+    LaunchedEffect(shortcutAction.value) {
+        if (shortcutAction.value == "save" && !isSaving) {
+            shortcutAction.value = null
+            if (saveInvoice("DRAFT")) {
+                onSaveSuccess("Invoice saved as draft")
+            }
+        }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = KontafyColors.Surface,
+    ) { scaffoldPadding ->
     Column(
-        modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
+        modifier = Modifier.fillMaxSize().padding(scaffoldPadding).background(KontafyColors.Surface),
     ) {
         // Top bar
         Surface(
@@ -224,55 +352,7 @@ fun CreateInvoiceScreen(
                 KontafyButton(
                     text = "Save as Draft",
                     onClick = {
-                        showValidation = true
-                        if (isFormValid) {
-                            isSaving = true
-                            try {
-                                val invoiceId = UUID.randomUUID().toString()
-                                val model = InvoiceModel(
-                                    id = invoiceId,
-                                    orgId = currentOrgId,
-                                    invoiceNumber = invoiceNumber,
-                                    contactId = selectedCustomer?.value,
-                                    type = "invoice",
-                                    status = "DRAFT",
-                                    issueDate = issueDate?.toString() ?: LocalDate.now().toString(),
-                                    dueDate = dueDate?.toString() ?: LocalDate.now().plusDays(30).toString(),
-                                    subtotal = BigDecimal.valueOf(subtotal),
-                                    discountAmount = BigDecimal.valueOf(totalDiscount),
-                                    taxAmount = BigDecimal.valueOf(totalTax),
-                                    totalAmount = BigDecimal.valueOf(grandTotal),
-                                    amountPaid = BigDecimal.ZERO,
-                                    amountDue = BigDecimal.valueOf(grandTotal),
-                                    currency = "INR",
-                                    notes = notes.ifBlank { null },
-                                    terms = terms.ifBlank { null },
-                                    placeOfSupply = placeOfSupply?.label,
-                                    reverseCharge = false,
-                                    updatedAt = LocalDateTime.now(),
-                                )
-                                invoiceRepository.create(model)
-                                // Save line items
-                                lineItems.forEachIndexed { idx, li ->
-                                    if (li.description.isNotBlank()) {
-                                        val halfTax = li.taxAmount / 2.0
-                                        invoiceItemRepository.upsert(InvoiceItemModel(
-                                            id = UUID.randomUUID().toString(),
-                                            invoiceId = invoiceId,
-                                            description = li.description,
-                                            hsnCode = li.hsnSac.ifBlank { null },
-                                            quantity = BigDecimal.valueOf(li.quantityNum),
-                                            unitPrice = BigDecimal.valueOf(li.unitPriceNum),
-                                            discountPercent = BigDecimal.valueOf(li.discountNum),
-                                            taxRate = BigDecimal.valueOf(li.taxRate),
-                                            cgstAmount = BigDecimal.valueOf(halfTax),
-                                            sgstAmount = BigDecimal.valueOf(halfTax),
-                                            totalAmount = BigDecimal.valueOf(li.totalAmount),
-                                            sortOrder = idx,
-                                        ))
-                                    }
-                                }
-                            } catch (_: Exception) {}
+                        if (saveInvoice("DRAFT")) {
                             onSaveSuccess("Invoice saved as draft")
                         }
                     },
@@ -283,55 +363,7 @@ fun CreateInvoiceScreen(
                 KontafyButton(
                     text = "Send Invoice",
                     onClick = {
-                        showValidation = true
-                        if (isFormValid) {
-                            isSaving = true
-                            try {
-                                val invoiceId = UUID.randomUUID().toString()
-                                val model = InvoiceModel(
-                                    id = invoiceId,
-                                    orgId = currentOrgId,
-                                    invoiceNumber = invoiceNumber,
-                                    contactId = selectedCustomer?.value,
-                                    type = "invoice",
-                                    status = "SENT",
-                                    issueDate = issueDate?.toString() ?: LocalDate.now().toString(),
-                                    dueDate = dueDate?.toString() ?: LocalDate.now().plusDays(30).toString(),
-                                    subtotal = BigDecimal.valueOf(subtotal),
-                                    discountAmount = BigDecimal.valueOf(totalDiscount),
-                                    taxAmount = BigDecimal.valueOf(totalTax),
-                                    totalAmount = BigDecimal.valueOf(grandTotal),
-                                    amountPaid = BigDecimal.ZERO,
-                                    amountDue = BigDecimal.valueOf(grandTotal),
-                                    currency = "INR",
-                                    notes = notes.ifBlank { null },
-                                    terms = terms.ifBlank { null },
-                                    placeOfSupply = placeOfSupply?.label,
-                                    reverseCharge = false,
-                                    updatedAt = LocalDateTime.now(),
-                                )
-                                invoiceRepository.create(model)
-                                // Save line items
-                                lineItems.forEachIndexed { idx, li ->
-                                    if (li.description.isNotBlank()) {
-                                        val halfTax = li.taxAmount / 2.0
-                                        invoiceItemRepository.upsert(InvoiceItemModel(
-                                            id = UUID.randomUUID().toString(),
-                                            invoiceId = invoiceId,
-                                            description = li.description,
-                                            hsnCode = li.hsnSac.ifBlank { null },
-                                            quantity = BigDecimal.valueOf(li.quantityNum),
-                                            unitPrice = BigDecimal.valueOf(li.unitPriceNum),
-                                            discountPercent = BigDecimal.valueOf(li.discountNum),
-                                            taxRate = BigDecimal.valueOf(li.taxRate),
-                                            cgstAmount = BigDecimal.valueOf(halfTax),
-                                            sgstAmount = BigDecimal.valueOf(halfTax),
-                                            totalAmount = BigDecimal.valueOf(li.totalAmount),
-                                            sortOrder = idx,
-                                        ))
-                                    }
-                                }
-                            } catch (_: Exception) {}
+                        if (saveInvoice("SENT")) {
                             onSaveSuccess("Invoice created successfully")
                         }
                     },
@@ -361,7 +393,14 @@ fun CreateInvoiceScreen(
                         KontafyDropdown(
                             items = customerList,
                             selectedItem = selectedCustomer,
-                            onItemSelected = { selectedCustomer = it },
+                            onItemSelected = { customer ->
+                                selectedCustomer = customer
+                                // Auto-set Place of Supply from customer's state
+                                val customerState = contactStateMap[customer.value]
+                                if (!customerState.isNullOrBlank()) {
+                                    placeOfSupply = DropdownItem(customerState, customerState)
+                                }
+                            },
                             label = "Bill To",
                             placeholder = "Select customer",
                             searchable = true,
@@ -397,6 +436,8 @@ fun CreateInvoiceScreen(
                                 onValueChange = { invoiceNumber = it },
                                 label = "Invoice Number",
                                 placeholder = "INV-001",
+                                isError = showValidation && !isInvoiceNumberValid,
+                                errorMessage = if (showValidation && !isInvoiceNumberValid) "Invoice number is required" else null,
                                 modifier = Modifier.weight(1f),
                             )
                             KontafyDatePicker(
@@ -647,6 +688,7 @@ fun CreateInvoiceScreen(
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
+    } // Scaffold
 }
 
 @Composable

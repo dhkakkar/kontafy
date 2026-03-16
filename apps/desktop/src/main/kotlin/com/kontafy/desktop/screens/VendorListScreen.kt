@@ -20,6 +20,7 @@ import com.kontafy.desktop.api.CustomerDto
 import com.kontafy.desktop.api.toCustomerDto
 import com.kontafy.desktop.components.*
 import com.kontafy.desktop.db.repositories.ContactRepository
+import com.kontafy.desktop.db.repositories.InvoiceRepository
 import com.kontafy.desktop.theme.KontafyColors
 import kotlinx.coroutines.launch
 
@@ -28,6 +29,7 @@ fun VendorListScreen(
     apiClient: ApiClient,
     currentOrgId: String,
     contactRepository: ContactRepository,
+    invoiceRepository: InvoiceRepository = InvoiceRepository(),
     onVendorClick: (String) -> Unit = {},
     onCreateVendor: () -> Unit = {},
 ) {
@@ -40,16 +42,30 @@ fun VendorListScreen(
         scope.launch {
             isLoading = true
             try {
-                val allVendors = contactRepository.getByOrgId(currentOrgId)
+                val vendorContacts = contactRepository.getByOrgId(currentOrgId)
                     .filter { it.type in listOf("vendor", "both", "VENDOR", "BOTH") }
-                    .map { it.toCustomerDto() }
+
+                // Count POs per vendor
+                val poCounts = mutableMapOf<String, Int>()
+                vendorContacts.forEach { vendor ->
+                    val poCount = try {
+                        invoiceRepository.getByContact(vendor.id)
+                            .count { it.type.lowercase() == "purchase_order" }
+                    } catch (_: Exception) { 0 }
+                    poCounts[vendor.id] = poCount
+                }
+
+                val allVendors = vendorContacts.map {
+                    it.toCustomerDto().copy(totalInvoices = poCounts[it.id] ?: 0)
+                }
 
                 vendors = allVendors.filter { v ->
                     searchQuery.isBlank() ||
                         v.name.contains(searchQuery, ignoreCase = true) ||
                         v.email?.contains(searchQuery, ignoreCase = true) == true
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                e.printStackTrace()
                 vendors = emptyList()
             }
             isLoading = false

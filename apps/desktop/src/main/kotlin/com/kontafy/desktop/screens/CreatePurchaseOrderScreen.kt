@@ -20,10 +20,12 @@ import com.kontafy.desktop.api.ProductDto
 import com.kontafy.desktop.api.ProductModel
 import com.kontafy.desktop.api.toDto
 import com.kontafy.desktop.components.*
+import com.kontafy.desktop.db.repositories.AppSettingsRepository
 import com.kontafy.desktop.db.repositories.InvoiceItemRepository
 import com.kontafy.desktop.db.repositories.InvoiceRepository
 import com.kontafy.desktop.db.repositories.ContactRepository
 import com.kontafy.desktop.db.repositories.ProductRepository
+import com.kontafy.desktop.shortcuts.LocalShortcutAction
 import com.kontafy.desktop.theme.KontafyColors
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -41,9 +43,14 @@ fun CreatePurchaseOrderScreen(
     onBack: () -> Unit,
     onSaveSuccess: (String) -> Unit = {},
     onNavigateToCreateVendor: () -> Unit,
+    appSettingsRepository: AppSettingsRepository = AppSettingsRepository(),
 ) {
+    val savedSettings = remember {
+        try { appSettingsRepository.getAll() } catch (e: Exception) { e.printStackTrace(); emptyMap() }
+    }
+
     var productDtoList by remember {
-        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (_: Exception) { emptyList() }
+        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (e: Exception) { e.printStackTrace(); emptyList() }
         mutableStateOf(dbProducts)
     }
     val productDropdownItems = remember(productDtoList) {
@@ -69,7 +76,9 @@ fun CreatePurchaseOrderScreen(
                         sku = null, description = product.description,
                         stockQuantity = BigDecimal.ZERO, reorderLevel = BigDecimal.ZERO, isActive = true,
                     ))
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 productDtoList = productDtoList + product
                 quickCreateProductCallback?.invoke(product)
                 showQuickCreateProduct = false
@@ -78,17 +87,19 @@ fun CreatePurchaseOrderScreen(
     }
 
     var selectedVendor by remember { mutableStateOf<DropdownItem<String>?>(null) }
-    var poNumber by remember { mutableStateOf("PO-${System.currentTimeMillis().toString().takeLast(6)}") }
+    var poNumber by remember { mutableStateOf(
+        try { invoiceRepository.getNextNumber(currentOrgId, "PO") } catch (e: Exception) { "PO-0001" }
+    ) }
     var orderDate by remember { mutableStateOf<LocalDate?>(LocalDate.now()) }
     var deliveryDate by remember { mutableStateOf<LocalDate?>(LocalDate.now().plusDays(14)) }
     var lineItems by remember { mutableStateOf(listOf(LineItemState())) }
-    var notes by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf(savedSettings["default_notes"] ?: "") }
     var shippingAddress by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
     var showValidation by remember { mutableStateOf(false) }
 
     val vendorItems = remember {
-        val dbVendors = try { contactRepository.getByOrgId(currentOrgId).filter { it.type in listOf("vendor", "both", "VENDOR", "BOTH") } } catch (_: Exception) { emptyList() }
+        val dbVendors = try { contactRepository.getByOrgId(currentOrgId).filter { it.type in listOf("vendor", "both", "VENDOR", "BOTH") } } catch (e: Exception) { e.printStackTrace(); emptyList() }
         dbVendors.map { DropdownItem(it.id, it.name, it.gstin) }
     }
 
@@ -100,7 +111,7 @@ fun CreatePurchaseOrderScreen(
     val hasLineItems = lineItems.any { it.description.isNotBlank() && it.quantityNum > 0 && it.unitPriceNum > 0 }
     val isFormValid = isVendorValid && hasLineItems
 
-    fun savePO(status: String) {
+    fun savePO(status: String): Boolean {
         try {
             val invoiceId = UUID.randomUUID().toString()
             val model = InvoiceModel(
@@ -143,7 +154,23 @@ fun CreatePurchaseOrderScreen(
                     ))
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
+        return true
+    }
+
+    // Handle Ctrl+S shortcut
+    val shortcutAction = LocalShortcutAction.current
+    LaunchedEffect(shortcutAction.value) {
+        if (shortcutAction.value == "save" && !isSaving) {
+            shortcutAction.value = null
+            if (isFormValid) {
+                isSaving = true
+                if (savePO("DRAFT")) onSaveSuccess("Purchase order saved as draft") else isSaving = false
+            }
+        }
     }
 
     Column(
@@ -171,7 +198,7 @@ fun CreatePurchaseOrderScreen(
                     text = "Save as Draft",
                     onClick = {
                         showValidation = true
-                        if (isFormValid) { isSaving = true; savePO("DRAFT"); onSaveSuccess("Purchase order saved as draft") }
+                        if (isFormValid) { isSaving = true; if (savePO("DRAFT")) onSaveSuccess("Purchase order saved as draft") else isSaving = false }
                     },
                     variant = ButtonVariant.Outline,
                     isLoading = isSaving,
@@ -181,7 +208,7 @@ fun CreatePurchaseOrderScreen(
                     text = "Send to Vendor",
                     onClick = {
                         showValidation = true
-                        if (isFormValid) { isSaving = true; savePO("SENT"); onSaveSuccess("Purchase order created successfully") }
+                        if (isFormValid) { isSaving = true; if (savePO("SENT")) onSaveSuccess("Purchase order created successfully") else isSaving = false }
                     },
                     variant = ButtonVariant.Secondary,
                     isLoading = isSaving,

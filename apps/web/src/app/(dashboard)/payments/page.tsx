@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useReactTable,
   getCoreRowModel,
@@ -23,6 +24,7 @@ import {
   Plus,
   Search,
   Download,
+  Edit,
   MoreHorizontal,
   CreditCard,
   ArrowDownLeft,
@@ -124,10 +126,12 @@ const methodLabels: Record<string, string> = {
 const columnHelper = createColumnHelper<Payment>();
 
 export default function PaymentsPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showModal, setShowModal] = useState(false);
+  const [editPaymentId, setEditPaymentId] = useState<string | null>(null);
 
   // Form state
   const [formType, setFormType] = useState("received");
@@ -235,10 +239,31 @@ export default function PaymentsPage() {
       }),
       columnHelper.display({
         id: "actions",
-        cell: () => (
-          <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
+        cell: (info) => (
+          <div className="flex items-center gap-1">
+            <button
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditPaymentId(info.row.original.id);
+                const p = info.row.original;
+                setFormType(p.type);
+                setFormContact(p.contact);
+                setFormAmount(String(p.amount));
+                setFormDate(p.date);
+                setFormMethod(p.method);
+                setFormReference(p.reference || "");
+                setFormInvoice(p.invoiceNumber);
+                setShowModal(true);
+              }}
+              title="Edit Payment"
+            >
+              <Edit className="h-4 w-4" />
+            </button>
+            <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          </div>
         ),
       }),
     ],
@@ -283,7 +308,18 @@ export default function PaymentsPage() {
           </Button>
           <Button
             icon={<Plus className="h-4 w-4" />}
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              setEditPaymentId(null);
+              setFormType("received");
+              setFormContact("");
+              setFormAmount("");
+              setFormDate(new Date().toISOString().split("T")[0]);
+              setFormMethod("");
+              setFormReference("");
+              setFormInvoice("");
+              setFormNotes("");
+              setShowModal(true);
+            }}
           >
             Record Payment
           </Button>
@@ -348,9 +384,9 @@ export default function PaymentsPage() {
       {/* Record Payment Modal */}
       <Modal
         open={showModal}
-        onClose={() => setShowModal(false)}
-        title="Record Payment"
-        description="Record a payment received from a customer or made to a vendor"
+        onClose={() => { setShowModal(false); setEditPaymentId(null); }}
+        title={editPaymentId ? "Edit Payment" : "Record Payment"}
+        description={editPaymentId ? "Update payment details" : "Record a payment received from a customer or made to a vendor"}
         size="lg"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -436,7 +472,7 @@ export default function PaymentsPage() {
           <Button variant="outline" onClick={() => setShowModal(false)}>
             Cancel
           </Button>
-          <Button>Record Payment</Button>
+          <Button>{editPaymentId ? "Update Payment" : "Record Payment"}</Button>
         </div>
       </Modal>
     </div>

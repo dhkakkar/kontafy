@@ -32,7 +32,16 @@ fun ProductListScreen(
     var isLoading by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("All") }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     val filters = listOf("All", "Goods", "Services", "Low Stock")
 
@@ -48,6 +57,7 @@ fun ProductListScreen(
                 products = models.map { it.toDto() }
             } catch (e: Exception) {
                 e.printStackTrace()
+                snackbarMessage = "Failed to load products: ${e.message}"
             }
             isLoading = false
         }
@@ -62,6 +72,7 @@ fun ProductListScreen(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
     ) {
@@ -250,5 +261,10 @@ fun ProductListScreen(
                 )
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }

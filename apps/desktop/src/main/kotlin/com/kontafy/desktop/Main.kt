@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -27,10 +28,12 @@ import com.kontafy.desktop.api.AuthService
 import com.kontafy.desktop.components.Sidebar
 import com.kontafy.desktop.db.KontafyDatabase
 import com.kontafy.desktop.db.repositories.*
+import com.kontafy.desktop.db.repositories.AuditLogRepository
 import com.kontafy.desktop.navigation.Screen
 import com.kontafy.desktop.navigation.rememberNavigationState
 import com.kontafy.desktop.screens.*
 import com.kontafy.desktop.shortcuts.KeyboardShortcuts
+import com.kontafy.desktop.shortcuts.LocalShortcutAction
 import com.kontafy.desktop.shortcuts.ShortcutHelpDialog
 import com.kontafy.desktop.sync.NetworkMonitor
 import com.kontafy.desktop.sync.SyncEngine
@@ -60,6 +63,7 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
     val apiClient = remember { ApiClient(authService) }
     val navigationState = rememberNavigationState()
     var showShortcutHelp by remember { mutableStateOf(false) }
+    val shortcutAction = remember { mutableStateOf<String?>(null) }
     val focusRequester = remember { FocusRequester() }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -87,6 +91,7 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
     val bankAccountRepository = remember { BankAccountRepository() }
     val syncQueueRepository = remember { SyncQueueRepository() }
     val appSettingsRepository = remember { AppSettingsRepository() }
+    val auditLogRepository = remember { AuditLogRepository() }
 
     // Multi-company: load organizations and track current org
     var organizations by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
@@ -155,21 +160,32 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
         }
     }
 
-    // Stop sync engine when app is disposed
+    // Stop sync engine and close API client when app is disposed
     DisposableEffect(Unit) {
         onDispose {
             syncEngine.stop()
+            apiClient.close()
         }
     }
 
     // Derive current org ID for org-filtered data loading
     val currentOrgId = authService.currentOrgId ?: "org-default"
 
+    // Derive current org state for GST logic (used in invoice screens)
+    val currentOrgState = remember(currentOrgId, orgRefreshTrigger) {
+        try {
+            organizationRepository.getById(currentOrgId)?.state ?: "Maharashtra"
+        } catch (_: Exception) {
+            "Maharashtra"
+        }
+    }
+
     // Shortcut help dialog
     if (showShortcutHelp) {
         ShortcutHelpDialog(onDismiss = { showShortcutHelp = false })
     }
 
+    CompositionLocalProvider(LocalShortcutAction provides shortcutAction) {
     KontafyTheme {
         Box(
             modifier = Modifier
@@ -198,8 +214,30 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             showShortcutHelp = true
                             true
                         }
-                        // Other actions (save, print, export, search, new, change_date)
-                        // are handled by individual screens via their own key listeners
+                        action.action == "new" -> {
+                            val target = when (navigationState.currentScreen) {
+                                is Screen.InvoiceList -> Screen.CreateInvoice
+                                is Screen.CustomerList -> Screen.CreateCustomer
+                                is Screen.VendorList -> Screen.CreateVendor
+                                is Screen.ProductList -> Screen.CreateProduct()
+                                is Screen.QuotationList -> Screen.CreateQuotation
+                                is Screen.PurchaseOrderList -> Screen.CreatePurchaseOrder
+                                is Screen.JournalEntries -> Screen.CreateJournalEntry
+                                is Screen.BankAccounts -> Screen.CreateBankAccount
+                                is Screen.Payments -> Screen.RecordPayment
+                                is Screen.RecurringInvoices -> Screen.CreateRecurringInvoice
+                                is Screen.Dashboard -> Screen.CreateInvoice
+                                else -> null
+                            }
+                            if (target != null) {
+                                navigationState.navigateTo(target)
+                                true
+                            } else false
+                        }
+                        action.action in listOf("save", "print", "export", "search") -> {
+                            shortcutAction.value = action.action
+                            true
+                        }
                         else -> false
                     }
                 }
@@ -319,6 +357,7 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             onNavigateToCreateCustomer = {
                                 navigationState.navigateTo(Screen.CreateCustomer)
                             },
+                            orgState = currentOrgState,
                         )
 
                         is Screen.EditInvoice -> EditInvoiceScreen(
@@ -333,6 +372,7 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             onNavigateToCreateCustomer = {
                                 navigationState.navigateTo(Screen.CreateCustomer)
                             },
+                            orgState = currentOrgState,
                         )
 
                         is Screen.CustomerList -> CustomerListScreen(
@@ -353,6 +393,8 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             contactRepository = contactRepository,
                             invoiceRepository = invoiceRepository,
                             paymentRepository = paymentRepository,
+                            accountRepository = accountRepository,
+                            currentOrgId = currentOrgId,
                             onBack = { navigationState.goBack() },
                             onDeleteSuccess = { msg -> showSnackbar(msg); navigationState.goBack() },
                             onEditCustomer = { id ->
@@ -361,8 +403,8 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             onInvoiceClick = { id ->
                                 navigationState.navigateTo(Screen.InvoiceDetail(id))
                             },
-                            onNavigateToLedger = {
-                                navigationState.navigateTo(Screen.Ledger())
+                            onNavigateToLedger = { accountId ->
+                                navigationState.navigateTo(Screen.Ledger(accountId))
                             },
                         )
 
@@ -387,6 +429,8 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             apiClient = apiClient,
                             appSettingsRepository = appSettingsRepository,
                             organizationRepository = organizationRepository,
+                            currentOrgId = currentOrgId,
+                            onOrgUpdated = { orgRefreshTrigger++ },
                         )
 
                         // Accounting screens
@@ -414,6 +458,9 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             entryId = screen.entryId,
                             apiClient = apiClient,
                             onBack = { navigationState.goBack() },
+                            onEdit = { entryId ->
+                                navigationState.navigateTo(Screen.EditJournalEntry(entryId))
+                            },
                         )
 
                         is Screen.CreateJournalEntry -> CreateJournalEntryScreen(
@@ -426,11 +473,25 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             },
                         )
 
+                        is Screen.EditJournalEntry -> CreateJournalEntryScreen(
+                            apiClient = apiClient,
+                            currentOrgId = currentOrgId,
+                            accountRepository = accountRepository,
+                            editEntryId = screen.entryId,
+                            onBack = { navigationState.goBack() },
+                            onSaved = {
+                                navigationState.navigateTo(Screen.JournalEntryDetail(screen.entryId))
+                            },
+                        )
+
                         is Screen.Ledger -> LedgerScreen(
                             apiClient = apiClient,
                             currentOrgId = currentOrgId,
                             accountRepository = accountRepository,
                             initialAccountId = screen.accountId,
+                            onNavigateToEntry = { entryId ->
+                                navigationState.navigateTo(Screen.JournalEntryDetail(entryId))
+                            },
                         )
 
                         is Screen.TrialBalance -> TrialBalanceScreen(
@@ -529,6 +590,7 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
 
                         is Screen.TDS -> TDSScreen(
                             apiClient = apiClient,
+                            currentOrgId = currentOrgId,
                             showSnackbar = showSnackbar,
                         )
 
@@ -549,9 +611,18 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                         is Screen.BankRegister -> BankRegisterScreen(
                             bankId = screen.bankId,
                             apiClient = apiClient,
+                            currentOrgId = currentOrgId,
+                            paymentRepository = paymentRepository,
+                            contactRepository = contactRepository,
                             onBack = { navigationState.goBack() },
                             onReconcile = { id ->
                                 navigationState.navigateTo(Screen.BankReconciliation(id))
+                            },
+                            onNavigateToEntry = { entryId ->
+                                navigationState.navigateTo(Screen.JournalEntryDetail(entryId))
+                            },
+                            onEditPayment = { paymentId ->
+                                navigationState.navigateTo(Screen.EditPayment(paymentId))
                             },
                             showSnackbar = showSnackbar,
                         )
@@ -566,6 +637,7 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             apiClient = apiClient,
                             currentOrgId = currentOrgId,
                             bankAccountRepository = bankAccountRepository,
+                            accountRepository = accountRepository,
                             onBack = { navigationState.goBack() },
                             onSaved = {
                                 navigationState.navigateTo(Screen.BankAccounts)
@@ -578,8 +650,13 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             apiClient = apiClient,
                             currentOrgId = currentOrgId,
                             paymentRepository = paymentRepository,
+                            contactRepository = contactRepository,
+                            invoiceRepository = invoiceRepository,
                             onRecordPayment = {
                                 navigationState.navigateTo(Screen.RecordPayment)
+                            },
+                            onEditPayment = { paymentId ->
+                                navigationState.navigateTo(Screen.EditPayment(paymentId))
                             },
                         )
 
@@ -587,11 +664,33 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             currentOrgId = currentOrgId,
                             contactRepository = contactRepository,
                             paymentRepository = paymentRepository,
+                            bankAccountRepository = bankAccountRepository,
+                            invoiceRepository = invoiceRepository,
                             onBack = { navigationState.goBack() },
                             onSaved = {
                                 showSnackbar("Payment recorded successfully")
                                 navigationState.navigateTo(Screen.Payments)
                             },
+                            onAddBankAccount = {
+                                navigationState.navigateTo(Screen.CreateBankAccount)
+                            },
+                        )
+
+                        is Screen.EditPayment -> RecordPaymentScreen(
+                            currentOrgId = currentOrgId,
+                            contactRepository = contactRepository,
+                            paymentRepository = paymentRepository,
+                            bankAccountRepository = bankAccountRepository,
+                            invoiceRepository = invoiceRepository,
+                            onBack = { navigationState.goBack() },
+                            onSaved = {
+                                showSnackbar("Payment updated successfully")
+                                navigationState.navigateTo(Screen.Payments)
+                            },
+                            onAddBankAccount = {
+                                navigationState.navigateTo(Screen.CreateBankAccount)
+                            },
+                            editPaymentId = screen.paymentId,
                         )
 
                         // Inventory / Stock screens
@@ -617,16 +716,26 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                         is Screen.ProductDetail -> ProductDetailScreen(
                             productId = screen.productId,
                             productRepository = productRepository,
+                            auditLogRepository = auditLogRepository,
+                            invoiceRepository = invoiceRepository,
                             onBack = { navigationState.goBack() },
                             onDeleteSuccess = { msg -> showSnackbar(msg); navigationState.goBack() },
                             onEdit = { id ->
                                 navigationState.navigateTo(Screen.CreateProduct(editProductId = id))
                             },
+                            onNavigateToInvoice = { id ->
+                                navigationState.navigateTo(Screen.InvoiceDetail(id))
+                            },
+                            onNavigateToPurchaseOrder = { id ->
+                                navigationState.navigateTo(Screen.PurchaseOrderDetail(id))
+                            },
                         )
 
                         is Screen.StockMovements -> StockMovementsScreen(
                             apiClient = apiClient,
+                            currentOrgId = currentOrgId,
                             productRepository = productRepository,
+                            auditLogRepository = auditLogRepository,
                             onNewAdjustment = {
                                 navigationState.navigateTo(Screen.StockAdjustment)
                             },
@@ -642,6 +751,7 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
 
                         is Screen.Warehouses -> WarehouseScreen(
                             apiClient = apiClient,
+                            currentOrgId = currentOrgId,
                             showSnackbar = showSnackbar,
                         )
 
@@ -672,6 +782,10 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             onEditQuotation = { id ->
                                 navigationState.navigateTo(Screen.EditQuotation(id))
                             },
+                            onConvertedToInvoice = { newInvoiceId ->
+                                showSnackbar("Invoice created successfully")
+                                navigationState.navigateTo(Screen.InvoiceDetail(newInvoiceId))
+                            },
                         )
 
                         is Screen.EditQuotation -> EditInvoiceScreen(
@@ -686,6 +800,7 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             onNavigateToCreateCustomer = {
                                 navigationState.navigateTo(Screen.CreateCustomer)
                             },
+                            orgState = currentOrgState,
                         )
 
                         is Screen.CreateQuotation -> CreateQuotationScreen(
@@ -720,14 +835,18 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
 
                         is Screen.PurchaseOrderDetail -> PurchaseOrderDetailScreen(
                             poId = screen.poId,
+                            currentOrgId = currentOrgId,
                             invoiceRepository = invoiceRepository,
                             invoiceItemRepository = invoiceItemRepository,
                             contactRepository = contactRepository,
+                            productRepository = productRepository,
+                            auditLogRepository = auditLogRepository,
                             onBack = { navigationState.goBack() },
                             onDeleteSuccess = { msg -> showSnackbar(msg); navigationState.goBack() },
                             onEditPurchaseOrder = { id ->
                                 navigationState.navigateTo(Screen.EditPurchaseOrder(id))
                             },
+                            showSnackbar = { showSnackbar(it) },
                         )
 
                         is Screen.EditPurchaseOrder -> EditInvoiceScreen(
@@ -742,6 +861,7 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             onNavigateToCreateCustomer = {
                                 navigationState.navigateTo(Screen.CreateCustomer)
                             },
+                            orgState = currentOrgState,
                         )
 
                         is Screen.CreatePurchaseOrder -> CreatePurchaseOrderScreen(
@@ -803,6 +923,12 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             onSaveSuccess = { msg -> showSnackbar(msg); navigationState.goBack() },
                         )
 
+                        // Audit Trail
+                        is Screen.AuditTrail -> AuditTrailScreen(
+                            currentOrgId = currentOrgId,
+                            auditLogRepository = auditLogRepository,
+                        )
+
                         // Sync screen
                         is Screen.SyncStatus -> SyncStatusScreen(
                             apiClient = apiClient,
@@ -848,4 +974,5 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
         )
         } // Box
     }
+    } // CompositionLocalProvider
 }

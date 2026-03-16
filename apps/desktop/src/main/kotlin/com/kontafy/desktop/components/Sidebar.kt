@@ -73,6 +73,7 @@ val sidebarSections = listOf(
             SidebarItem(Screen.ChartOfAccounts, "Chart of Accounts", Icons.Outlined.AccountTree, Icons.Filled.AccountTree),
             SidebarItem(Screen.JournalEntries, "Journal Entries", Icons.Outlined.MenuBook, Icons.Filled.MenuBook),
             SidebarItem(Screen.Ledger(), "Ledger", Icons.Outlined.ListAlt, Icons.Filled.ListAlt),
+            SidebarItem(Screen.AuditTrail, "Audit Trail", Icons.Outlined.History, Icons.Filled.History),
         ),
     ),
     SidebarSection(

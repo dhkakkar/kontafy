@@ -96,6 +96,19 @@ class JournalEntryRepository {
             .map { it.toJournalEntryModel() }
     }
 
+    fun getNextNumber(orgId: String, prefix: String = "JE"): String = dbQuery {
+        val allNumbers = JournalEntries.selectAll().where {
+            (JournalEntries.orgId eq orgId) and
+                (JournalEntries.entryNumber like "$prefix-%")
+        }.map { it[JournalEntries.entryNumber] }
+
+        val maxSeq = allNumbers.mapNotNull { num ->
+            num.substringAfterLast("-").toIntOrNull()
+        }.maxOrNull() ?: 0
+
+        "$prefix-${(maxSeq + 1).toString().padStart(4, '0')}"
+    }
+
     fun upsert(model: JournalEntryModel): JournalEntryModel = dbQuery {
         val existing = JournalEntries.selectAll().where { JournalEntries.id eq model.id }.singleOrNull()
         if (existing != null) {

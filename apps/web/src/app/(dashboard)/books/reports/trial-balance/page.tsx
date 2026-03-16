@@ -89,10 +89,11 @@ export default function TrialBalancePage() {
   const [asOfDate, setAsOfDate] = useState("2026-03-13");
   const data = demoData; // Replace with TanStack Query: useQuery(['trial-balance', asOfDate], () => api.get('/books/reports/trial-balance', { asOfDate }))
 
-  // Group by type
+  // Group by type — only show accounts with actual balances
   const grouped = useMemo(() => {
     const groups: Record<string, TrialBalanceEntry[]> = {};
     for (const entry of data.entries) {
+      if (entry.debit === 0 && entry.credit === 0) continue; // Skip zero-balance accounts
       if (!groups[entry.type]) groups[entry.type] = [];
       groups[entry.type].push(entry);
     }

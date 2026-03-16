@@ -29,23 +29,8 @@ fun SyncStatusScreen(
     var syncStatus by remember {
         mutableStateOf(
             SyncStatusDto(
-                state = "ONLINE",
-                lastSyncTime = "2026-03-13 10:30:00",
-                pendingChanges = 5,
-                pendingByEntity = mapOf(
-                    "Invoices" to 2,
-                    "Customers" to 1,
-                    "Products" to 1,
-                    "Payments" to 1,
-                ),
-                recentHistory = listOf(
-                    SyncHistoryEntry("2026-03-13 10:30:00", "Pull", 45, "SUCCESS"),
-                    SyncHistoryEntry("2026-03-13 10:30:00", "Push", 3, "SUCCESS"),
-                    SyncHistoryEntry("2026-03-13 09:15:00", "Pull", 12, "SUCCESS"),
-                    SyncHistoryEntry("2026-03-13 09:15:00", "Push", 7, "FAILED", "Connection timeout"),
-                    SyncHistoryEntry("2026-03-12 18:00:00", "Pull", 28, "SUCCESS"),
-                    SyncHistoryEntry("2026-03-12 18:00:00", "Push", 15, "SUCCESS"),
-                ),
+                state = "OFFLINE",
+                pendingChanges = 0,
             )
         )
     }
@@ -71,10 +56,7 @@ fun SyncStatusScreen(
                 onSuccess = { syncStatus = it },
                 onFailure = {
                     syncStatus = syncStatus.copy(
-                        state = "ONLINE",
-                        lastSyncTime = "2026-03-13 10:45:00",
-                        pendingChanges = 0,
-                        pendingByEntity = emptyMap(),
+                        state = "OFFLINE",
                     )
                 },
             )

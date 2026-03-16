@@ -33,6 +33,8 @@ const statusBadgeMap: Record<
   draft: { variant: "default", label: "Draft" },
   sent: { variant: "info", label: "Sent" },
   accepted: { variant: "success", label: "Accepted" },
+  converted: { variant: "success", label: "Converted" },
+  invoiced: { variant: "success", label: "Invoiced" },
   rejected: { variant: "danger", label: "Rejected" },
   expired: { variant: "warning", label: "Expired" },
 };
@@ -84,7 +86,7 @@ export default function QuotationDetailPage() {
   const status = statusBadgeMap[quotation.status] || statusBadgeMap.draft;
   const isDraft = quotation.status === "draft";
   const isSent = quotation.status === "sent";
-  const canConvert = quotation.status !== "rejected" && quotation.status !== "expired";
+  const canConvert = !["rejected", "expired", "accepted", "converted", "invoiced"].includes(quotation.status);
 
   return (
     <div className="space-y-6">

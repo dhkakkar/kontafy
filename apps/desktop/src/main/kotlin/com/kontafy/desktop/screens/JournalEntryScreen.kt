@@ -40,7 +40,16 @@ fun JournalEntryScreen(
     var entries by remember { mutableStateOf<List<JournalEntryDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     LaunchedEffect(Unit) {
         scope.launch {
@@ -48,7 +57,11 @@ fun JournalEntryScreen(
             val dbEntries = try {
                 val accountMap = try {
                     accountRepository.getByOrgId(currentOrgId).associate { it.id to it.name }
-                } catch (_: Exception) { emptyMap() }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    snackbarMessage = "Failed to load accounts: ${e.message}"
+                    emptyMap()
+                }
 
                 journalEntryRepository.getByOrgId(currentOrgId).map { entry ->
                     val lines = try {
@@ -62,7 +75,11 @@ fun JournalEntryScreen(
                                 description = line.description ?: "",
                             )
                         }
-                    } catch (_: Exception) { emptyList() }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        snackbarMessage = "Failed to load journal lines: ${e.message}"
+                        emptyList()
+                    }
 
                     JournalEntryDto(
                         id = entry.id,
@@ -74,7 +91,11 @@ fun JournalEntryScreen(
                         lines = lines,
                     )
                 }
-            } catch (_: Exception) { emptyList() }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                snackbarMessage = "Failed to load journal entries: ${e.message}"
+                emptyList()
+            }
 
             if (dbEntries.isNotEmpty()) {
                 entries = dbEntries
@@ -82,7 +103,10 @@ fun JournalEntryScreen(
                 val result = apiClient.getJournalEntries()
                 result.fold(
                     onSuccess = { entries = it },
-                    onFailure = {},
+                    onFailure = { e ->
+                        e.printStackTrace()
+                        snackbarMessage = "Failed to fetch journal entries: ${e.message}"
+                    },
                 )
             }
             isLoading = false
@@ -97,6 +121,7 @@ fun JournalEntryScreen(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().background(KontafyColors.Surface)) {
         TopBar(
             title = "Journal Entries",
@@ -184,6 +209,11 @@ fun JournalEntryScreen(
                 }
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 

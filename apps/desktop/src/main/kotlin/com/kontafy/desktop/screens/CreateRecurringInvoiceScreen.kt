@@ -43,7 +43,7 @@ fun CreateRecurringInvoiceScreen(
     onNavigateToCreateCustomer: () -> Unit,
 ) {
     var productDtoList by remember {
-        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (_: Exception) { emptyList() }
+        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (e: Exception) { e.printStackTrace(); emptyList() }
         mutableStateOf(dbProducts)
     }
     val productDropdownItems = remember(productDtoList) {
@@ -69,7 +69,9 @@ fun CreateRecurringInvoiceScreen(
                         sku = null, description = product.description,
                         stockQuantity = BigDecimal.ZERO, reorderLevel = BigDecimal.ZERO, isActive = true,
                     ))
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 productDtoList = productDtoList + product
                 quickCreateProductCallback?.invoke(product)
                 showQuickCreateProduct = false
@@ -88,8 +90,9 @@ fun CreateRecurringInvoiceScreen(
     var showValidation by remember { mutableStateOf(false) }
 
     val customerItems = remember {
-        val dbContacts = try { contactRepository.getByOrgId(currentOrgId) } catch (_: Exception) { emptyList() }
-        dbContacts.map { DropdownItem(it.id, it.name, it.gstin) }
+        val dbContacts = try { contactRepository.getByOrgId(currentOrgId) } catch (e: Exception) { e.printStackTrace(); emptyList() }
+        dbContacts.filter { it.type.uppercase() in listOf("CUSTOMER", "BOTH") }
+            .map { DropdownItem(it.id, it.name, it.gstin) }
     }
 
     val frequencies = remember {
@@ -143,7 +146,7 @@ fun CreateRecurringInvoiceScreen(
                                 val model = InvoiceModel(
                                     id = invoiceId,
                                     orgId = currentOrgId,
-                                    invoiceNumber = "RI-${System.currentTimeMillis().toString().takeLast(6)}",
+                                    invoiceNumber = try { invoiceRepository.getNextNumber(currentOrgId, "RI") } catch (e: Exception) { "RI-0001" },
                                     contactId = selectedCustomer?.value,
                                     type = "recurring",
                                     status = "ACTIVE",
@@ -180,7 +183,11 @@ fun CreateRecurringInvoiceScreen(
                                         ))
                                     }
                                 }
-                            } catch (_: Exception) {}
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                isSaving = false
+                                return@KontafyButton
+                            }
                             onSaveSuccess("Recurring invoice created successfully")
                         }
                     },

@@ -15,6 +15,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -54,6 +56,9 @@ fun <T> KontafyDropdown(
         items
     }
 
+    var parentWidth by remember { mutableStateOf(0) }
+    val density = LocalDensity.current
+
     Column(modifier = modifier) {
         if (label != null) {
             Text(
@@ -64,7 +69,7 @@ fun <T> KontafyDropdown(
             )
         }
 
-        Box {
+        Box(modifier = Modifier.onGloballyPositioned { parentWidth = it.size.width }) {
             OutlinedTextField(
                 value = selectedItem?.label ?: "",
                 onValueChange = {},
@@ -109,7 +114,7 @@ fun <T> KontafyDropdown(
                     searchQuery = ""
                 },
                 modifier = Modifier
-                    .widthIn(min = 250.dp, max = 400.dp)
+                    .width(with(density) { parentWidth.toDp() })
                     .heightIn(max = 320.dp),
             ) {
                 if (searchable) {

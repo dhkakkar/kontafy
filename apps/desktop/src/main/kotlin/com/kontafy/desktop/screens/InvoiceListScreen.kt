@@ -39,13 +39,25 @@ fun InvoiceListScreen(
     var isLoading by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf<String?>(null) }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     // Build a contact name lookup for resolving contactId -> name
     val contactNameMap = remember {
         try {
             contactRepository.getByOrgId(currentOrgId).associate { it.id to it.name }
-        } catch (_: Exception) { emptyMap() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyMap()
+        }
     }
 
     LaunchedEffect(searchQuery, selectedFilter) {
@@ -67,13 +79,16 @@ fun InvoiceListScreen(
                     val matchesFilter = selectedFilter == null || inv.status.equals(selectedFilter, ignoreCase = true)
                     matchesSearch && matchesFilter
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                e.printStackTrace()
+                snackbarMessage = "Failed to load invoices: ${e.message}"
                 invoices = emptyList()
             }
             isLoading = false
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
     ) {
@@ -198,6 +213,11 @@ fun InvoiceListScreen(
                 }
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 

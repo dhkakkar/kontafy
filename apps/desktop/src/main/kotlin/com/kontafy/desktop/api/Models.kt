@@ -155,6 +155,7 @@ data class LedgerEntryDto(
     val debitAmount: Double = 0.0,
     val creditAmount: Double = 0.0,
     val runningBalance: Double = 0.0,
+    val entryId: String = "",
 )
 
 @Serializable
@@ -639,6 +640,10 @@ data class WarehouseDto(
     val id: String,
     val name: String,
     val address: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val country: String? = null,
+    val pincode: String? = null,
     val productCount: Int = 0,
     val totalValue: Double = 0.0,
 )
@@ -647,7 +652,33 @@ data class WarehouseDto(
 data class CreateWarehouseRequest(
     val name: String,
     val address: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val country: String? = null,
+    val pincode: String? = null,
 )
+
+data class WarehouseModel(
+    val id: String,
+    val orgId: String,
+    val name: String,
+    val address: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val country: String? = null,
+    val pincode: String? = null,
+    val isActive: Boolean = true,
+) {
+    fun toDto() = WarehouseDto(
+        id = id,
+        name = name,
+        address = address,
+        city = city,
+        state = state,
+        country = country,
+        pincode = pincode,
+    )
+}
 
 // --- Quotation & Purchase Order Models ---
 
@@ -876,6 +907,58 @@ data class BankAccountModel(
     val syncedAt: LocalDateTime? = null,
     val updatedAt: LocalDateTime? = null,
 )
+
+data class BankTransactionModel(
+    val id: String,
+    val bankAccountId: String,
+    val date: String,
+    val description: String,
+    val reference: String = "",
+    val debit: BigDecimal = BigDecimal.ZERO,
+    val credit: BigDecimal = BigDecimal.ZERO,
+    val balance: BigDecimal = BigDecimal.ZERO,
+    val isReconciled: Boolean = false,
+    val syncedAt: LocalDateTime? = null,
+    val updatedAt: LocalDateTime? = null,
+) {
+    fun toDto() = BankTransactionDto(
+        id = id,
+        date = date,
+        description = description,
+        reference = reference,
+        debit = debit.toDouble(),
+        credit = credit.toDouble(),
+        balance = balance.toDouble(),
+        isReconciled = isReconciled,
+    )
+}
+
+data class TDSEntryModel(
+    val id: String,
+    val orgId: String,
+    val section: String,
+    val deducteeName: String,
+    val pan: String,
+    val amount: BigDecimal = BigDecimal.ZERO,
+    val tdsRate: BigDecimal = BigDecimal.ZERO,
+    val tdsAmount: BigDecimal = BigDecimal.ZERO,
+    val status: String = "Deducted",
+    val date: String,
+    val syncedAt: LocalDateTime? = null,
+    val updatedAt: LocalDateTime? = null,
+) {
+    fun toDto() = TDSEntryDto(
+        id = id,
+        section = section,
+        deducteeName = deducteeName,
+        pan = pan,
+        amount = amount.toDouble(),
+        tdsRate = tdsRate.toDouble(),
+        tdsAmount = tdsAmount.toDouble(),
+        status = status,
+        date = date,
+    )
+}
 
 data class SyncQueueItem(
     val id: Int,

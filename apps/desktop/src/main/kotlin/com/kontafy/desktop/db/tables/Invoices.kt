@@ -24,9 +24,17 @@ object Invoices : Table("invoices") {
     val terms = text("terms").nullable()
     val placeOfSupply = varchar("place_of_supply", 100).nullable()
     val reverseCharge = bool("reverse_charge").default(false)
+    val createdAt = datetime("created_at").default(LocalDateTime.now())
     val syncedAt = datetime("synced_at").nullable()
     val updatedAt = datetime("updated_at").default(LocalDateTime.now())
     val isDeleted = bool("is_deleted").default(false)
 
     override val primaryKey = PrimaryKey(id)
+
+    init {
+        uniqueIndex(orgId, invoiceNumber)
+        index(isUnique = false, orgId)
+        index(isUnique = false, contactId)
+        index(isUnique = false, status)
+    }
 }

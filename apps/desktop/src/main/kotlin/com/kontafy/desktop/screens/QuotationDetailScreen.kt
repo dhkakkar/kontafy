@@ -13,16 +13,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kontafy.desktop.api.InvoiceDto
+import com.kontafy.desktop.api.InvoiceItemModel
+import com.kontafy.desktop.api.InvoiceModel
 import com.kontafy.desktop.api.toDto
 import com.kontafy.desktop.components.*
 import com.kontafy.desktop.db.repositories.ContactRepository
 import com.kontafy.desktop.db.repositories.InvoiceItemRepository
 import com.kontafy.desktop.db.repositories.InvoiceRepository
+import com.kontafy.desktop.services.AccountingService
 import com.kontafy.desktop.theme.KontafyColors
 import com.kontafy.desktop.util.InvoicePdfGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.math.BigDecimal
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.util.UUID
 
 @Composable
 fun QuotationDetailScreen(
@@ -33,11 +40,22 @@ fun QuotationDetailScreen(
     onBack: () -> Unit,
     onDeleteSuccess: (String) -> Unit = {},
     onEditQuotation: (String) -> Unit = {},
+    onConvertedToInvoice: (String) -> Unit = {},
 ) {
     var quotation by remember { mutableStateOf<InvoiceDto?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showConvertDialog by remember { mutableStateOf(false) }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     LaunchedEffect(quotationId) {
         scope.launch {
@@ -46,14 +64,16 @@ fun QuotationDetailScreen(
                 if (model != null) {
                     val dto = model.toDto()
                     val contactName = model.contactId?.let { cId ->
-                        try { contactRepository.getById(cId)?.name } catch (_: Exception) { null }
+                        try { contactRepository.getById(cId)?.name } catch (e: Exception) { e.printStackTrace(); null }
                     } ?: ""
                     val items = try {
                         invoiceItemRepository.getByInvoice(quotationId).map { it.toDto() }
-                    } catch (_: Exception) { emptyList() }
+                    } catch (e: Exception) { e.printStackTrace(); emptyList() }
                     quotation = dto.copy(customerName = contactName, items = items)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             isLoading = false
         }
     }
@@ -78,6 +98,125 @@ fun QuotationDetailScreen(
         )
     }
 
+    // Convert to Invoice dialog
+    if (showConvertDialog) {
+        var invoiceNumber by remember { mutableStateOf(
+            try { invoiceRepository.getNextNumber(quotation?.orgId ?: "", "INV") } catch (e: Exception) { "INV-0001" }
+        ) }
+        var issueDate by remember { mutableStateOf(LocalDate.now().toString()) }
+        var dueDate by remember { mutableStateOf(LocalDate.now().plusDays(30).toString()) }
+        var isConverting by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { if (!isConverting) showConvertDialog = false },
+            title = { Text("Convert to Invoice", style = MaterialTheme.typography.titleLarge, color = KontafyColors.Ink) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "This will create a new invoice from quotation ${quotation?.invoiceNumber} and mark the quotation as accepted.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = KontafyColors.Muted,
+                    )
+                    OutlinedTextField(
+                        value = invoiceNumber,
+                        onValueChange = { invoiceNumber = it },
+                        label = { Text("Invoice Number") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = issueDate,
+                        onValueChange = { issueDate = it },
+                        label = { Text("Issue Date (YYYY-MM-DD)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = dueDate,
+                        onValueChange = { dueDate = it },
+                        label = { Text("Due Date (YYYY-MM-DD)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                KontafyButton(
+                    text = if (isConverting) "Converting..." else "Convert",
+                    onClick = {
+                        if (isConverting) return@KontafyButton
+                        isConverting = true
+                        scope.launch {
+                            try {
+                                val q = quotation ?: throw Exception("Quotation not loaded")
+                                val qtModel = invoiceRepository.getById(quotationId) ?: throw Exception("Quotation not found")
+                                val qtItems = invoiceItemRepository.getByInvoice(quotationId)
+
+                                // Create new invoice from quotation data
+                                val newInvoiceId = UUID.randomUUID().toString()
+                                val invoiceModel = InvoiceModel(
+                                    id = newInvoiceId,
+                                    orgId = qtModel.orgId,
+                                    invoiceNumber = invoiceNumber,
+                                    contactId = qtModel.contactId,
+                                    type = "invoice",
+                                    status = "DRAFT",
+                                    issueDate = issueDate,
+                                    dueDate = dueDate,
+                                    subtotal = qtModel.subtotal,
+                                    discountAmount = qtModel.discountAmount,
+                                    taxAmount = qtModel.taxAmount,
+                                    totalAmount = qtModel.totalAmount,
+                                    amountPaid = BigDecimal.ZERO,
+                                    amountDue = qtModel.totalAmount,
+                                    currency = qtModel.currency,
+                                    notes = qtModel.notes,
+                                    terms = qtModel.terms,
+                                    placeOfSupply = qtModel.placeOfSupply,
+                                    reverseCharge = qtModel.reverseCharge,
+                                    updatedAt = LocalDateTime.now(),
+                                )
+
+                                // Clone line items with new IDs
+                                val newItems = qtItems.map { item ->
+                                    item.copy(
+                                        id = UUID.randomUUID().toString(),
+                                        invoiceId = newInvoiceId,
+                                    )
+                                }
+
+                                // Create invoice with items via AccountingService (handles journal entries + contact balance)
+                                AccountingService(
+                                    invoiceRepository = invoiceRepository,
+                                    invoiceItemRepository = invoiceItemRepository,
+                                ).createInvoiceWithItems(invoiceModel, newItems)
+
+                                // Mark quotation as converted (prevents duplicate invoice generation)
+                                invoiceRepository.update(qtModel.copy(status = "CONVERTED"))
+
+                                showConvertDialog = false
+                                onConvertedToInvoice(newInvoiceId)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                isConverting = false
+                                snackbarMessage = "Failed to convert: ${e.message}"
+                            }
+                        }
+                    },
+                    variant = ButtonVariant.Secondary,
+                )
+            },
+            dismissButton = {
+                KontafyButton(
+                    text = "Cancel",
+                    onClick = { showConvertDialog = false },
+                    variant = ButtonVariant.Ghost,
+                )
+            },
+        )
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
     ) {
@@ -147,6 +286,14 @@ fun QuotationDetailScreen(
                     onClick = { onEditQuotation(quotationId) },
                     variant = ButtonVariant.Outline,
                 )
+                if (quotation?.status?.uppercase() !in listOf("ACCEPTED", "CONVERTED", "INVOICED")) {
+                    Spacer(Modifier.width(8.dp))
+                    KontafyButton(
+                        text = "Convert to Invoice",
+                        onClick = { showConvertDialog = true },
+                        variant = ButtonVariant.Secondary,
+                    )
+                }
             }
         }
 
@@ -261,6 +408,11 @@ fun QuotationDetailScreen(
                 }
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 

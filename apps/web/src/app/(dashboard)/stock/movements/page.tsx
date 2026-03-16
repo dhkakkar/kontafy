@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Link from "next/link";
 import {
   useReactTable,
   getCoreRowModel,
@@ -283,11 +284,29 @@ export default function StockMovementsPage() {
       }),
       columnHelper.accessor("notes", {
         header: "Reference / Notes",
-        cell: (info) => (
-          <span className="text-sm text-gray-500">
-            {info.getValue() || "-"}
-          </span>
-        ),
+        cell: (info) => {
+          const val = info.getValue() || "-";
+          // Make invoice/PO references clickable
+          const invMatch = val.match(/^(INV-\d+)$/);
+          const poMatch = val.match(/^(PO-[\w-]+)$/);
+          if (invMatch) {
+            return (
+              <Link href={`/invoices`} className="text-sm text-primary-700 font-medium hover:underline">
+                {val}
+              </Link>
+            );
+          }
+          if (poMatch) {
+            return (
+              <Link href={`/purchase-orders`} className="text-sm text-primary-700 font-medium hover:underline">
+                {val}
+              </Link>
+            );
+          }
+          return (
+            <span className="text-sm text-gray-500">{val}</span>
+          );
+        },
       }),
     ],
     []

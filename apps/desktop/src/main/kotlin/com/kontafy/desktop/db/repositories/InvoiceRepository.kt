@@ -30,12 +30,13 @@ class InvoiceRepository {
     }
 
     fun create(model: InvoiceModel): InvoiceModel = dbQuery {
+        val resolvedType = inferType(model.type, model.invoiceNumber)
         Invoices.insert {
             it[id] = model.id
             it[orgId] = model.orgId
             it[invoiceNumber] = model.invoiceNumber
             it[contactId] = model.contactId
-            it[type] = model.type
+            it[type] = resolvedType
             it[status] = model.status
             it[issueDate] = model.issueDate
             it[dueDate] = model.dueDate
@@ -58,10 +59,11 @@ class InvoiceRepository {
     }
 
     fun update(model: InvoiceModel): Boolean = dbQuery {
+        val resolvedType = inferType(model.type, model.invoiceNumber)
         Invoices.update({ Invoices.id eq model.id }) {
             it[invoiceNumber] = model.invoiceNumber
             it[contactId] = model.contactId
-            it[type] = model.type
+            it[type] = resolvedType
             it[status] = model.status
             it[issueDate] = model.issueDate
             it[dueDate] = model.dueDate
@@ -114,18 +116,16 @@ class InvoiceRepository {
     }
 
     fun getNextNumber(orgId: String, prefix: String = "INV"): String = dbQuery {
-        val maxNumber = Invoices.selectAll().where { Invoices.orgId eq orgId }
-            .orderBy(Invoices.invoiceNumber to SortOrder.DESC)
-            .limit(1)
-            .map { it[Invoices.invoiceNumber] }
-            .firstOrNull()
+        val allNumbers = Invoices.selectAll().where {
+            (Invoices.orgId eq orgId) and (Invoices.isDeleted eq false) and
+                (Invoices.invoiceNumber like "$prefix-%")
+        }.map { it[Invoices.invoiceNumber] }
 
-        if (maxNumber != null) {
-            val numPart = maxNumber.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
-            "$prefix-${(numPart + 1).toString().padStart(5, '0')}"
-        } else {
-            "$prefix-00001"
-        }
+        val maxSeq = allNumbers.mapNotNull { num ->
+            num.substringAfterLast("-").toIntOrNull()
+        }.maxOrNull() ?: 0
+
+        "$prefix-${(maxSeq + 1).toString().padStart(4, '0')}"
     }
 
     fun getOverdue(orgId: String, currentDate: String): List<InvoiceModel> = dbQuery {
@@ -149,12 +149,29 @@ class InvoiceRepository {
         }
     }
 
-    private fun ResultRow.toInvoiceModel() = InvoiceModel(
+    /**
+     * Infer the correct document type from the invoice number prefix.
+     * Handles legacy data where all records were stored with type="invoice".
+     */
+    private fun inferType(storedType: String, invoiceNumber: String): String {
+        val upper = invoiceNumber.uppercase()
+        return when {
+            upper.startsWith("QT-") || upper.startsWith("QT_") -> "quotation"
+            upper.startsWith("PO-") || upper.startsWith("PO_") -> "purchase_order"
+            upper.startsWith("INV-") || upper.startsWith("INV_") -> "invoice"
+            else -> storedType
+        }
+    }
+
+    private fun ResultRow.toInvoiceModel(): InvoiceModel {
+        val storedType = this[Invoices.type]
+        val number = this[Invoices.invoiceNumber]
+        return InvoiceModel(
         id = this[Invoices.id],
         orgId = this[Invoices.orgId],
-        invoiceNumber = this[Invoices.invoiceNumber],
+        invoiceNumber = number,
         contactId = this[Invoices.contactId],
-        type = this[Invoices.type],
+        type = inferType(storedType, number),
         status = this[Invoices.status],
         issueDate = this[Invoices.issueDate],
         dueDate = this[Invoices.dueDate],
@@ -173,4 +190,5 @@ class InvoiceRepository {
         updatedAt = this[Invoices.updatedAt],
         isDeleted = this[Invoices.isDeleted],
     )
+    }
 }

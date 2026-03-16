@@ -18,6 +18,7 @@ import com.kontafy.desktop.api.*
 import com.kontafy.desktop.components.*
 import com.kontafy.desktop.db.repositories.AccountRepository
 import com.kontafy.desktop.theme.KontafyColors
+import java.time.LocalDate
 import kotlinx.coroutines.launch
 
 @Composable
@@ -25,11 +26,20 @@ fun CashFlowScreen(
     apiClient: ApiClient,
     accountRepository: AccountRepository = AccountRepository(),
 ) {
-    var fromDate by remember { mutableStateOf("2026-03-01") }
-    var toDate by remember { mutableStateOf("2026-03-13") }
+    var fromDate by remember { mutableStateOf(LocalDate.now().withDayOfMonth(1).toString()) }
+    var toDate by remember { mutableStateOf(LocalDate.now().toString()) }
     var data by remember { mutableStateOf<CashFlowData?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     fun buildCashFlowFromLocal(): CashFlowData? {
         val accounts = accountRepository.getAll()
@@ -77,7 +87,12 @@ fun CashFlowScreen(
             val result = apiClient.getCashFlow(fromDate, toDate)
             result.fold(
                 onSuccess = { data = it },
-                onFailure = {},
+                onFailure = { e ->
+                    e.printStackTrace()
+                    if (data == null) {
+                        snackbarMessage = "Failed to fetch cash flow data: ${e.message}"
+                    }
+                },
             )
             isLoading = false
         }
@@ -85,6 +100,7 @@ fun CashFlowScreen(
 
     val displayData = data
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().background(KontafyColors.Surface)) {
         TopBar(
             title = "Cash Flow Statement",
@@ -124,7 +140,12 @@ fun CashFlowScreen(
                             val result = apiClient.getCashFlow(fromDate, toDate)
                             result.fold(
                                 onSuccess = { data = it },
-                                onFailure = {},
+                                onFailure = { e ->
+                                    e.printStackTrace()
+                                    if (data == null) {
+                                        snackbarMessage = "Failed to fetch cash flow data: ${e.message}"
+                                    }
+                                },
                             )
                             isLoading = false
                         }
@@ -266,6 +287,11 @@ fun CashFlowScreen(
                 }
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 

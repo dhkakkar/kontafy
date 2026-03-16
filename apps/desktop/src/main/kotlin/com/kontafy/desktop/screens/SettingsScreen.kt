@@ -44,6 +44,8 @@ fun SettingsScreen(
     apiClient: ApiClient? = null,
     appSettingsRepository: AppSettingsRepository = AppSettingsRepository(),
     organizationRepository: OrganizationRepository = OrganizationRepository(),
+    currentOrgId: String = "org-default",
+    onOrgUpdated: () -> Unit = {},
 ) {
     var selectedTab by remember { mutableStateOf(SettingsTab.Profile) }
 
@@ -106,7 +108,7 @@ fun SettingsScreen(
                 item {
                     when (selectedTab) {
                         SettingsTab.Profile -> ProfileSection(authService)
-                        SettingsTab.Organization -> OrganizationSection(organizationRepository)
+                        SettingsTab.Organization -> OrganizationSection(organizationRepository, currentOrgId, onOrgUpdated)
                         SettingsTab.Invoice -> InvoiceSettingsSection(appSettingsRepository)
                         SettingsTab.Tax -> TaxSettingsSection(appSettingsRepository)
                         SettingsTab.Sync -> SyncSettingsSection(apiClient, appSettingsRepository)
@@ -217,18 +219,22 @@ private fun ProfileSection(authService: AuthService) {
 }
 
 @Composable
-private fun OrganizationSection(organizationRepository: OrganizationRepository) {
-    val orgId = "org-default"
-    val existingOrg = remember {
-        try { organizationRepository.getById(orgId) } catch (_: Exception) { null }
+private fun OrganizationSection(
+    organizationRepository: OrganizationRepository,
+    currentOrgId: String = "org-default",
+    onOrgUpdated: () -> Unit = {},
+) {
+    val orgId = currentOrgId
+    val existingOrg = remember(orgId) {
+        try { organizationRepository.getById(orgId) } catch (e: Exception) { e.printStackTrace(); null }
     }
-    var companyName by remember { mutableStateOf(existingOrg?.name ?: "") }
-    var gstin by remember { mutableStateOf(existingOrg?.gstin ?: "") }
-    var pan by remember { mutableStateOf(existingOrg?.pan ?: "") }
-    var address by remember { mutableStateOf(existingOrg?.address ?: "") }
-    var phone by remember { mutableStateOf(existingOrg?.phone ?: "") }
-    var email by remember { mutableStateOf(existingOrg?.email ?: "") }
-    var logoPath by remember { mutableStateOf(existingOrg?.logo ?: "") }
+    var companyName by remember(existingOrg) { mutableStateOf(existingOrg?.name ?: "") }
+    var gstin by remember(existingOrg) { mutableStateOf(existingOrg?.gstin ?: "") }
+    var pan by remember(existingOrg) { mutableStateOf(existingOrg?.pan ?: "") }
+    var address by remember(existingOrg) { mutableStateOf(existingOrg?.address ?: "") }
+    var phone by remember(existingOrg) { mutableStateOf(existingOrg?.phone ?: "") }
+    var email by remember(existingOrg) { mutableStateOf(existingOrg?.email ?: "") }
+    var logoPath by remember(existingOrg) { mutableStateOf(existingOrg?.logo ?: "") }
     var saveMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -282,18 +288,71 @@ private fun OrganizationSection(organizationRepository: OrganizationRepository) 
             )
         }
         Spacer(Modifier.height(12.dp))
-        KontafyTextField(
-            value = logoPath,
-            onValueChange = { logoPath = it },
-            label = "Logo File Path",
-            placeholder = "/path/to/logo.png",
-        )
+
+        // Logo file picker
+        Text("Company Logo", style = MaterialTheme.typography.labelLarge, color = KontafyColors.Ink)
         Spacer(Modifier.height(8.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            KontafyTextField(
+                value = logoPath,
+                onValueChange = { logoPath = it },
+                label = "",
+                placeholder = "No file selected",
+                modifier = Modifier.weight(1f),
+            )
+            KontafyButton(
+                text = "Browse...",
+                onClick = {
+                    val chooser = javax.swing.JFileChooser()
+                    chooser.dialogTitle = "Select Company Logo"
+                    chooser.fileFilter = javax.swing.filechooser.FileNameExtensionFilter(
+                        "Image files (PNG, JPG)", "png", "jpg", "jpeg",
+                    )
+                    chooser.isAcceptAllFileFilterUsed = false
+                    val result = chooser.showOpenDialog(null)
+                    if (result == javax.swing.JFileChooser.APPROVE_OPTION) {
+                        val selectedFile = chooser.selectedFile
+                        if (selectedFile.length() <= 500 * 1024) {
+                            logoPath = selectedFile.absolutePath
+                        } else {
+                            saveMessage = "Logo file too large (max 500KB)"
+                        }
+                    }
+                },
+                variant = ButtonVariant.Outline,
+            )
+        }
+        if (logoPath.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            val logoFile = File(logoPath)
+            if (logoFile.exists()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = KontafyColors.Green, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        logoFile.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = KontafyColors.Green,
+                    )
+                }
+            } else {
+                Text(
+                    "File not found: $logoPath",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = KontafyColors.StatusOverdue,
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
         Text(
-            "Provide the path to your company logo (PNG or JPG, max 500KB).",
+            "PNG or JPG, max 500KB. This logo will appear on your invoices.",
             style = MaterialTheme.typography.bodySmall,
             color = KontafyColors.Muted,
         )
+
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             KontafyButton(
@@ -314,6 +373,7 @@ private fun OrganizationSection(organizationRepository: OrganizationRepository) 
                             )
                             organizationRepository.upsert(model)
                             saveMessage = "Organization details saved"
+                            onOrgUpdated()
                         } catch (e: Exception) {
                             saveMessage = "Error: ${e.message}"
                         }
@@ -325,7 +385,11 @@ private fun OrganizationSection(organizationRepository: OrganizationRepository) 
             )
             saveMessage?.let {
                 Spacer(Modifier.width(12.dp))
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Green)
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (it.startsWith("Error") || it.contains("too large")) KontafyColors.StatusOverdue else KontafyColors.Green,
+                )
             }
         }
     }
@@ -334,7 +398,7 @@ private fun OrganizationSection(organizationRepository: OrganizationRepository) 
 @Composable
 private fun InvoiceSettingsSection(appSettingsRepository: AppSettingsRepository) {
     val savedSettings = remember {
-        try { appSettingsRepository.getAll() } catch (_: Exception) { emptyMap() }
+        try { appSettingsRepository.getAll() } catch (e: Exception) { e.printStackTrace(); emptyMap() }
     }
     var prefix by remember { mutableStateOf(savedSettings["invoice_prefix"] ?: "KTF") }
     var numberingStyle by remember { mutableStateOf<DropdownItem<String>?>(
@@ -457,7 +521,7 @@ private fun InvoiceSettingsSection(appSettingsRepository: AppSettingsRepository)
 @Composable
 private fun TaxSettingsSection(appSettingsRepository: AppSettingsRepository) {
     val savedSettings = remember {
-        try { appSettingsRepository.getAll() } catch (_: Exception) { emptyMap() }
+        try { appSettingsRepository.getAll() } catch (e: Exception) { e.printStackTrace(); emptyMap() }
     }
     var registrationType by remember { mutableStateOf<DropdownItem<String>?>(
         savedSettings["gst_registration_type"]?.let { v ->
@@ -569,7 +633,7 @@ private fun TaxSettingsSection(appSettingsRepository: AppSettingsRepository) {
 @Composable
 private fun SyncSettingsSection(apiClient: ApiClient?, appSettingsRepository: AppSettingsRepository) {
     val savedSettings = remember {
-        try { appSettingsRepository.getAll() } catch (_: Exception) { emptyMap() }
+        try { appSettingsRepository.getAll() } catch (e: Exception) { e.printStackTrace(); emptyMap() }
     }
     var apiUrl by remember { mutableStateOf(savedSettings["api_url"] ?: "http://localhost:4001/api") }
     var syncFrequency by remember { mutableStateOf<DropdownItem<String>?>(
@@ -646,7 +710,7 @@ private fun SyncSettingsSection(apiClient: ApiClient?, appSettingsRepository: Ap
             selectedItem = syncFrequency,
             onItemSelected = {
                 syncFrequency = it
-                try { appSettingsRepository.set("sync_frequency", it.value) } catch (_: Exception) {}
+                try { appSettingsRepository.set("sync_frequency", it.value) } catch (e: Exception) { e.printStackTrace() }
             },
             label = "Sync Frequency",
             placeholder = "Select frequency",
@@ -699,7 +763,7 @@ private fun SyncSettingsSection(apiClient: ApiClient?, appSettingsRepository: Ap
                         delay(2000)
                         val now = LocalDateTime.now().toString().replace("T", " ").substringBefore(".")
                         lastSyncTime = now
-                        try { appSettingsRepository.set("last_sync_time", now) } catch (_: Exception) {}
+                        try { appSettingsRepository.set("last_sync_time", now) } catch (e: Exception) { e.printStackTrace() }
                         pendingChanges = 0
                         lastError = null
                         isSyncing = false
@@ -716,7 +780,7 @@ private fun SyncSettingsSection(apiClient: ApiClient?, appSettingsRepository: Ap
                         delay(4000)
                         val now = LocalDateTime.now().toString().replace("T", " ").substringBefore(".")
                         lastSyncTime = now
-                        try { appSettingsRepository.set("last_sync_time", now) } catch (_: Exception) {}
+                        try { appSettingsRepository.set("last_sync_time", now) } catch (e: Exception) { e.printStackTrace() }
                         pendingChanges = 0
                         lastError = null
                         isFullResyncing = false

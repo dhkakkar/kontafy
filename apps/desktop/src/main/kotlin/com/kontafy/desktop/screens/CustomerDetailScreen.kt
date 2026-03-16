@@ -19,6 +19,7 @@ import com.kontafy.desktop.api.InvoiceDto
 import com.kontafy.desktop.api.toCustomerDto
 import com.kontafy.desktop.api.toDto
 import com.kontafy.desktop.components.*
+import com.kontafy.desktop.db.repositories.AccountRepository
 import com.kontafy.desktop.db.repositories.ContactRepository
 import com.kontafy.desktop.db.repositories.InvoiceRepository
 import com.kontafy.desktop.db.repositories.PaymentRepository
@@ -31,11 +32,13 @@ fun CustomerDetailScreen(
     contactRepository: ContactRepository,
     invoiceRepository: InvoiceRepository = InvoiceRepository(),
     paymentRepository: PaymentRepository = PaymentRepository(),
+    accountRepository: AccountRepository = AccountRepository(),
+    currentOrgId: String = "",
     onBack: () -> Unit,
     onDeleteSuccess: (String) -> Unit = {},
     onEditCustomer: (String) -> Unit,
     onInvoiceClick: (String) -> Unit,
-    onNavigateToLedger: () -> Unit = {},
+    onNavigateToLedger: (String?) -> Unit = {},
 ) {
     var customer by remember { mutableStateOf<CustomerDto?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -43,8 +46,10 @@ fun CustomerDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // Customer invoices loaded from local DB
+    // All documents loaded from local DB, separated by type
     var customerInvoices by remember { mutableStateOf<List<InvoiceDto>>(emptyList()) }
+    var customerQuotations by remember { mutableStateOf<List<InvoiceDto>>(emptyList()) }
+    var customerPOs by remember { mutableStateOf<List<InvoiceDto>>(emptyList()) }
 
     // Payments loaded from local DB
     data class PaymentRecord(val id: String, val date: String, val amount: Double, val method: String, val invoiceRef: String)
@@ -60,31 +65,43 @@ fun CustomerDetailScreen(
                 val contact = contactRepository.getById(customerId)
                 customer = contact?.toCustomerDto()
 
-                // Load invoices for this customer from local DB
-                val invoices = try {
-                    invoiceRepository.getByContact(customerId)
-                        .filter { it.type == "invoice" }
-                        .map { it.toDto() }
-                } catch (_: Exception) { emptyList() }
-                customerInvoices = invoices
+                // Load ALL documents for this contact from local DB
+                val allDocs = try {
+                    invoiceRepository.getByContact(customerId).map { it.toDto() }
+                } catch (e: Exception) { e.printStackTrace(); emptyList() }
 
-                // Calculate paid and due amounts
-                totalPaid = invoices.sumOf { it.amountPaid }
-                totalDue = invoices.sumOf { it.amountDue }
+                // Separate by type
+                customerInvoices = allDocs.filter { it.type.lowercase() == "invoice" }
+                customerQuotations = allDocs.filter { it.type.lowercase() == "quotation" }
+                customerPOs = allDocs.filter { it.type.lowercase() == "purchase_order" }
 
-                // Update customer with actual invoice count
+                // Determine if vendor based on contact type
+                val contactIsVendor = contact?.type?.uppercase() in listOf("VENDOR", "BOTH")
+
+                // Calculate paid and due amounts from the relevant doc type
+                val primaryDocs = if (contactIsVendor) customerPOs else customerInvoices
+                totalDue = primaryDocs.sumOf { it.amountDue }
+
+                // Load payments for this contact
+                val paymentModels = try {
+                    paymentRepository.getByContact(customerId)
+                } catch (e: Exception) { e.printStackTrace(); emptyList() }
+
+                // Calculate totalPaid from actual payments
+                totalPaid = if (contactIsVendor) {
+                    paymentModels.filter { it.type.lowercase() == "made" }.sumOf { it.amount.toDouble() }
+                } else {
+                    paymentModels.filter { it.type.lowercase() == "received" }.sumOf { it.amount.toDouble() }
+                }
+
+                // Update customer with actual doc count
                 customer = customer?.copy(
-                    totalInvoices = invoices.size,
+                    totalInvoices = primaryDocs.size,
                     outstandingAmount = totalDue,
                 )
 
-                // Load payments for this customer
-                val paymentModels = try {
-                    paymentRepository.getByContact(customerId)
-                } catch (_: Exception) { emptyList() }
-
-                // Build invoice number map for payment references
-                val invoiceNumberMap = invoices.associate { it.id to it.invoiceNumber }
+                // Build invoice number map for payment references (include all doc types)
+                val invoiceNumberMap = allDocs.associate { it.id to it.invoiceNumber }
 
                 payments = paymentModels.map { p ->
                     PaymentRecord(
@@ -95,7 +112,9 @@ fun CustomerDetailScreen(
                         invoiceRef = p.invoiceId?.let { invoiceNumberMap[it] } ?: "-",
                     )
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             isLoading = false
         }
     }
@@ -145,7 +164,17 @@ fun CustomerDetailScreen(
                 Spacer(Modifier.weight(1f))
                 KontafyButton(
                     text = "Ledger",
-                    onClick = onNavigateToLedger,
+                    onClick = {
+                        // Find the appropriate ledger account for this customer/vendor
+                        val isVendorType = customer?.type?.uppercase() == "VENDOR"
+                        val accountName = if (isVendorType) "Accounts Payable" else "Accounts Receivable"
+                        val accountType = if (isVendorType) "liability" else "asset"
+                        val accountId = try {
+                            accountRepository.getByType(currentOrgId, accountType)
+                                .find { it.name.equals(accountName, ignoreCase = true) }?.id
+                        } catch (e: Exception) { null }
+                        onNavigateToLedger(accountId)
+                    },
                     variant = ButtonVariant.Outline,
                 )
                 Spacer(Modifier.width(8.dp))
@@ -176,8 +205,7 @@ fun CustomerDetailScreen(
             val isVendor = cust.type.uppercase() == "VENDOR"
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
                 ) {
                     // Customer Info Card
                     item {
@@ -262,8 +290,12 @@ fun CustomerDetailScreen(
                                     modifier = Modifier.padding(24.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
-                                    // Total invoices
-                                    Text("${customerInvoices.size} Invoices", style = MaterialTheme.typography.titleMedium, color = KontafyColors.Navy, fontWeight = FontWeight.Bold)
+                                    // Total documents
+                                    if (isVendor) {
+                                        Text("${customerPOs.size} Purchase Orders", style = MaterialTheme.typography.titleMedium, color = KontafyColors.Navy, fontWeight = FontWeight.Bold)
+                                    } else {
+                                        Text("${customerInvoices.size} Invoices", style = MaterialTheme.typography.titleMedium, color = KontafyColors.Navy, fontWeight = FontWeight.Bold)
+                                    }
                                     Spacer(Modifier.height(16.dp))
                                     HorizontalDivider(color = KontafyColors.BorderLight)
                                     Spacer(Modifier.height(16.dp))
@@ -297,21 +329,22 @@ fun CustomerDetailScreen(
                                     HorizontalDivider(color = KontafyColors.BorderLight)
                                     Spacer(Modifier.height(16.dp))
 
-                                    // Invoice status breakdown
+                                    // Document status breakdown (use POs for vendors, invoices for customers)
+                                    val statusDocs = if (isVendor) customerPOs else customerInvoices
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceEvenly,
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("${customerInvoices.count { it.status.uppercase() == "PAID" }}", style = MaterialTheme.typography.titleLarge, color = KontafyColors.StatusPaid, fontWeight = FontWeight.Bold)
+                                            Text("${statusDocs.count { it.status.uppercase() == "PAID" }}", style = MaterialTheme.typography.titleLarge, color = KontafyColors.StatusPaid, fontWeight = FontWeight.Bold)
                                             Text("Paid", style = MaterialTheme.typography.labelSmall, color = KontafyColors.Muted)
                                         }
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("${customerInvoices.count { it.status.uppercase() == "SENT" || it.status.uppercase() == "DRAFT" }}", style = MaterialTheme.typography.titleLarge, color = KontafyColors.Navy, fontWeight = FontWeight.Bold)
+                                            Text("${statusDocs.count { it.status.uppercase() == "SENT" || it.status.uppercase() == "DRAFT" }}", style = MaterialTheme.typography.titleLarge, color = KontafyColors.Navy, fontWeight = FontWeight.Bold)
                                             Text("Pending", style = MaterialTheme.typography.labelSmall, color = KontafyColors.Muted)
                                         }
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("${customerInvoices.count { it.status.uppercase() == "OVERDUE" }}", style = MaterialTheme.typography.titleLarge, color = KontafyColors.StatusOverdue, fontWeight = FontWeight.Bold)
+                                            Text("${statusDocs.count { it.status.uppercase() == "OVERDUE" }}", style = MaterialTheme.typography.titleLarge, color = KontafyColors.StatusOverdue, fontWeight = FontWeight.Bold)
                                             Text("Overdue", style = MaterialTheme.typography.labelSmall, color = KontafyColors.Muted)
                                         }
                                     }
@@ -320,12 +353,24 @@ fun CustomerDetailScreen(
                         }
                     }
 
-                    // Tabs
+                    // Spacing between info card and tabs
+                    item { Spacer(Modifier.height(12.dp)) }
+
+                    // Tabs — show relevant tabs based on customer vs vendor
                     item {
-                        val tabs = listOf(
-                            TabItem("Invoices", "${customerInvoices.size}"),
-                            TabItem("Payments", "${payments.size}"),
-                        )
+                        val tabs = if (isVendor) {
+                            listOf(
+                                TabItem("Purchase Orders", "${customerPOs.size}"),
+                                TabItem("Payments", "${payments.size}"),
+                            )
+                        } else {
+                            listOf(
+                                TabItem("Invoices", "${customerInvoices.size}"),
+                                TabItem("Quotations", "${customerQuotations.size}"),
+                                TabItem("Purchase Orders", "${customerPOs.size}"),
+                                TabItem("Payments", "${payments.size}"),
+                            )
+                        }
                         KontafyTabBar(
                             tabs = tabs,
                             selectedIndex = selectedTab,
@@ -333,120 +378,128 @@ fun CustomerDetailScreen(
                         )
                     }
 
-                    // Tab content
-                    when (selectedTab) {
-                        0 -> {
-                            // Invoices tab
-                            if (customerInvoices.isEmpty()) {
-                                item {
-                                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
-                                        Text("No invoices found", style = MaterialTheme.typography.bodyLarge, color = KontafyColors.Muted)
-                                    }
-                                }
-                            } else {
-                                item {
-                                    // Table header
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        color = KontafyColors.Surface,
-                                        shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text("Invoice", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(140.dp))
-                                            Text("Status", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(90.dp))
-                                            Spacer(Modifier.width(24.dp))
-                                            Text("Amount", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.weight(1f))
-                                            Text("Issue Date", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
-                                            Text("Due Date", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
-                                        }
-                                    }
-                                }
-                                items(customerInvoices) { invoice ->
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth()
-                                            .clickable { onInvoiceClick(invoice.id) },
-                                        color = KontafyColors.SurfaceElevated,
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text(
-                                                invoice.invoiceNumber,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = KontafyColors.Navy,
-                                                fontWeight = FontWeight.SemiBold,
-                                                modifier = Modifier.width(140.dp),
-                                            )
-                                            StatusBadge(status = invoice.status, modifier = Modifier.width(90.dp))
-                                            Spacer(Modifier.width(24.dp))
-                                            Text(
-                                                formatCurrency(invoice.amount, invoice.currency),
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = KontafyColors.Ink,
-                                                fontWeight = FontWeight.SemiBold,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            Text(invoice.issueDate, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
-                                            Text(invoice.dueDate, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
-                                        }
-                                    }
-                                    HorizontalDivider(color = KontafyColors.BorderLight)
+                    // Determine which list to show based on tab index
+                    val tabDocList: List<InvoiceDto>? = if (isVendor) {
+                        when (selectedTab) { 0 -> customerPOs; else -> null }
+                    } else {
+                        when (selectedTab) { 0 -> customerInvoices; 1 -> customerQuotations; 2 -> customerPOs; else -> null }
+                    }
+                    val isPaymentsTab = if (isVendor) selectedTab == 1 else selectedTab == 3
+                    val docLabel = if (isVendor) {
+                        when (selectedTab) { 0 -> "PO"; else -> "" }
+                    } else {
+                        when (selectedTab) { 0 -> "Invoice"; 1 -> "Quotation"; 2 -> "PO"; else -> "" }
+                    }
+
+                    if (isPaymentsTab) {
+                        // Payments tab
+                        if (payments.isEmpty()) {
+                            item {
+                                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
+                                    Text("No payments recorded", style = MaterialTheme.typography.bodyLarge, color = KontafyColors.Muted)
                                 }
                             }
+                        } else {
+                            item {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = KontafyColors.Surface,
+                                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text("Date", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(120.dp))
+                                        Text("Amount", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(140.dp))
+                                        Text("Method", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.weight(1f))
+                                        Text("Invoice", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(120.dp))
+                                    }
+                                }
+                            }
+                            items(payments) { payment ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = KontafyColors.SurfaceElevated,
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(payment.date, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Ink, modifier = Modifier.width(120.dp))
+                                        Text(
+                                            formatCurrency(payment.amount),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = KontafyColors.StatusPaid,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.width(140.dp),
+                                        )
+                                        Text(payment.method, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Ink, modifier = Modifier.weight(1f))
+                                        Text(payment.invoiceRef, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Navy, fontWeight = FontWeight.Medium, modifier = Modifier.width(120.dp))
+                                    }
+                                }
+                                HorizontalDivider(color = KontafyColors.BorderLight)
+                            }
                         }
-                        1 -> {
-                            // Payments tab
-                            if (payments.isEmpty()) {
-                                item {
-                                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
-                                        Text("No payments recorded", style = MaterialTheme.typography.bodyLarge, color = KontafyColors.Muted)
-                                    }
+                    } else if (tabDocList != null) {
+                        // Document list tab (Invoices / Quotations / POs)
+                        if (tabDocList.isEmpty()) {
+                            item {
+                                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
+                                    Text("No ${docLabel.lowercase()}s found", style = MaterialTheme.typography.bodyLarge, color = KontafyColors.Muted)
                                 }
-                            } else {
-                                item {
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        color = KontafyColors.Surface,
-                                        shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+                            }
+                        } else {
+                            item {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = KontafyColors.Surface,
+                                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text("Date", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(120.dp))
-                                            Text("Amount", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(140.dp))
-                                            Text("Method", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.weight(1f))
-                                            Text("Invoice", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(120.dp))
-                                        }
+                                        Text(docLabel, style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(140.dp))
+                                        Text("Status", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(90.dp))
+                                        Spacer(Modifier.width(24.dp))
+                                        Text("Amount", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.weight(1f))
+                                        Text("Issue Date", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
+                                        Text("Due Date", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
                                     }
                                 }
-                                items(payments) { payment ->
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        color = KontafyColors.SurfaceElevated,
+                            }
+                            items(tabDocList) { doc ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable { onInvoiceClick(doc.id) },
+                                    color = KontafyColors.SurfaceElevated,
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text(payment.date, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Ink, modifier = Modifier.width(120.dp))
-                                            Text(
-                                                formatCurrency(payment.amount),
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = KontafyColors.StatusPaid,
-                                                fontWeight = FontWeight.SemiBold,
-                                                modifier = Modifier.width(140.dp),
-                                            )
-                                            Text(payment.method, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Ink, modifier = Modifier.weight(1f))
-                                            Text(payment.invoiceRef, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Navy, fontWeight = FontWeight.Medium, modifier = Modifier.width(120.dp))
-                                        }
+                                        Text(
+                                            doc.invoiceNumber,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = KontafyColors.Navy,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.width(140.dp),
+                                        )
+                                        StatusBadge(status = doc.status, modifier = Modifier.width(90.dp))
+                                        Spacer(Modifier.width(24.dp))
+                                        Text(
+                                            formatCurrency(doc.amount, doc.currency),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = KontafyColors.Ink,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Text(doc.issueDate, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
+                                        Text(doc.dueDate, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
                                     }
-                                    HorizontalDivider(color = KontafyColors.BorderLight)
                                 }
+                                HorizontalDivider(color = KontafyColors.BorderLight)
                             }
                         }
                     }

@@ -16,6 +16,8 @@ import com.kontafy.desktop.api.ProductDto
 import com.kontafy.desktop.api.StockAdjustmentRequest
 import com.kontafy.desktop.api.toDto
 import com.kontafy.desktop.components.*
+import com.kontafy.desktop.db.repositories.AuditLogEntry
+import com.kontafy.desktop.db.repositories.AuditLogRepository
 import com.kontafy.desktop.db.repositories.ProductRepository
 import com.kontafy.desktop.theme.KontafyColors
 import kotlinx.coroutines.launch
@@ -27,6 +29,7 @@ fun StockAdjustmentScreen(
     apiClient: ApiClient,
     currentOrgId: String,
     productRepository: ProductRepository,
+    auditLogRepository: AuditLogRepository = AuditLogRepository(),
     onBack: () -> Unit,
     showSnackbar: (String) -> Unit = {},
 ) {
@@ -47,14 +50,14 @@ fun StockAdjustmentScreen(
     LaunchedEffect(Unit) {
         val dbProducts = try {
             productRepository.getByOrgId(currentOrgId).map { it.toDto() }.filter { p -> p.type.uppercase() == "GOODS" }
-        } catch (_: Exception) { emptyList() }
+        } catch (e: Exception) { e.printStackTrace(); emptyList() }
         if (dbProducts.isNotEmpty()) {
             products = dbProducts
         } else {
             val result = apiClient.getProducts(type = "GOODS")
             result.fold(
                 onSuccess = { products = it.filter { p -> p.type.uppercase() == "GOODS" } },
-                onFailure = {},
+                onFailure = { it.printStackTrace() },
             )
         }
     }
@@ -113,9 +116,26 @@ fun StockAdjustmentScreen(
                     productRepository.update(
                         product.copy(stockQuantity = java.math.BigDecimal.valueOf(newStock)),
                     )
+                    try {
+                        val changeLabel = if (request.type == "ADD") "+${request.quantity.toInt()}" else "-${request.quantity.toInt()}"
+                        auditLogRepository.create(
+                            AuditLogEntry(
+                                orgId = currentOrgId,
+                                entityType = "product",
+                                entityId = product.id,
+                                action = "STOCK_ADJUSTED",
+                                fieldChanged = "stockQuantity",
+                                oldValue = product.stockQuantity.toPlainString(),
+                                newValue = newStock.toString(),
+                                description = "Stock adjusted ($changeLabel) for ${product.name}. Reason: ${request.reason}${if (request.notes != null) ". Notes: ${request.notes}" else ""}",
+                            ),
+                        )
+                    } catch (e: Exception) { e.printStackTrace() }
                     savedLocally = true
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
 
             // Also try API
             val result = apiClient.createStockAdjustment(request)

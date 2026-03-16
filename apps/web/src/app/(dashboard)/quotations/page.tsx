@@ -28,6 +28,8 @@ const statusBadgeMap: Record<
   draft: { variant: "default", label: "Draft" },
   sent: { variant: "info", label: "Sent" },
   accepted: { variant: "success", label: "Accepted" },
+  converted: { variant: "success", label: "Converted" },
+  invoiced: { variant: "success", label: "Invoiced" },
   rejected: { variant: "danger", label: "Rejected" },
   expired: { variant: "warning", label: "Expired" },
 };

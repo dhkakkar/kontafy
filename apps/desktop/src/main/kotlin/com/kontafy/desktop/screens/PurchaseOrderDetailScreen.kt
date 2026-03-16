@@ -15,28 +15,37 @@ import androidx.compose.ui.unit.dp
 import com.kontafy.desktop.api.InvoiceDto
 import com.kontafy.desktop.api.toDto
 import com.kontafy.desktop.components.*
-import com.kontafy.desktop.db.repositories.ContactRepository
-import com.kontafy.desktop.db.repositories.InvoiceItemRepository
-import com.kontafy.desktop.db.repositories.InvoiceRepository
+import com.kontafy.desktop.db.repositories.*
 import com.kontafy.desktop.theme.KontafyColors
 import com.kontafy.desktop.util.InvoicePdfGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.math.BigDecimal
 
 @Composable
 fun PurchaseOrderDetailScreen(
     poId: String,
+    currentOrgId: String = "",
     invoiceRepository: InvoiceRepository,
     invoiceItemRepository: InvoiceItemRepository,
     contactRepository: ContactRepository,
+    productRepository: ProductRepository = ProductRepository(),
+    auditLogRepository: AuditLogRepository = AuditLogRepository(),
     onBack: () -> Unit,
     onDeleteSuccess: (String) -> Unit = {},
     onEditPurchaseOrder: (String) -> Unit = {},
+    showSnackbar: (String) -> Unit = {},
 ) {
     var purchaseOrder by remember { mutableStateOf<InvoiceDto?>(null) }
+    var vendorEmail by remember { mutableStateOf<String?>(null) }
+    var vendorPhone by remember { mutableStateOf<String?>(null) }
+    var vendorGstin by remember { mutableStateOf<String?>(null) }
+    var vendorAddress by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showReceiveDialog by remember { mutableStateOf(false) }
+    var isReceiving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(poId) {
@@ -45,15 +54,22 @@ fun PurchaseOrderDetailScreen(
                 val model = invoiceRepository.getById(poId)
                 if (model != null) {
                     val dto = model.toDto()
-                    val contactName = model.contactId?.let { cId ->
-                        try { contactRepository.getById(cId)?.name } catch (_: Exception) { null }
-                    } ?: ""
+                    val contact = model.contactId?.let { cId ->
+                        try { contactRepository.getById(cId) } catch (e: Exception) { e.printStackTrace(); null }
+                    }
+                    val contactName = contact?.name ?: ""
+                    vendorEmail = contact?.email
+                    vendorPhone = contact?.phone
+                    vendorGstin = contact?.gstin
+                    vendorAddress = contact?.billingAddress
                     val items = try {
                         invoiceItemRepository.getByInvoice(poId).map { it.toDto() }
-                    } catch (_: Exception) { emptyList() }
+                    } catch (e: Exception) { e.printStackTrace(); emptyList() }
                     purchaseOrder = dto.copy(customerName = contactName, items = items)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             isLoading = false
         }
     }
@@ -75,6 +91,78 @@ fun PurchaseOrderDetailScreen(
                 }
             },
             onDismiss = { showDeleteDialog = false },
+        )
+    }
+
+    if (showReceiveDialog) {
+        KontafyConfirmDialog(
+            title = "Mark as Received",
+            message = "This will add the PO quantities to your stock inventory. Are you sure goods have been received?",
+            confirmText = "Confirm Receipt",
+            onConfirm = {
+                showReceiveDialog = false
+                isReceiving = true
+                scope.launch {
+                    try {
+                        val po = purchaseOrder ?: return@launch
+                        val products = productRepository.getByOrgId(currentOrgId)
+
+                        po.items.forEach { item ->
+                            val productId = item.productId
+                            val product = if (productId != null) {
+                                products.find { it.id == productId }
+                            } else {
+                                products.find { it.name.equals(item.description, ignoreCase = true) }
+                            }
+                            if (product != null) {
+                                val addQty = BigDecimal.valueOf(item.quantity)
+                                val newStock = product.stockQuantity + addQty
+                                productRepository.update(product.copy(stockQuantity = newStock))
+
+                                auditLogRepository.create(
+                                    AuditLogEntry(
+                                        orgId = currentOrgId,
+                                        entityType = "product",
+                                        entityId = product.id,
+                                        action = "STOCK_RECEIVED",
+                                        fieldChanged = "stockQuantity",
+                                        oldValue = product.stockQuantity.toPlainString(),
+                                        newValue = newStock.toPlainString(),
+                                        description = "Stock received from PO ${po.invoiceNumber}: +${item.quantity} ${product.name}",
+                                    ),
+                                )
+                            }
+                        }
+
+                        // Update PO status to RECEIVED
+                        val model = invoiceRepository.getById(poId)
+                        if (model != null) {
+                            invoiceRepository.update(model.copy(status = "RECEIVED"))
+                            purchaseOrder = purchaseOrder?.copy(status = "RECEIVED")
+                        }
+
+                        auditLogRepository.create(
+                            AuditLogEntry(
+                                orgId = currentOrgId,
+                                entityType = "purchase_order",
+                                entityId = poId,
+                                action = "STATUS_CHANGE",
+                                fieldChanged = "status",
+                                oldValue = po.status,
+                                newValue = "RECEIVED",
+                                description = "PO ${po.invoiceNumber} marked as received. Stock updated for ${po.items.size} item(s).",
+                            ),
+                        )
+
+                        showSnackbar("Stock updated successfully")
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        showSnackbar("Failed to update stock: ${e.message}")
+                    }
+                    isReceiving = false
+                }
+            },
+            onDismiss = { showReceiveDialog = false },
         )
     }
 
@@ -141,6 +229,16 @@ fun PurchaseOrderDetailScreen(
                     },
                     variant = ButtonVariant.Outline,
                 )
+                if (purchaseOrder?.status?.uppercase() !in listOf("RECEIVED", "CANCELLED")) {
+                    Spacer(Modifier.width(8.dp))
+                    KontafyButton(
+                        text = "Mark as Received",
+                        onClick = { showReceiveDialog = true },
+                        variant = ButtonVariant.Primary,
+                        enabled = !isReceiving,
+                        isLoading = isReceiving,
+                    )
+                }
                 Spacer(Modifier.width(8.dp))
                 KontafyButton(
                     text = "Edit",
@@ -196,6 +294,10 @@ fun PurchaseOrderDetailScreen(
                                 Text("Vendor", style = MaterialTheme.typography.titleLarge, color = KontafyColors.Ink)
                                 Spacer(Modifier.height(16.dp))
                                 PODetRow("Name", po.customerName)
+                                if (!vendorEmail.isNullOrBlank()) PODetRow("Email", vendorEmail!!)
+                                if (!vendorPhone.isNullOrBlank()) PODetRow("Phone", vendorPhone!!)
+                                if (!vendorGstin.isNullOrBlank()) PODetRow("GSTIN", vendorGstin!!)
+                                if (!vendorAddress.isNullOrBlank()) PODetRow("Address", vendorAddress!!)
                                 if (po.notes != null) {
                                     Spacer(Modifier.height(12.dp))
                                     Text("Notes", style = MaterialTheme.typography.labelLarge, color = KontafyColors.Muted)

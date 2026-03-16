@@ -1,10 +1,11 @@
 package com.kontafy.desktop.db.tables
 
+import org.jetbrains.exposed.sql.ReferenceOption
 import org.jetbrains.exposed.sql.Table
 
 object InvoiceItems : Table("invoice_items") {
     val id = varchar("id", 64)
-    val invoiceId = varchar("invoice_id", 64).references(Invoices.id)
+    val invoiceId = varchar("invoice_id", 64).references(Invoices.id, onDelete = ReferenceOption.CASCADE)
     val productId = varchar("product_id", 64).nullable()
     val description = text("description").nullable()
     val hsnCode = varchar("hsn_code", 20).nullable()
@@ -20,4 +21,8 @@ object InvoiceItems : Table("invoice_items") {
     val sortOrder = integer("sort_order").default(0)
 
     override val primaryKey = PrimaryKey(id)
+
+    init {
+        index(isUnique = false, invoiceId)
+    }
 }

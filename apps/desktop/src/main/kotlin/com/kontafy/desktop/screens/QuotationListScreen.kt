@@ -30,10 +30,22 @@ fun QuotationListScreen(
     var isLoading by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedDetail by remember { mutableStateOf<QuotationDto?>(null) }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
+
     val contactNameMap = remember {
-        try { contactRepository.getByOrgId(currentOrgId).associate { it.id to it.name } } catch (_: Exception) { emptyMap() }
+        try { contactRepository.getByOrgId(currentOrgId).associate { it.id to it.name } } catch (e: Exception) {
+            e.printStackTrace()
+            emptyMap()
+        }
     }
 
     LaunchedEffect(searchQuery) {
@@ -59,7 +71,9 @@ fun QuotationListScreen(
                         q.number.contains(searchQuery, ignoreCase = true) ||
                         q.customerName.contains(searchQuery, ignoreCase = true)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                e.printStackTrace()
+                snackbarMessage = "Failed to load quotations: ${e.message}"
                 quotations = emptyList()
             }
             isLoading = false
@@ -77,7 +91,7 @@ fun QuotationListScreen(
                     onClick = { selectedDetail = null },
                     variant = ButtonVariant.Outline,
                 )
-                if (q.status == "ACCEPTED") {
+                if (q.status.uppercase() !in listOf("CONVERTED", "INVOICED")) {
                     KontafyButton(
                         text = "Convert to Invoice",
                         onClick = {
@@ -97,6 +111,7 @@ fun QuotationListScreen(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
     ) {
@@ -199,6 +214,11 @@ fun QuotationListScreen(
                 )
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 

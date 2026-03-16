@@ -3,6 +3,7 @@ package com.kontafy.desktop.db.repositories
 import com.kontafy.desktop.api.InvoiceItemModel
 import com.kontafy.desktop.db.KontafyDatabase.dbQuery
 import com.kontafy.desktop.db.tables.InvoiceItems
+import com.kontafy.desktop.db.tables.Invoices
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 
@@ -19,8 +20,10 @@ class InvoiceItemRepository {
     }
 
     fun getByOrgId(orgId: String): List<InvoiceItemModel> = dbQuery {
-        // Invoice items don't have orgId directly; join through invoices if needed
-        InvoiceItems.selectAll().map { it.toInvoiceItemModel() }
+        (InvoiceItems innerJoin Invoices)
+            .select(InvoiceItems.columns)
+            .where { Invoices.orgId eq orgId }
+            .map { it.toInvoiceItemModel() }
     }
 
     fun create(model: InvoiceItemModel): InvoiceItemModel = dbQuery {

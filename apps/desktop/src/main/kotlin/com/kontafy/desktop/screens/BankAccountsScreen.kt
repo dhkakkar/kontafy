@@ -36,26 +36,34 @@ fun BankAccountsScreen(
     LaunchedEffect(Unit) {
         scope.launch {
             // First load from local DB for instant display
-            val localAccounts = bankAccountRepository.getByOrgId(currentOrgId)
-            if (localAccounts.isNotEmpty()) {
-                accounts = localAccounts.map { model ->
-                    BankAccountDto(
-                        id = model.id,
-                        bankName = model.bankName,
-                        accountNumber = model.accountNumber,
-                        ifscCode = model.ifscCode ?: "",
-                        accountType = model.accountType,
-                        balance = model.balance.toDouble(),
-                        isActive = model.isActive,
-                    )
+            try {
+                val localAccounts = bankAccountRepository.getByOrgId(currentOrgId)
+                if (localAccounts.isNotEmpty()) {
+                    accounts = localAccounts.map { model ->
+                        BankAccountDto(
+                            id = model.id,
+                            bankName = model.bankName,
+                            accountNumber = model.accountNumber,
+                            ifscCode = model.ifscCode ?: "",
+                            accountType = model.accountType,
+                            balance = model.balance.toDouble(),
+                            isActive = model.isActive,
+                        )
+                    }
+                    isLoading = false
                 }
-                isLoading = false
+            } catch (e: Exception) {
+                e.printStackTrace()
+                showSnackbar("Failed to load bank accounts: ${e.message}")
             }
             // Then try to refresh from API
             val result = apiClient.getBankAccounts()
             result.fold(
                 onSuccess = { accounts = it },
-                onFailure = { showSnackbar("Failed to load bank accounts") },
+                onFailure = { e ->
+                    e.printStackTrace()
+                    if (accounts.isEmpty()) showSnackbar("Failed to fetch bank accounts: ${e.message}")
+                },
             )
             isLoading = false
         }

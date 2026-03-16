@@ -12,6 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.kontafy.desktop.api.ProductModel
+import com.kontafy.desktop.shortcuts.LocalShortcutAction
 import com.kontafy.desktop.components.*
 import com.kontafy.desktop.db.repositories.ProductRepository
 import com.kontafy.desktop.theme.KontafyColors
@@ -140,6 +141,15 @@ fun CreateProductScreen(
                 e.printStackTrace()
                 isSaving = false
             }
+        }
+    }
+
+    // Handle Ctrl+S shortcut
+    val shortcutAction = LocalShortcutAction.current
+    LaunchedEffect(shortcutAction.value) {
+        if (shortcutAction.value == "save" && !isSaving) {
+            shortcutAction.value = null
+            save()
         }
     }
 

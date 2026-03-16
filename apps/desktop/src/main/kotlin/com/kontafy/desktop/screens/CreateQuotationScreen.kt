@@ -20,10 +20,12 @@ import com.kontafy.desktop.api.ProductDto
 import com.kontafy.desktop.api.ProductModel
 import com.kontafy.desktop.api.toDto
 import com.kontafy.desktop.components.*
+import com.kontafy.desktop.db.repositories.AppSettingsRepository
 import com.kontafy.desktop.db.repositories.InvoiceItemRepository
 import com.kontafy.desktop.db.repositories.InvoiceRepository
 import com.kontafy.desktop.db.repositories.ContactRepository
 import com.kontafy.desktop.db.repositories.ProductRepository
+import com.kontafy.desktop.shortcuts.LocalShortcutAction
 import com.kontafy.desktop.theme.KontafyColors
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -41,9 +43,15 @@ fun CreateQuotationScreen(
     onBack: () -> Unit,
     onSaveSuccess: (String) -> Unit = {},
     onNavigateToCreateCustomer: () -> Unit,
+    appSettingsRepository: AppSettingsRepository = AppSettingsRepository(),
 ) {
+    // Load default notes/terms from settings
+    val savedSettings = remember {
+        try { appSettingsRepository.getAll() } catch (e: Exception) { e.printStackTrace(); emptyMap() }
+    }
+
     var productDtoList by remember {
-        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (_: Exception) { emptyList() }
+        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (e: Exception) { e.printStackTrace(); emptyList() }
         mutableStateOf(dbProducts)
     }
     val productDropdownItems = remember(productDtoList) {
@@ -69,7 +77,9 @@ fun CreateQuotationScreen(
                         sku = null, description = product.description,
                         stockQuantity = BigDecimal.ZERO, reorderLevel = BigDecimal.ZERO, isActive = true,
                     ))
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 productDtoList = productDtoList + product
                 quickCreateProductCallback?.invoke(product)
                 showQuickCreateProduct = false
@@ -78,17 +88,19 @@ fun CreateQuotationScreen(
     }
 
     var selectedCustomer by remember { mutableStateOf<DropdownItem<String>?>(null) }
-    var quotationNumber by remember { mutableStateOf("QT-${System.currentTimeMillis().toString().takeLast(6)}") }
+    var quotationNumber by remember { mutableStateOf(
+        try { invoiceRepository.getNextNumber(currentOrgId, "QT") } catch (e: Exception) { "QT-0001" }
+    ) }
     var issueDate by remember { mutableStateOf<LocalDate?>(LocalDate.now()) }
     var validUntil by remember { mutableStateOf<LocalDate?>(LocalDate.now().plusDays(15)) }
     var lineItems by remember { mutableStateOf(listOf(LineItemState())) }
-    var notes by remember { mutableStateOf("") }
-    var terms by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf(savedSettings["default_notes"] ?: "") }
+    var terms by remember { mutableStateOf(savedSettings["default_terms_text"] ?: "") }
     var isSaving by remember { mutableStateOf(false) }
     var showValidation by remember { mutableStateOf(false) }
 
     val customerItems = remember {
-        val dbContacts = try { contactRepository.getByOrgId(currentOrgId) } catch (_: Exception) { emptyList() }
+        val dbContacts = try { contactRepository.getByOrgId(currentOrgId) } catch (e: Exception) { e.printStackTrace(); emptyList() }
         dbContacts.filter { it.type.uppercase() in listOf("CUSTOMER", "BOTH") }
             .map { DropdownItem(it.id, it.name, it.gstin) }
     }
@@ -101,7 +113,7 @@ fun CreateQuotationScreen(
     val hasLineItems = lineItems.any { it.description.isNotBlank() && it.quantityNum > 0 && it.unitPriceNum > 0 }
     val isFormValid = isCustomerValid && hasLineItems
 
-    fun saveQuotation(status: String) {
+    fun saveQuotation(status: String): Boolean {
         try {
             val invoiceId = UUID.randomUUID().toString()
             val model = InvoiceModel(
@@ -145,7 +157,23 @@ fun CreateQuotationScreen(
                     ))
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
+        return true
+    }
+
+    // Handle Ctrl+S shortcut
+    val shortcutAction = LocalShortcutAction.current
+    LaunchedEffect(shortcutAction.value) {
+        if (shortcutAction.value == "save" && !isSaving) {
+            shortcutAction.value = null
+            if (isFormValid) {
+                isSaving = true
+                if (saveQuotation("DRAFT")) onSaveSuccess("Quotation saved as draft") else isSaving = false
+            }
+        }
     }
 
     Column(
@@ -173,7 +201,7 @@ fun CreateQuotationScreen(
                     text = "Save as Draft",
                     onClick = {
                         showValidation = true
-                        if (isFormValid) { isSaving = true; saveQuotation("DRAFT"); onSaveSuccess("Quotation saved as draft") }
+                        if (isFormValid) { isSaving = true; if (saveQuotation("DRAFT")) onSaveSuccess("Quotation saved as draft") else isSaving = false }
                     },
                     variant = ButtonVariant.Outline,
                     isLoading = isSaving,
@@ -183,7 +211,7 @@ fun CreateQuotationScreen(
                     text = "Send Quotation",
                     onClick = {
                         showValidation = true
-                        if (isFormValid) { isSaving = true; saveQuotation("SENT"); onSaveSuccess("Quotation created successfully") }
+                        if (isFormValid) { isSaving = true; if (saveQuotation("SENT")) onSaveSuccess("Quotation created successfully") else isSaving = false }
                     },
                     variant = ButtonVariant.Secondary,
                     isLoading = isSaving,

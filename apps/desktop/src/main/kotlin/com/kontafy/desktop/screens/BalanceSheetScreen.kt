@@ -21,6 +21,7 @@ import com.kontafy.desktop.api.*
 import com.kontafy.desktop.components.*
 import com.kontafy.desktop.db.repositories.AccountRepository
 import com.kontafy.desktop.theme.KontafyColors
+import java.time.LocalDate
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -29,10 +30,19 @@ fun BalanceSheetScreen(
     apiClient: ApiClient,
     accountRepository: AccountRepository = AccountRepository(),
 ) {
-    var asOfDate by remember { mutableStateOf("2026-03-13") }
+    var asOfDate by remember { mutableStateOf(LocalDate.now().toString()) }
     var data by remember { mutableStateOf<BalanceSheetData?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     fun buildBalanceSheetFromLocal(): BalanceSheetData? {
         val accounts = accountRepository.getAll()
@@ -68,7 +78,12 @@ fun BalanceSheetScreen(
             val result = apiClient.getBalanceSheet(asOfDate)
             result.fold(
                 onSuccess = { data = it },
-                onFailure = {},
+                onFailure = { e ->
+                    e.printStackTrace()
+                    if (data == null) {
+                        snackbarMessage = "Failed to fetch balance sheet: ${e.message}"
+                    }
+                },
             )
             isLoading = false
         }
@@ -78,6 +93,7 @@ fun BalanceSheetScreen(
     val liabilitiesPlusEquity = (displayData?.totalLiabilities ?: 0.0) + (displayData?.totalEquity ?: 0.0)
     val isBalanced = displayData != null && abs(displayData.totalAssets - liabilitiesPlusEquity) < 0.01
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().background(KontafyColors.Surface)) {
         TopBar(
             title = "Balance Sheet",
@@ -106,7 +122,12 @@ fun BalanceSheetScreen(
                             val result = apiClient.getBalanceSheet(asOfDate)
                             result.fold(
                                 onSuccess = { data = it },
-                                onFailure = {},
+                                onFailure = { e ->
+                                    e.printStackTrace()
+                                    if (data == null) {
+                                        snackbarMessage = "Failed to fetch balance sheet: ${e.message}"
+                                    }
+                                },
                             )
                             isLoading = false
                         }
@@ -246,6 +267,11 @@ fun BalanceSheetScreen(
                 }
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 

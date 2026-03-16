@@ -70,7 +70,9 @@ fun EditCustomerScreen(
                     billingStreet = c.billingAddress ?: ""
                     creditLimit = c.creditLimit?.toPlainString() ?: ""
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             isLoading = false
         }
     }

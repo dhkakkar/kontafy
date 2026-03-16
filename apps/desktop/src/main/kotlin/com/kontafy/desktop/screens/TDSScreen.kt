@@ -17,12 +17,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.kontafy.desktop.api.*
 import com.kontafy.desktop.components.*
+import com.kontafy.desktop.db.repositories.TDSEntryRepository
 import com.kontafy.desktop.theme.KontafyColors
 import kotlinx.coroutines.launch
+import java.math.BigDecimal
 
 @Composable
 fun TDSScreen(
     apiClient: ApiClient,
+    currentOrgId: String = "org-default",
+    tdsEntryRepository: TDSEntryRepository = TDSEntryRepository(),
     showSnackbar: (String) -> Unit = {},
 ) {
     var entries by remember { mutableStateOf<List<TDSEntryDto>>(emptyList()) }
@@ -32,11 +36,55 @@ fun TDSScreen(
 
     LaunchedEffect(Unit) {
         scope.launch {
-            val result = apiClient.getTDSEntries()
-            result.fold(
-                onSuccess = { entries = it },
-                onFailure = { showSnackbar("Failed to load TDS entries") },
-            )
+            // Load from local DB first
+            try {
+                val localEntries = tdsEntryRepository.getByOrgId(currentOrgId)
+                if (localEntries.isNotEmpty()) {
+                    entries = localEntries.map { it.toDto() }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // Try API as fallback/refresh, cache results locally
+            try {
+                val result = apiClient.getTDSEntries()
+                result.fold(
+                    onSuccess = { apiEntries ->
+                        entries = apiEntries
+                        // Cache to local DB
+                        try {
+                            apiEntries.forEach { dto ->
+                                tdsEntryRepository.upsert(
+                                    TDSEntryModel(
+                                        id = dto.id,
+                                        orgId = currentOrgId,
+                                        section = dto.section,
+                                        deducteeName = dto.deducteeName,
+                                        pan = dto.pan,
+                                        amount = BigDecimal.valueOf(dto.amount),
+                                        tdsRate = BigDecimal.valueOf(dto.tdsRate),
+                                        tdsAmount = BigDecimal.valueOf(dto.tdsAmount),
+                                        status = dto.status,
+                                        date = dto.date,
+                                    )
+                                )
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    },
+                    onFailure = {
+                        if (entries.isEmpty()) {
+                            showSnackbar("Failed to load TDS entries")
+                        }
+                    },
+                )
+            } catch (e: Exception) {
+                if (entries.isEmpty()) {
+                    showSnackbar("Failed to load TDS entries")
+                }
+            }
             isLoading = false
         }
     }
@@ -165,14 +213,35 @@ fun TDSScreen(
             onDismiss = { showAddDialog = false },
             onSave = { entry ->
                 scope.launch {
-                    val result = apiClient.createTDSEntry(entry)
-                    result.fold(
-                        onSuccess = {
-                            entries = entries + entry
-                            showAddDialog = false
-                        },
-                        onFailure = { showSnackbar("Failed to create TDS entry") },
-                    )
+                    // Save to local DB first
+                    try {
+                        tdsEntryRepository.create(
+                            TDSEntryModel(
+                                id = entry.id,
+                                orgId = currentOrgId,
+                                section = entry.section,
+                                deducteeName = entry.deducteeName,
+                                pan = entry.pan,
+                                amount = BigDecimal.valueOf(entry.amount),
+                                tdsRate = BigDecimal.valueOf(entry.tdsRate),
+                                tdsAmount = BigDecimal.valueOf(entry.tdsAmount),
+                                status = entry.status,
+                                date = entry.date,
+                            )
+                        )
+                        entries = entries + entry
+                        showAddDialog = false
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        showSnackbar("Failed to save TDS entry: ${e.message}")
+                    }
+
+                    // Try API in background
+                    try {
+                        apiClient.createTDSEntry(entry)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             },
         )

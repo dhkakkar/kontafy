@@ -76,6 +76,25 @@ services:
     networks:
       - kontafy-net
 
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: kontafy-web
+    restart: always
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      NEXT_PUBLIC_API_URL: https://api.kontafy.com
+    depends_on:
+      - api
+    networks:
+      - kontafy-net
+
   nginx:
     image: nginx:alpine
     container_name: kontafy-nginx
@@ -89,6 +108,7 @@ services:
     depends_on:
       - api
       - website
+      - web
     networks:
       - kontafy-net
 

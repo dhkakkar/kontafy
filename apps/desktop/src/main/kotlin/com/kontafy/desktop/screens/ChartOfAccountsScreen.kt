@@ -77,7 +77,7 @@ fun ChartOfAccountsScreen(
             // Load from local DB first, build tree structure
             val dbAccounts = try {
                 accountRepository.getByOrgId(currentOrgId).map { it.toDto() }
-            } catch (_: Exception) { emptyList() }
+            } catch (e: Exception) { e.printStackTrace(); emptyList() }
 
             if (dbAccounts.isNotEmpty()) {
                 accounts = buildAccountTree(dbAccounts)
@@ -85,7 +85,7 @@ fun ChartOfAccountsScreen(
                 val result = apiClient.getAccounts()
                 result.fold(
                     onSuccess = { accounts = it },
-                    onFailure = {},
+                    onFailure = { it.printStackTrace() },
                 )
             }
             isLoading = false
@@ -193,7 +193,9 @@ fun ChartOfAccountsScreen(
                             description = request.description,
                         )
                         accountRepository.upsert(model)
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
 
                     // Also try API
                     try {
@@ -202,12 +204,14 @@ fun ChartOfAccountsScreen(
                         } else {
                             apiClient.createAccount(request)
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
 
                     // Refresh from local DB
                     val dbAccounts = try {
                         accountRepository.getByOrgId(currentOrgId).map { it.toDto() }
-                    } catch (_: Exception) { emptyList() }
+                    } catch (e: Exception) { e.printStackTrace(); emptyList() }
                     if (dbAccounts.isNotEmpty()) {
                         accounts = buildAccountTree(dbAccounts)
                     }

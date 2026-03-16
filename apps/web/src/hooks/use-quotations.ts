@@ -35,7 +35,7 @@ export interface Quotation {
     email?: string | null;
     phone?: string | null;
   };
-  status: "draft" | "sent" | "accepted" | "rejected" | "expired";
+  status: "draft" | "sent" | "accepted" | "converted" | "invoiced" | "rejected" | "expired";
   date: string;
   validity_date: string | null;
   place_of_supply: string | null;

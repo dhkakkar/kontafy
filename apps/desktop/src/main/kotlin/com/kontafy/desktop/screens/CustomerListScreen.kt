@@ -39,32 +39,60 @@ fun CustomerListScreen(
     var customers by remember { mutableStateOf<List<CustomerDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     LaunchedEffect(searchQuery) {
         scope.launch {
             isLoading = true
             try {
-                val invoiceCounts = try {
-                    invoiceRepository.getByOrgId(currentOrgId).groupBy { it.contactId }.mapValues { it.value.size }
-                } catch (_: Exception) { emptyMap() }
+                // Only count actual invoices (not quotations/POs) and calculate real outstanding
+                val invoicesOnly = try {
+                    invoiceRepository.getByOrgId(currentOrgId)
+                        .filter { it.type.lowercase() == "invoice" }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    snackbarMessage = "Failed to load invoice counts: ${e.message}"
+                    emptyList()
+                }
+                val invoiceCounts = invoicesOnly.groupBy { it.contactId }.mapValues { it.value.size }
+                val outstandingByContact = invoicesOnly
+                    .filter { it.status.uppercase() !in listOf("PAID", "CANCELLED") }
+                    .groupBy { it.contactId }
+                    .mapValues { entry -> entry.value.sumOf { it.amountDue.toDouble() } }
 
                 val allContacts = contactRepository.getByOrgId(currentOrgId)
                     .filter { it.type in listOf("customer", "both", "CUSTOMER", "BOTH") }
-                    .map { it.toCustomerDto().copy(totalInvoices = invoiceCounts[it.id] ?: 0) }
+                    .map {
+                        it.toCustomerDto().copy(
+                            totalInvoices = invoiceCounts[it.id] ?: 0,
+                            outstandingAmount = outstandingByContact[it.id] ?: 0.0,
+                        )
+                    }
 
                 customers = allContacts.filter { c ->
                     searchQuery.isBlank() ||
                         c.name.contains(searchQuery, ignoreCase = true) ||
                         c.email?.contains(searchQuery, ignoreCase = true) == true
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                e.printStackTrace()
+                snackbarMessage = "Failed to load customers: ${e.message}"
                 customers = emptyList()
             }
             isLoading = false
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
     ) {
@@ -132,6 +160,11 @@ fun CustomerListScreen(
                 }
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 

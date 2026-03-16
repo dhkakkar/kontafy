@@ -415,7 +415,9 @@ fun EWayBillDetailScreen(
                                             val tempFile = java.io.File.createTempFile("eway-bill-${b.ewbNumber ?: b.id}", ".txt")
                                             tempFile.writeText(content)
                                             java.awt.Desktop.getDesktop().open(tempFile)
-                                        } catch (_: Exception) {}
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
                                     },
                                     variant = ButtonVariant.Ghost,
                                 )

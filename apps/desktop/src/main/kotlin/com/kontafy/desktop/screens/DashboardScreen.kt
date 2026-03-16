@@ -48,10 +48,20 @@ fun DashboardScreen(
     var pendingPaymentsCount by remember { mutableStateOf(0) }
     var lowStockCount by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(true) }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     LaunchedEffect(Unit) {
         scope.launch {
+            try {
             withContext(Dispatchers.IO) {
                 // Load real invoices from local DB
                 val allInvoices = invoiceRepository.getByOrgId(currentOrgId)
@@ -115,10 +125,15 @@ fun DashboardScreen(
                 )
                 recentInvoiceDtos = recentDtos
             }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                snackbarMessage = "Failed to load dashboard data: ${e.message}"
+            }
             isLoading = false
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
     ) {
@@ -302,6 +317,11 @@ fun DashboardScreen(
                 }
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 

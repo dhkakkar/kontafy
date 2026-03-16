@@ -32,6 +32,7 @@ fun JournalEntryDetailScreen(
     journalLineRepository: JournalLineRepository = JournalLineRepository(),
     accountRepository: AccountRepository = AccountRepository(),
     onBack: () -> Unit,
+    onEdit: ((String) -> Unit)? = null,
 ) {
     var entry by remember { mutableStateOf<JournalEntryDto?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -43,7 +44,7 @@ fun JournalEntryDetailScreen(
             val loaded = try {
                 val accountMap = try {
                     accountRepository.getAll().associate { it.id to it.name }
-                } catch (_: Exception) { emptyMap() }
+                } catch (e: Exception) { e.printStackTrace(); emptyMap() }
 
                 val dbEntry = journalEntryRepository.getById(entryId)
                 if (dbEntry != null) {
@@ -58,7 +59,7 @@ fun JournalEntryDetailScreen(
                                 description = line.description ?: "",
                             )
                         }
-                    } catch (_: Exception) { emptyList() }
+                    } catch (e: Exception) { e.printStackTrace(); emptyList() }
 
                     JournalEntryDto(
                         id = dbEntry.id,
@@ -70,7 +71,7 @@ fun JournalEntryDetailScreen(
                         lines = lines,
                     )
                 } else null
-            } catch (_: Exception) { null }
+            } catch (e: Exception) { e.printStackTrace(); null }
 
             // Fall back to API if not in local DB
             if (loaded != null) {
@@ -104,7 +105,15 @@ fun JournalEntryDetailScreen(
                     entry?.entryNumber ?: "Journal Entry",
                     style = MaterialTheme.typography.headlineMedium,
                     color = KontafyColors.Ink,
+                    modifier = Modifier.weight(1f),
                 )
+                if (onEdit != null && entry != null) {
+                    KontafyButton(
+                        text = "Edit",
+                        onClick = { onEdit(entryId) },
+                        variant = ButtonVariant.Outline,
+                    )
+                }
             }
         }
 

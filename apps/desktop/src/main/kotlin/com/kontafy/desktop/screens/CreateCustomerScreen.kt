@@ -17,6 +17,7 @@ import com.kontafy.desktop.api.ApiClient
 import com.kontafy.desktop.api.ContactModel
 import com.kontafy.desktop.components.*
 import com.kontafy.desktop.db.repositories.ContactRepository
+import com.kontafy.desktop.shortcuts.LocalShortcutAction
 import com.kontafy.desktop.theme.KontafyColors
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -63,6 +64,55 @@ fun CreateCustomerScreen(
     val isGstinValid = gstin.isBlank() || gstinRegex.matches(gstin)
     val isPanValid = pan.isBlank() || Regex("^[A-Z]{5}\\d{4}[A-Z]$").matches(pan)
     val isFormValid = isNameValid && isEmailValid && isGstinValid && isPanValid
+
+    // Handle Ctrl+S shortcut
+    val shortcutAction = LocalShortcutAction.current
+    LaunchedEffect(shortcutAction.value) {
+        if (shortcutAction.value == "save" && !isSaving && isFormValid) {
+            shortcutAction.value = null
+            isSaving = true
+            try {
+                val billingAddr = listOfNotNull(
+                    billingStreet.ifBlank { null },
+                    billingCity.ifBlank { null },
+                    billingState?.label,
+                    billingPincode.ifBlank { null },
+                ).joinToString(", ").ifBlank { null }
+                val shippingAddr = if (sameAsBilling) billingAddr else {
+                    listOfNotNull(
+                        shippingStreet.ifBlank { null },
+                        shippingCity.ifBlank { null },
+                        shippingState?.label,
+                        shippingPincode.ifBlank { null },
+                    ).joinToString(", ").ifBlank { null }
+                }
+                val model = com.kontafy.desktop.api.ContactModel(
+                    id = java.util.UUID.randomUUID().toString(),
+                    orgId = currentOrgId,
+                    name = name,
+                    type = customerType.lowercase(),
+                    email = email.ifBlank { null },
+                    phone = phone.ifBlank { null },
+                    gstin = gstin.ifBlank { null },
+                    pan = pan.ifBlank { null },
+                    billingAddress = billingAddr,
+                    shippingAddress = shippingAddr,
+                    city = billingCity.ifBlank { null },
+                    state = billingState?.label,
+                    pincode = billingPincode.ifBlank { null },
+                    creditLimit = creditLimit.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO,
+                    outstandingBalance = java.math.BigDecimal.ZERO,
+                    isActive = true,
+                    updatedAt = java.time.LocalDateTime.now(),
+                )
+                contactRepository.create(model)
+                onSaveSuccess("Customer created successfully")
+            } catch (e: Exception) {
+                e.printStackTrace()
+                isSaving = false
+            }
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
@@ -134,7 +184,11 @@ fun CreateCustomerScreen(
                                     updatedAt = LocalDateTime.now(),
                                 )
                                 contactRepository.create(model)
-                            } catch (_: Exception) {}
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                isSaving = false
+                                return@KontafyButton
+                            }
                             onSaveSuccess("Customer created successfully")
                         }
                     },

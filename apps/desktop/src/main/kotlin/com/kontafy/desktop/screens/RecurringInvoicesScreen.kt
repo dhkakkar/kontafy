@@ -26,10 +26,22 @@ fun RecurringInvoicesScreen(
 ) {
     var invoices by remember { mutableStateOf<List<RecurringInvoiceDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
+
     val contactNameMap = remember {
-        try { contactRepository.getByOrgId(currentOrgId).associate { it.id to it.name } } catch (_: Exception) { emptyMap() }
+        try { contactRepository.getByOrgId(currentOrgId).associate { it.id to it.name } } catch (e: Exception) {
+            e.printStackTrace()
+            emptyMap()
+        }
     }
 
     fun loadData() {
@@ -49,7 +61,9 @@ fun RecurringInvoicesScreen(
                             status = inv.status,
                         )
                     }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                e.printStackTrace()
+                snackbarMessage = "Failed to load recurring invoices: ${e.message}"
                 invoices = emptyList()
             }
             isLoading = false
@@ -58,6 +72,7 @@ fun RecurringInvoicesScreen(
 
     LaunchedEffect(Unit) { loadData() }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
     ) {
@@ -158,5 +173,10 @@ fun RecurringInvoicesScreen(
                 )
             }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }

@@ -24,6 +24,7 @@ import com.kontafy.desktop.db.repositories.ContactRepository
 import com.kontafy.desktop.db.repositories.InvoiceItemRepository
 import com.kontafy.desktop.db.repositories.InvoiceRepository
 import com.kontafy.desktop.db.repositories.ProductRepository
+import com.kontafy.desktop.shortcuts.LocalShortcutAction
 import com.kontafy.desktop.theme.KontafyColors
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
@@ -46,7 +47,7 @@ fun EditInvoiceScreen(
     orgState: String = "Maharashtra",
 ) {
     var productDtoList by remember {
-        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (_: Exception) { emptyList() }
+        val dbProducts = try { productRepository.getByOrgId(currentOrgId).map { it.toDto() } } catch (e: Exception) { e.printStackTrace(); emptyList() }
         mutableStateOf(dbProducts)
     }
     val productDropdownItems = remember(productDtoList) {
@@ -72,7 +73,9 @@ fun EditInvoiceScreen(
                         sku = null, description = product.description,
                         stockQuantity = BigDecimal.ZERO, reorderLevel = BigDecimal.ZERO, isActive = true,
                     ))
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 productDtoList = productDtoList + product
                 quickCreateProductCallback?.invoke(product)
                 showQuickCreateProduct = false
@@ -95,35 +98,60 @@ fun EditInvoiceScreen(
     var terms by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
     var showValidation by remember { mutableStateOf(false) }
+    var documentType by remember { mutableStateOf("invoice") }
 
     val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
-    // Load customers from API
     var customerList by remember { mutableStateOf<List<DropdownItem<String>>>(emptyList()) }
+    var contactStateMap by remember { mutableStateOf<Map<String, String?>>(emptyMap()) }
+
+    val isPurchaseOrder = documentType.lowercase() == "purchase_order"
+    val isQuotation = documentType.lowercase() == "quotation"
+    val documentLabel = when {
+        isPurchaseOrder -> "Purchase Order"
+        isQuotation -> "Quotation"
+        else -> "Invoice"
+    }
 
     // Fetch customers and invoice data from local DB
     LaunchedEffect(invoiceId) {
         scope.launch {
             try {
-                // Load customers from local DB
                 val dbContacts = contactRepository.getByOrgId(currentOrgId)
-                customerList = dbContacts.map { c ->
-                    DropdownItem(c.id, c.name, c.gstin)
-                }
+                contactStateMap = dbContacts.associate { it.id to it.state }
 
-                // Load invoice from local DB
+                // Load invoice from local DB first to determine type
                 val model = invoiceRepository.getById(invoiceId)
                 if (model != null) {
+                    documentType = model.type
+
+                    // Filter contacts based on document type
+                    val contactTypeFilter = if (model.type.lowercase() == "purchase_order") {
+                        listOf("VENDOR", "BOTH")
+                    } else {
+                        listOf("CUSTOMER", "BOTH")
+                    }
+                    customerList = dbContacts.filter { it.type.uppercase() in contactTypeFilter }
+                        .map { c -> DropdownItem(c.id, c.name, c.gstin) }
+
+                    val contactName = model.contactId?.let { cId ->
+                        dbContacts.find { it.id == cId }?.name
+                    } ?: ""
+                    val items = try {
+                        invoiceItemRepository.getByInvoice(invoiceId).map { it.toDto() }
+                    } catch (e: Exception) { e.printStackTrace(); emptyList() }
                     val inv = model.toDto().copy(
-                        customerName = model.contactId?.let { cId ->
-                            dbContacts.find { it.id == cId }?.name
-                        } ?: ""
+                        customerName = contactName,
+                        items = items,
                     )
-                    populateForm(inv, dateFormatter, customerList) { c, n, id, dd, li, nt ->
-                        selectedCustomer = c; invoiceNumber = n; issueDate = id; dueDate = dd; lineItems = li; notes = nt
+                    populateForm(inv, dateFormatter, customerList) { c, n, id, dd, pt, pos, li, nt, tm ->
+                        selectedCustomer = c; invoiceNumber = n; issueDate = id; dueDate = dd
+                        paymentTerms = pt; placeOfSupply = pos; lineItems = li; notes = nt; terms = tm
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             isLoading = false
         }
     }
@@ -140,12 +168,73 @@ fun EditInvoiceScreen(
     val igst = if (isInterState) totalTax else 0.0
     val grandTotal = subtotal + totalTax
 
+    // Snackbar
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val isInvoiceNumberValid = invoiceNumber.isNotBlank()
     val isCustomerValid = selectedCustomer != null
     val hasLineItems = lineItems.any { it.description.isNotBlank() && it.quantityNum > 0 && it.unitPriceNum > 0 }
-    val isFormValid = isCustomerValid && hasLineItems
+    val isFormValid = isInvoiceNumberValid && isCustomerValid && hasLineItems
 
+    // Handle Ctrl+S shortcut
+    val shortcutAction = LocalShortcutAction.current
+    LaunchedEffect(shortcutAction.value) {
+        if (shortcutAction.value == "save" && !isSaving && isFormValid) {
+            shortcutAction.value = null
+            isSaving = true
+            try {
+                val updated = InvoiceModel(
+                    id = invoiceId,
+                    orgId = currentOrgId,
+                    invoiceNumber = invoiceNumber,
+                    contactId = selectedCustomer?.value,
+                    issueDate = issueDate?.toString() ?: java.time.LocalDate.now().toString(),
+                    dueDate = dueDate?.toString() ?: java.time.LocalDate.now().plusDays(30).toString(),
+                    subtotal = java.math.BigDecimal.valueOf(subtotal),
+                    discountAmount = java.math.BigDecimal.valueOf(totalDiscount),
+                    taxAmount = java.math.BigDecimal.valueOf(totalTax),
+                    totalAmount = java.math.BigDecimal.valueOf(grandTotal),
+                    amountDue = java.math.BigDecimal.valueOf(grandTotal),
+                    notes = notes.ifBlank { null },
+                    terms = terms.ifBlank { null },
+                    placeOfSupply = placeOfSupply?.value,
+                    updatedAt = java.time.LocalDateTime.now(),
+                )
+                invoiceRepository.update(updated)
+                invoiceItemRepository.deleteByInvoice(invoiceId)
+                lineItems.forEachIndexed { idx, li ->
+                    if (li.description.isNotBlank()) {
+                        val halfTax = li.taxAmount / 2.0
+                        invoiceItemRepository.upsert(com.kontafy.desktop.api.InvoiceItemModel(
+                            id = java.util.UUID.randomUUID().toString(),
+                            invoiceId = invoiceId,
+                            description = li.description,
+                            hsnCode = li.hsnSac.ifBlank { null },
+                            quantity = java.math.BigDecimal.valueOf(li.quantityNum),
+                            unitPrice = java.math.BigDecimal.valueOf(li.unitPriceNum),
+                            discountPercent = java.math.BigDecimal.valueOf(li.discountNum),
+                            taxRate = java.math.BigDecimal.valueOf(li.taxRate),
+                            cgstAmount = java.math.BigDecimal.valueOf(halfTax),
+                            sgstAmount = java.math.BigDecimal.valueOf(halfTax),
+                            totalAmount = java.math.BigDecimal.valueOf(li.totalAmount),
+                            sortOrder = idx,
+                        ))
+                    }
+                }
+                onSaveSuccess("Invoice updated successfully")
+            } catch (e: Exception) {
+                e.printStackTrace()
+                isSaving = false
+            }
+        }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = KontafyColors.Surface,
+    ) { scaffoldPadding ->
     Column(
-        modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
+        modifier = Modifier.fillMaxSize().padding(scaffoldPadding).background(KontafyColors.Surface),
     ) {
         // Top bar
         Surface(
@@ -162,7 +251,11 @@ fun EditInvoiceScreen(
                 }
                 Spacer(Modifier.width(12.dp))
                 Text(
-                    "Edit Invoice - $invoiceNumber",
+                    "Edit ${when (documentType.lowercase()) {
+                        "purchase_order" -> "Purchase Order"
+                        "quotation" -> "Quotation"
+                        else -> "Invoice"
+                    }} - $invoiceNumber",
                     style = MaterialTheme.typography.headlineMedium,
                     color = KontafyColors.Ink,
                 )
@@ -177,6 +270,16 @@ fun EditInvoiceScreen(
                     text = "Save Changes",
                     onClick = {
                         showValidation = true
+                        if (!isFormValid) {
+                            val errorMsg = when {
+                                !isInvoiceNumberValid -> "$documentLabel number must not be blank"
+                                !isCustomerValid -> "Please select a ${if (isPurchaseOrder) "vendor" else "customer"}"
+                                !hasLineItems -> "At least one line item is required"
+                                else -> "Please fix validation errors"
+                            }
+                            scope.launch { snackbarHostState.showSnackbar(errorMsg) }
+                            return@KontafyButton
+                        }
                         if (isFormValid) {
                             isSaving = true
                             scope.launch {
@@ -259,12 +362,18 @@ fun EditInvoiceScreen(
                             KontafyDropdown(
                                 items = customerList,
                                 selectedItem = selectedCustomer,
-                                onItemSelected = { selectedCustomer = it },
-                                label = "Bill To",
-                                placeholder = "Select customer",
+                                onItemSelected = { customer ->
+                                    selectedCustomer = customer
+                                    val customerState = contactStateMap[customer.value]
+                                    if (!customerState.isNullOrBlank()) {
+                                        placeOfSupply = DropdownItem(customerState, customerState)
+                                    }
+                                },
+                                label = if (isPurchaseOrder) "Vendor" else "Bill To",
+                                placeholder = if (isPurchaseOrder) "Select vendor" else "Select customer",
                                 searchable = true,
                                 showCreateNew = true,
-                                createNewLabel = "Create new customer",
+                                createNewLabel = if (isPurchaseOrder) "Create new vendor" else "Create new customer",
                                 onCreateNew = onNavigateToCreateCustomer,
                                 isError = showValidation && !isCustomerValid,
                                 errorMessage = if (showValidation && !isCustomerValid) "Customer is required" else null,
@@ -283,7 +392,7 @@ fun EditInvoiceScreen(
                         elevation = CardDefaults.cardElevation(1.dp),
                     ) {
                         Column(modifier = Modifier.padding(24.dp)) {
-                            Text("Invoice Details", style = MaterialTheme.typography.titleLarge, color = KontafyColors.Ink)
+                            Text("$documentLabel Details", style = MaterialTheme.typography.titleLarge, color = KontafyColors.Ink)
                             Spacer(Modifier.height(16.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -292,7 +401,9 @@ fun EditInvoiceScreen(
                                 KontafyTextField(
                                     value = invoiceNumber,
                                     onValueChange = { invoiceNumber = it },
-                                    label = "Invoice Number",
+                                    label = "$documentLabel Number",
+                                    isError = showValidation && !isInvoiceNumberValid,
+                                    errorMessage = if (showValidation && !isInvoiceNumberValid) "$documentLabel number is required" else null,
                                     modifier = Modifier.weight(1f),
                                 )
                                 KontafyDatePicker(
@@ -308,40 +419,42 @@ fun EditInvoiceScreen(
                                     modifier = Modifier.weight(1f),
                                 )
                             }
-                            Spacer(Modifier.height(16.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            ) {
-                                KontafyDropdown(
-                                    items = paymentTermsList.map { DropdownItem(it, it) },
-                                    selectedItem = paymentTerms,
-                                    onItemSelected = { item ->
-                                        paymentTerms = item
-                                        issueDate?.let { issue ->
-                                            dueDate = when (item.label) {
-                                                "Due on Receipt" -> issue
-                                                "Net 15" -> issue.plusDays(15)
-                                                "Net 30" -> issue.plusDays(30)
-                                                "Net 45" -> issue.plusDays(45)
-                                                "Net 60" -> issue.plusDays(60)
-                                                "Net 90" -> issue.plusDays(90)
-                                                else -> dueDate
+                            if (!isPurchaseOrder && !isQuotation) {
+                                Spacer(Modifier.height(16.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                ) {
+                                    KontafyDropdown(
+                                        items = paymentTermsList.map { DropdownItem(it, it) },
+                                        selectedItem = paymentTerms,
+                                        onItemSelected = { item ->
+                                            paymentTerms = item
+                                            issueDate?.let { issue ->
+                                                dueDate = when (item.label) {
+                                                    "Due on Receipt" -> issue
+                                                    "Net 15" -> issue.plusDays(15)
+                                                    "Net 30" -> issue.plusDays(30)
+                                                    "Net 45" -> issue.plusDays(45)
+                                                    "Net 60" -> issue.plusDays(60)
+                                                    "Net 90" -> issue.plusDays(90)
+                                                    else -> dueDate
+                                                }
                                             }
-                                        }
-                                    },
-                                    label = "Payment Terms",
-                                    modifier = Modifier.weight(1f),
-                                )
-                                KontafyDropdown(
-                                    items = indianStates.map { DropdownItem(it, it) },
-                                    selectedItem = placeOfSupply,
-                                    onItemSelected = { placeOfSupply = it },
-                                    label = "Place of Supply",
-                                    placeholder = "Select state",
-                                    searchable = true,
-                                    modifier = Modifier.weight(1f),
-                                )
+                                        },
+                                        label = "Payment Terms",
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    KontafyDropdown(
+                                        items = indianStates.map { DropdownItem(it, it) },
+                                        selectedItem = placeOfSupply,
+                                        onItemSelected = { placeOfSupply = it },
+                                        label = "Place of Supply",
+                                        placeholder = "Select state",
+                                        searchable = true,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
                             }
                         }
                     }
@@ -527,6 +640,7 @@ fun EditInvoiceScreen(
             }
         }
     }
+    } // Scaffold
 }
 
 // Helper to populate form from InvoiceDto
@@ -534,24 +648,38 @@ private fun populateForm(
     inv: InvoiceDto,
     dateFormatter: DateTimeFormatter,
     customers: List<DropdownItem<String>>,
-    setter: (DropdownItem<String>?, String, LocalDate?, LocalDate?, List<LineItemState>, String) -> Unit,
+    setter: (
+        customer: DropdownItem<String>?,
+        invoiceNumber: String,
+        issueDate: LocalDate?,
+        dueDate: LocalDate?,
+        paymentTerms: DropdownItem<String>?,
+        placeOfSupply: DropdownItem<String>?,
+        lineItems: List<LineItemState>,
+        notes: String,
+        terms: String,
+    ) -> Unit,
 ) {
     val customer = customers.find { it.value == inv.customerId }
-        ?: DropdownItem(inv.customerId ?: "", inv.customerName)
+        ?: if (inv.customerId != null) DropdownItem(inv.customerId, inv.customerName) else null
     val issue = try { LocalDate.parse(inv.issueDate, dateFormatter) } catch (_: Exception) { LocalDate.now() }
     val due = try { LocalDate.parse(inv.dueDate, dateFormatter) } catch (_: Exception) { LocalDate.now().plusDays(30) }
+    val pos = inv.placeOfSupply?.let { DropdownItem(it, it) }
     val items = if (inv.items.isNotEmpty()) {
         inv.items.map { item ->
             LineItemState(
                 description = item.description,
+                hsnSac = item.hsnCode ?: "",
                 quantity = item.quantity.toString(),
                 unitPrice = item.unitPrice.toString(),
+                discountPercent = if (item.discountPercent > 0) item.discountPercent.toString() else "",
+                taxRate = item.taxRate,
             )
         }
     } else {
         listOf(LineItemState())
     }
-    setter(customer, inv.invoiceNumber, issue, due, items, inv.notes ?: "")
+    setter(customer, inv.invoiceNumber, issue, due, null, pos, items, inv.notes ?: "", inv.terms ?: "")
 }
 
 @Composable

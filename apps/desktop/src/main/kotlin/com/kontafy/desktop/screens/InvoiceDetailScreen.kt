@@ -19,6 +19,7 @@ import com.kontafy.desktop.components.*
 import com.kontafy.desktop.db.repositories.ContactRepository
 import com.kontafy.desktop.db.repositories.InvoiceItemRepository
 import com.kontafy.desktop.db.repositories.InvoiceRepository
+import com.kontafy.desktop.services.AccountingService
 import com.kontafy.desktop.theme.KontafyColors
 import com.kontafy.desktop.util.InvoicePdfGenerator
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,7 @@ fun InvoiceDetailScreen(
     invoiceRepository: InvoiceRepository,
     invoiceItemRepository: InvoiceItemRepository,
     contactRepository: ContactRepository,
+    accountingService: AccountingService = AccountingService(),
     onBack: () -> Unit,
     onDeleteSuccess: (String) -> Unit = {},
     onEditInvoice: (String) -> Unit = {},
@@ -38,7 +40,16 @@ fun InvoiceDetailScreen(
     var invoice by remember { mutableStateOf<InvoiceDto?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     LaunchedEffect(invoiceId) {
         scope.launch {
@@ -47,14 +58,25 @@ fun InvoiceDetailScreen(
                 if (model != null) {
                     val dto = model.toDto()
                     val contactName = model.contactId?.let { cId ->
-                        try { contactRepository.getById(cId)?.name } catch (_: Exception) { null }
+                        try { contactRepository.getById(cId)?.name } catch (e: Exception) {
+                            e.printStackTrace()
+                            snackbarMessage = "Failed to load contact: ${e.message}"
+                            null
+                        }
                     } ?: ""
                     val items = try {
                         invoiceItemRepository.getByInvoice(invoiceId).map { it.toDto() }
-                    } catch (_: Exception) { emptyList() }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        snackbarMessage = "Failed to load invoice items: ${e.message}"
+                        emptyList()
+                    }
                     invoice = dto.copy(customerName = contactName, items = items)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+                snackbarMessage = "Failed to load invoice: ${e.message}"
+            }
             isLoading = false
         }
     }
@@ -68,17 +90,19 @@ fun InvoiceDetailScreen(
                 showDeleteDialog = false
                 scope.launch {
                     try {
-                        invoiceRepository.delete(invoiceId)
+                        accountingService.deleteInvoice(invoiceId)
+                        onDeleteSuccess("Invoice deleted successfully")
                     } catch (e: Exception) {
                         e.printStackTrace()
+                        snackbarMessage = "Failed to delete invoice: ${e.message}"
                     }
-                    onDeleteSuccess("Invoice deleted successfully")
                 }
             },
             onDismiss = { showDeleteDialog = false },
         )
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier.fillMaxSize().background(KontafyColors.Surface),
     ) {
@@ -148,12 +172,27 @@ fun InvoiceDetailScreen(
                     onClick = { onEditInvoice(invoiceId) },
                     variant = ButtonVariant.Outline,
                 )
-                Spacer(Modifier.width(8.dp))
-                KontafyButton(
-                    text = "Send Invoice",
-                    onClick = {},
-                    variant = ButtonVariant.Secondary,
-                )
+                if (invoice?.status?.uppercase() != "SENT" && invoice?.status?.uppercase() != "PAID") {
+                    Spacer(Modifier.width(8.dp))
+                    KontafyButton(
+                        text = "Mark as Sent",
+                        onClick = {
+                            scope.launch {
+                                try {
+                                    val model = invoiceRepository.getById(invoiceId)
+                                    if (model != null) {
+                                        invoiceRepository.update(model.copy(status = "SENT"))
+                                        invoice = invoice?.copy(status = "SENT")
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    snackbarMessage = "Failed to mark as sent: ${e.message}"
+                                }
+                            }
+                        },
+                        variant = ButtonVariant.Secondary,
+                    )
+                }
             }
         }
 
@@ -273,6 +312,11 @@ fun InvoiceDetailScreen(
                     }
                 }
         }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 

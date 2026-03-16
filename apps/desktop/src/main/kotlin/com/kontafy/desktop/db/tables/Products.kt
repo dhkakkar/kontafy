@@ -20,8 +20,13 @@ object Products : Table("products") {
     val stockQuantity = decimal("stock_quantity", 15, 4).default(java.math.BigDecimal.ZERO)
     val reorderLevel = decimal("reorder_level", 15, 4).default(java.math.BigDecimal.ZERO)
     val isActive = bool("is_active").default(true)
+    val createdAt = datetime("created_at").default(LocalDateTime.now())
     val syncedAt = datetime("synced_at").nullable()
     val updatedAt = datetime("updated_at").default(LocalDateTime.now())
 
     override val primaryKey = PrimaryKey(id)
+
+    init {
+        index(isUnique = false, orgId)
+    }
 }

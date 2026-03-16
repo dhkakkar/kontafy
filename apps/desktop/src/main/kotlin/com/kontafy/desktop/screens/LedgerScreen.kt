@@ -22,6 +22,7 @@ import com.kontafy.desktop.db.repositories.JournalEntryRepository
 import com.kontafy.desktop.db.repositories.JournalLineRepository
 import com.kontafy.desktop.theme.KontafyColors
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.clickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +33,7 @@ fun LedgerScreen(
     journalEntryRepository: JournalEntryRepository = JournalEntryRepository(),
     journalLineRepository: JournalLineRepository = JournalLineRepository(),
     initialAccountId: String? = null,
+    onNavigateToEntry: (String) -> Unit = {},
 ) {
     var selectedAccountId by remember { mutableStateOf(initialAccountId ?: "") }
     var accounts by remember { mutableStateOf<List<AccountDto>>(emptyList()) }
@@ -47,7 +49,7 @@ fun LedgerScreen(
             // Load from local DB first
             val dbAccounts = try {
                 accountRepository.getByOrgId(currentOrgId).map { it.toDto() }
-            } catch (_: Exception) { emptyList() }
+            } catch (e: Exception) { e.printStackTrace(); emptyList() }
 
             if (dbAccounts.isNotEmpty()) {
                 accounts = dbAccounts.filter { !it.isGroup }
@@ -55,7 +57,7 @@ fun LedgerScreen(
                 val result = apiClient.getAccounts()
                 result.fold(
                     onSuccess = { list -> accounts = list.flatMap { flattenAll(it) } },
-                    onFailure = {},
+                    onFailure = { it.printStackTrace() },
                 )
             }
         }
@@ -96,6 +98,7 @@ fun LedgerScreen(
                                             debitAmount = debit,
                                             creditAmount = credit,
                                             runningBalance = runningBalance,
+                                            entryId = entry.id,
                                         ),
                                     )
                                 }
@@ -112,7 +115,9 @@ fun LedgerScreen(
                                 totalCredits = totalCredits,
                             )
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 },
             )
             isLoading = false
@@ -309,7 +314,14 @@ fun LedgerScreen(
 
                 // Transaction rows
                 items(data.entries) { entry ->
-                    LedgerTransactionRow(entry)
+                    LedgerTransactionRow(
+                        entry = entry,
+                        onClick = {
+                            if (entry.entryId.isNotBlank()) {
+                                onNavigateToEntry(entry.entryId)
+                            }
+                        },
+                    )
                     HorizontalDivider(color = KontafyColors.BorderLight)
                 }
 
@@ -358,9 +370,9 @@ private fun LedgerTableHeader() {
 }
 
 @Composable
-private fun LedgerTransactionRow(entry: LedgerEntryDto) {
+private fun LedgerTransactionRow(entry: LedgerEntryDto, onClick: () -> Unit = {}) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         color = KontafyColors.SurfaceElevated,
     ) {
         Row(

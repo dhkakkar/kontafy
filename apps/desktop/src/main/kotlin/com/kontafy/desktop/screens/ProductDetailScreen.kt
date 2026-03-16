@@ -1,8 +1,10 @@
 package com.kontafy.desktop.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -12,33 +14,50 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.kontafy.desktop.api.ProductDto
-import com.kontafy.desktop.api.StockMovementDto
 import com.kontafy.desktop.api.toDto
 import com.kontafy.desktop.components.*
+import com.kontafy.desktop.db.repositories.AuditLogEntry
+import com.kontafy.desktop.db.repositories.AuditLogRepository
+import com.kontafy.desktop.db.repositories.InvoiceRepository
 import com.kontafy.desktop.db.repositories.ProductRepository
 import com.kontafy.desktop.theme.KontafyColors
 import kotlinx.coroutines.launch
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun ProductDetailScreen(
     productId: String,
     productRepository: ProductRepository,
+    auditLogRepository: AuditLogRepository = AuditLogRepository(),
+    invoiceRepository: InvoiceRepository = InvoiceRepository(),
     onBack: () -> Unit,
     onDeleteSuccess: (String) -> Unit = {},
     onEdit: (String) -> Unit,
+    onNavigateToInvoice: (String) -> Unit = {},
+    onNavigateToPurchaseOrder: (String) -> Unit = {},
 ) {
     var product by remember { mutableStateOf<ProductDto?>(null) }
-    var movements by remember { mutableStateOf<List<StockMovementDto>>(emptyList()) }
+    var stockMovements by remember { mutableStateOf<List<AuditLogEntry>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    // Cache invoice lookups: invoiceNumber -> invoiceId
+    val invoiceLookup = remember { mutableStateMapOf<String, String>() }
 
     LaunchedEffect(productId) {
         scope.launch {
             try {
                 product = productRepository.getById(productId)?.toDto()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                stockMovements = auditLogRepository.getByEntity("product", productId)
+                    .filter { it.action in listOf("STOCK_RECEIVED", "STOCK_SOLD", "STOCK_ADJUSTED") }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -210,8 +229,8 @@ fun ProductDetailScreen(
                     }
                 }
 
-                // Stock Movement History
-                if (p.type == "GOODS" && movements.isNotEmpty()) {
+                // Stock Movement History from audit logs
+                if (p.type == "GOODS" && stockMovements.isNotEmpty()) {
                     item {
                         Text(
                             "Stock Movement History",
@@ -220,79 +239,182 @@ fun ProductDetailScreen(
                         )
                     }
 
+                    // Table header
                     item {
-                        val movementColumns = listOf(
-                            TableColumn<StockMovementDto>(
-                                header = "Date",
-                                width = 110.dp,
-                                content = { mv ->
-                                    Text(mv.date, style = MaterialTheme.typography.bodyMedium, color = KontafyColors.Ink)
-                                },
-                            ),
-                            TableColumn<StockMovementDto>(
-                                header = "Type",
-                                width = 110.dp,
-                                content = { mv ->
-                                    val badgeType = when (mv.type) {
-                                        "PURCHASE" -> BadgeType.Success
-                                        "SALE" -> BadgeType.Info
-                                        "RETURN" -> BadgeType.Warning
-                                        "ADJUSTMENT" -> BadgeType.Neutral
-                                        "TRANSFER" -> BadgeType.Info
-                                        else -> BadgeType.Neutral
-                                    }
-                                    KontafyBadge(text = mv.type.replaceFirstChar { it.titlecase() }, type = badgeType)
-                                },
-                            ),
-                            TableColumn<StockMovementDto>(
-                                header = "Qty Change",
-                                width = 100.dp,
-                                content = { mv ->
-                                    val prefix = if (mv.quantity > 0) "+" else ""
-                                    val color = if (mv.quantity > 0) KontafyColors.Green else KontafyColors.StatusOverdue
-                                    Text(
-                                        "$prefix${mv.quantity.toInt()}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = color,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                },
-                            ),
-                            TableColumn<StockMovementDto>(
-                                header = "Balance After",
-                                width = 100.dp,
-                                content = { mv ->
-                                    Text(
-                                        mv.balanceAfter.toInt().toString(),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = KontafyColors.Ink,
-                                    )
-                                },
-                            ),
-                            TableColumn<StockMovementDto>(
-                                header = "Reference",
-                                weight = 1f,
-                                content = { mv ->
-                                    Text(
-                                        mv.reference ?: "-",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = KontafyColors.Muted,
-                                    )
-                                },
-                            ),
-                        )
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = KontafyColors.Surface,
+                            shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                            ) {
+                                Text("Date", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(140.dp))
+                                Text("Type", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(120.dp))
+                                Text("Change", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
+                                Text("Balance After", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.width(100.dp))
+                                Text("Reference", style = MaterialTheme.typography.labelMedium, color = KontafyColors.Muted, modifier = Modifier.weight(1f))
+                            }
+                        }
+                        HorizontalDivider(color = KontafyColors.Border)
+                    }
 
-                        KontafyDataTable(
-                            columns = movementColumns,
-                            data = movements,
-                            emptyStateTitle = "No movements",
-                            emptyStateSubtitle = "No stock movements recorded yet",
+                    items(stockMovements, key = { it.id }) { mv ->
+                        ProductStockMovementRow(
+                            mv = mv,
+                            invoiceLookup = invoiceLookup,
+                            invoiceRepository = invoiceRepository,
+                            onNavigateToInvoice = onNavigateToInvoice,
+                            onNavigateToPurchaseOrder = onNavigateToPurchaseOrder,
+                        )
+                        HorizontalDivider(color = KontafyColors.BorderLight)
+                    }
+                }
+
+                if (p.type == "GOODS" && stockMovements.isEmpty()) {
+                    item {
+                        Text(
+                            "Stock Movement History",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = KontafyColors.Ink,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "No stock movements recorded yet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = KontafyColors.Muted,
                         )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ProductStockMovementRow(
+    mv: AuditLogEntry,
+    invoiceLookup: MutableMap<String, String>,
+    invoiceRepository: InvoiceRepository,
+    onNavigateToInvoice: (String) -> Unit,
+    onNavigateToPurchaseOrder: (String) -> Unit,
+) {
+    val change = try {
+        val o = mv.oldValue?.toDoubleOrNull() ?: 0.0
+        val n = mv.newValue?.toDoubleOrNull() ?: 0.0
+        val diff = n - o
+        if (diff >= 0) "+${diff.toInt()}" else "${diff.toInt()}"
+    } catch (e: Exception) { "—" }
+
+    val changeColor = if (change.startsWith("+")) KontafyColors.Green else KontafyColors.StatusOverdue
+
+    val typeLabel = when (mv.action) {
+        "STOCK_RECEIVED" -> "Received"
+        "STOCK_SOLD" -> "Sold"
+        "STOCK_ADJUSTED" -> "Adjustment"
+        else -> mv.action
+    }
+
+    val badgeType = when (mv.action) {
+        "STOCK_RECEIVED" -> BadgeType.Success
+        "STOCK_SOLD" -> BadgeType.Info
+        "STOCK_ADJUSTED" -> BadgeType.Warning
+        else -> BadgeType.Neutral
+    }
+
+    // Extract invoice/PO number from description
+    val refNumber = extractReferenceNumber(mv.description)
+    val scope = rememberCoroutineScope()
+    var refId by remember { mutableStateOf<String?>(invoiceLookup[refNumber]) }
+
+    // Lazy-load the invoice ID
+    LaunchedEffect(refNumber) {
+        if (refNumber != null && refId == null && !invoiceLookup.containsKey(refNumber)) {
+            scope.launch {
+                try {
+                    val results = invoiceRepository.search(refNumber)
+                    val match = results.find { it.invoiceNumber == refNumber }
+                    if (match != null) {
+                        invoiceLookup[refNumber] = match.id
+                        refId = match.id
+                    }
+                } catch (e: Exception) { e.printStackTrace() }
+            }
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = KontafyColors.SurfaceElevated,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                mv.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
+                style = MaterialTheme.typography.bodySmall,
+                color = KontafyColors.Muted,
+                modifier = Modifier.width(140.dp),
+            )
+            Box(modifier = Modifier.width(120.dp)) {
+                KontafyBadge(text = typeLabel, type = badgeType)
+            }
+            Text(
+                change,
+                style = MaterialTheme.typography.bodyMedium,
+                color = changeColor,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.width(100.dp),
+            )
+            Text(
+                mv.newValue ?: "—",
+                style = MaterialTheme.typography.bodyMedium,
+                color = KontafyColors.Ink,
+                modifier = Modifier.width(100.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                if (refNumber != null) {
+                    val isInvoice = refNumber.startsWith("INV")
+                    val isPO = refNumber.startsWith("PO")
+                    Text(
+                        refNumber,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            textDecoration = if (refId != null) TextDecoration.Underline else TextDecoration.None,
+                        ),
+                        color = if (refId != null) KontafyColors.Navy else KontafyColors.Ink,
+                        fontWeight = FontWeight.Medium,
+                        modifier = if (refId != null) {
+                            Modifier.clickable {
+                                if (isPO) onNavigateToPurchaseOrder(refId!!)
+                                else onNavigateToInvoice(refId!!)
+                            }
+                        } else Modifier,
+                    )
+                }
+                Text(
+                    mv.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = KontafyColors.Muted,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Extract invoice/PO number from audit log description.
+ * Patterns: "Invoice INV-0001", "PO PO-0001"
+ */
+private fun extractReferenceNumber(description: String): String? {
+    val invoiceMatch = Regex("Invoice\\s+(INV-\\S+)").find(description)
+    if (invoiceMatch != null) return invoiceMatch.groupValues[1].trimEnd(':')
+
+    val poMatch = Regex("PO\\s+(PO-\\S+)").find(description)
+    if (poMatch != null) return poMatch.groupValues[1].trimEnd(':')
+
+    return null
 }
 
 @Composable

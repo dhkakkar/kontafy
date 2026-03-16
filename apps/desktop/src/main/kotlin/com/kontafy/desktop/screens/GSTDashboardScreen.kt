@@ -203,8 +203,10 @@ fun GSTDashboardScreen(
                                             if (!it.name.endsWith(".json")) java.io.File(it.absolutePath + ".json") else it
                                         }
                                         file.writeText(json)
-                                        try { java.awt.Desktop.getDesktop().open(file) } catch (_: Exception) {}
-                                    } catch (_: Exception) {}
+                                        try { java.awt.Desktop.getDesktop().open(file) } catch (e: Exception) { e.printStackTrace() }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
                                 }
                             },
                             modifier = Modifier.weight(1f),
