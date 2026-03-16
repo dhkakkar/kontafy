@@ -20,7 +20,7 @@ COPY packages/db ./packages/db
 COPY apps/api ./apps/api
 
 # Generate Prisma client
-RUN pnpm --filter @kontafy/db prisma generate
+RUN pnpm --filter @kontafy/db db:generate
 
 # Build shared packages first, then API
 RUN pnpm --filter @kontafy/shared build
