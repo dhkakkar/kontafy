@@ -19,8 +19,8 @@ COPY packages/shared ./packages/shared
 COPY packages/db ./packages/db
 COPY apps/api ./apps/api
 
-# Generate Prisma client
-RUN pnpm --filter @kontafy/db db:generate
+# Generate Prisma client (run from both db and api contexts)
+RUN cd packages/db && npx prisma generate
 
 # Build shared packages first, then API
 RUN pnpm --filter @kontafy/shared build
@@ -45,11 +45,13 @@ COPY --from=builder /app/packages/db/package.json ./packages/db/
 
 RUN pnpm install --frozen-lockfile --prod
 
+# Re-generate Prisma client in production context
+RUN cd packages/db && npx prisma generate
+
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/db/prisma ./packages/db/prisma
 COPY --from=builder /app/packages/db/src ./packages/db/src
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 ENV NODE_ENV=production
 ENV PORT=5002

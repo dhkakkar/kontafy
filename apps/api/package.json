@@ -20,6 +20,8 @@
   "dependencies": {
     "@kontafy/db": "workspace:*",
     "@kontafy/shared": "workspace:*",
+    "@prisma/client": "^6.2.0",
+    "prisma": "^6.2.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
