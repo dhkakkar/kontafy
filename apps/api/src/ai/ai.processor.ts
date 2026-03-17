@@ -16,9 +16,7 @@ export class AiProcessor {
   constructor(
     private readonly aiService: AiService,
     private readonly prisma: PrismaService,
-  ) {
-    super();
-  }
+  ) {}
 
   async process(job: Job<AiJobPayload>): Promise<void> {
     const { type, orgId } = job.data;

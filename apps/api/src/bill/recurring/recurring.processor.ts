@@ -7,9 +7,7 @@ import { RecurringService } from './recurring.service';
 export class RecurringProcessor  {
   private readonly logger = new Logger(RecurringProcessor.name);
 
-  constructor(private readonly recurringService: RecurringService) {
-    super();
-  }
+  constructor(private readonly recurringService: RecurringService) {}
 
   /**
    * Process the daily recurring invoice generation job.

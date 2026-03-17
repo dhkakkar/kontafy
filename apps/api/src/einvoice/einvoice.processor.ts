@@ -13,9 +13,7 @@ interface BulkEInvoiceJobData {
 export class EInvoiceProcessor  {
   private readonly logger = new Logger(EInvoiceProcessor.name);
 
-  constructor(private readonly einvoiceService: EInvoiceService) {
-    super();
-  }
+  constructor(private readonly einvoiceService: EInvoiceService) {}
 
   async process(job: Job<BulkEInvoiceJobData>): Promise<any> {
     const { orgId, invoiceIds, batchId } = job.data;

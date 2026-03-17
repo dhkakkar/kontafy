@@ -11,9 +11,7 @@ export class EmailProcessor  {
   constructor(
     private readonly emailService: EmailService,
     private readonly prisma: PrismaService,
-  ) {
-    super();
-  }
+  ) {}
 
   async process(job: Job<EmailPayload & { emailLogId: string }>): Promise<void> {
     const { emailLogId, ...payload } = job.data;

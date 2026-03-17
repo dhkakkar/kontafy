@@ -1,4 +1,6 @@
+// @ts-ignore
 import * as Sentry from '@sentry/node';
+// @ts-ignore
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 /**

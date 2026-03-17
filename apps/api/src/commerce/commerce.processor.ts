@@ -18,9 +18,7 @@ export class CommerceProcessor  {
   constructor(
     private readonly commerceService: CommerceService,
     private readonly prisma: PrismaService,
-  ) {
-    super();
-  }
+  ) {}
 
   async process(job: Job<CommerceSyncJobData>): Promise<void> {
     const { org_id, platform, type } = job.data;

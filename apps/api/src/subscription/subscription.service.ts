@@ -496,7 +496,7 @@ export class SubscriptionService {
     // If upgrading from free, create checkout
     if (currentPlanId === 'free') {
       return this.createCheckout(orgId, userId, {
-        planId: targetPlanId,
+        planId: targetPlanId as any,
         billingCycle: 'monthly',
       });
     }
@@ -536,7 +536,7 @@ export class SubscriptionService {
 
     // Create new checkout for the upgraded plan
     const checkout = await this.createCheckout(orgId, userId, {
-      planId: targetPlanId,
+      planId: targetPlanId as any,
       billingCycle,
     });
 

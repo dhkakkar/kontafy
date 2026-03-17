@@ -37,7 +37,7 @@ export class ImportService {
     if (format === 'csv' || format === 'text/csv') {
       await workbook.csv.read(require('stream').Readable.from(buffer));
     } else {
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
     }
 
     const sheet = workbook.worksheets[0];

@@ -132,7 +132,7 @@ export class SettingsService {
       throw new BadRequestException('Failed to look up user');
     }
 
-    const targetUser = usersData.users.find((u) => u.email === data.email);
+    const targetUser = (usersData as any).users.find((u: any) => u.email === data.email);
 
     if (!targetUser) {
       // For now, throw an error. In production, you'd send an invitation email.

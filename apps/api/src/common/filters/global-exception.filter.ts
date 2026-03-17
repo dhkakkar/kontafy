@@ -76,7 +76,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       );
 
       // Report to Sentry
-      const user = request['user'];
+      const user = request['user'] as any;
       captureException(exception, {
         userId: user?.sub,
         orgId: request.headers?.['x-org-id'] as string,

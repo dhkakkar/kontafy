@@ -117,7 +117,6 @@ export class ReportsExportService {
 
     // Style header
     const headerStyle: Partial<ExcelJS.Style> = {
-      font: { bold: true, size: 11 },
       fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } },
       font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 },
       alignment: { horizontal: 'center', vertical: 'middle' },

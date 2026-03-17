@@ -102,6 +102,6 @@ export class WhatsAppController {
     if (!parsed.success) {
       throw new BadRequestException('Invalid webhook payload');
     }
-    return this.whatsappService.handleWebhook(parsed.data);
+    return this.whatsappService.handleWebhook(parsed.data as any);
   }
 }

@@ -19,7 +19,7 @@ import { WooCommerceAdapter } from './adapters/woocommerce.adapter';
           port: configService.get<number>('REDIS_PORT', 6379),
           password: configService.get<string>('REDIS_PASSWORD', undefined),
         },
-      }),
+      } as any),
       inject: [ConfigService],
     }),
     BullModule.registerQueue({
