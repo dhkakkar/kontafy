@@ -1,48 +1,45 @@
-// @ts-ignore
-import * as Sentry from '@sentry/node';
-// @ts-ignore
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
-
 /**
- * Initialize Sentry for error tracking and performance monitoring.
- * Call this before NestFactory.create() in main.ts.
- *
- * Requires SENTRY_DSN environment variable to be set.
- * If not set, Sentry will not initialize and the app runs without tracking.
+ * Sentry integration — gracefully no-ops if @sentry/node is not installed.
  */
+
+let Sentry: any = null;
+let nodeProfilingIntegration: any = null;
+
+try {
+  Sentry = require('@sentry/node');
+  const profiling = require('@sentry/profiling-node');
+  nodeProfilingIntegration = profiling.nodeProfilingIntegration;
+} catch {
+  // Sentry packages not installed — all exports will be no-ops
+}
+
 export function initSentry() {
   const dsn = process.env.SENTRY_DSN;
 
-  if (!dsn) {
-    console.log('[Sentry] SENTRY_DSN not set — error tracking disabled');
+  if (!dsn || !Sentry) {
+    console.log('[Sentry] SENTRY_DSN not set or @sentry/node not installed — error tracking disabled');
     return;
+  }
+
+  const integrations: any[] = [];
+  if (nodeProfilingIntegration) {
+    integrations.push(nodeProfilingIntegration());
   }
 
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV || 'development',
     release: process.env.APP_VERSION || '0.1.0',
-
-    // Performance tracing
     tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.2 : 1.0,
-
-    // Profiling
     profilesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-
-    integrations: [
-      nodeProfilingIntegration(),
-    ],
-
-    // Filter out health check transactions
-    beforeSendTransaction(event) {
+    integrations,
+    beforeSendTransaction(event: any) {
       if (event.transaction?.includes('/health')) {
         return null;
       }
       return event;
     },
-
-    // Scrub sensitive data
-    beforeSend(event) {
+    beforeSend(event: any) {
       if (event.request?.headers) {
         delete event.request.headers['authorization'];
         delete event.request.headers['cookie'];
@@ -55,9 +52,6 @@ export function initSentry() {
   console.log(`[Sentry] Initialized (env: ${process.env.NODE_ENV || 'development'})`);
 }
 
-/**
- * Capture an exception in Sentry with optional context.
- */
 export function captureException(
   error: Error,
   context?: {
@@ -67,6 +61,8 @@ export function captureException(
     extra?: Record<string, any>;
   },
 ) {
+  if (!Sentry) return;
+
   if (context?.userId) {
     Sentry.setUser({ id: context.userId });
   }
@@ -86,11 +82,8 @@ export function captureException(
   });
 }
 
-/**
- * Set user context on the current Sentry scope.
- * Called by auth middleware after authentication.
- */
 export function setSentryUser(userId: string, email?: string) {
+  if (!Sentry) return;
   Sentry.setUser({
     id: userId,
     email: email || undefined,
