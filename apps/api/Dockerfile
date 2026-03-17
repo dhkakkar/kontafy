@@ -29,8 +29,6 @@ RUN pnpm --filter @kontafy/api build
 # Stage 2: Production
 FROM node:22-alpine AS runner
 
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
-
 # Install chromium for Puppeteer
 RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
@@ -38,20 +36,14 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 WORKDIR /app
 
-COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
-COPY --from=builder /app/apps/api/package.json ./apps/api/
-COPY --from=builder /app/packages/shared/package.json ./packages/shared/
-COPY --from=builder /app/packages/db/package.json ./packages/db/
-
-RUN pnpm install --frozen-lockfile --prod
-
-# Copy built artifacts and Prisma generated client from builder
+# Copy everything from builder (node_modules includes generated Prisma client)
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/packages/db/prisma ./packages/db/prisma
-COPY --from=builder /app/packages/db/src ./packages/db/src
-COPY --from=builder /app/node_modules/.pnpm/@prisma+client*/node_modules/@prisma/client ./node_modules/@prisma/client/
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=builder /app/packages/db ./packages/db
+COPY --from=builder /app/package.json ./
 
 ENV NODE_ENV=production
 ENV PORT=5002
