@@ -392,7 +392,7 @@ export default function CommerceConnectionsPage() {
             Cancel
           </Button>
           <Button
-            variant="danger"
+            variant="destructive"
             onClick={() => disconnectModal && disconnectMutation.mutate(disconnectModal)}
             loading={disconnectMutation.isPending}
           >

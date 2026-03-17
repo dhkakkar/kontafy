@@ -36,41 +36,45 @@ export class AiModule implements OnModuleInit {
   constructor(@InjectQueue('ai') private readonly aiQueue: Queue) {}
 
   async onModuleInit() {
-    // Register repeatable cron jobs
+    try {
+      // Register repeatable cron jobs
 
-    // Daily forecast refresh at 6:00 AM IST (00:30 UTC)
-    await this.aiQueue.add(
-      'daily-forecast',
-      { type: 'forecast' },
-      {
-        repeat: { pattern: '0 6 * * *' }, // 6 AM daily
-        removeOnComplete: 10,
-        removeOnFail: 5,
-      },
-    );
+      // Daily forecast refresh at 6:00 AM
+      await this.aiQueue.add(
+        'daily-forecast',
+        { type: 'forecast' },
+        {
+          repeat: { cron: '0 6 * * *' },
+          removeOnComplete: 10,
+          removeOnFail: 5,
+        },
+      );
 
-    // Daily anomaly scan at 7:00 AM IST (01:30 UTC)
-    await this.aiQueue.add(
-      'daily-anomalies',
-      { type: 'anomalies' },
-      {
-        repeat: { pattern: '0 7 * * *' }, // 7 AM daily
-        removeOnComplete: 10,
-        removeOnFail: 5,
-      },
-    );
+      // Daily anomaly scan at 7:00 AM
+      await this.aiQueue.add(
+        'daily-anomalies',
+        { type: 'anomalies' },
+        {
+          repeat: { cron: '0 7 * * *' },
+          removeOnComplete: 10,
+          removeOnFail: 5,
+        },
+      );
 
-    // Weekly insights generation on Monday at 8:00 AM IST (02:30 UTC)
-    await this.aiQueue.add(
-      'weekly-insights',
-      { type: 'insights' },
-      {
-        repeat: { pattern: '0 8 * * 1' }, // Monday 8 AM
-        removeOnComplete: 10,
-        removeOnFail: 5,
-      },
-    );
+      // Weekly insights generation on Monday at 8:00 AM
+      await this.aiQueue.add(
+        'weekly-insights',
+        { type: 'insights' },
+        {
+          repeat: { cron: '0 8 * * 1' },
+          removeOnComplete: 10,
+          removeOnFail: 5,
+        },
+      );
 
-    this.logger.log('AI cron jobs registered (forecast 6AM, anomalies 7AM, insights Mon 8AM)');
+      this.logger.log('AI cron jobs registered (forecast 6AM, anomalies 7AM, insights Mon 8AM)');
+    } catch (err) {
+      this.logger.warn('Failed to register AI cron jobs — skipping', err);
+    }
   }
 }
