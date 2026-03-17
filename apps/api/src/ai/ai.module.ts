@@ -44,7 +44,7 @@ export class AiModule implements OnModuleInit {
         'daily-forecast',
         { type: 'forecast' },
         {
-          repeat: { cron: '0 6 * * *' },
+          repeat: { cron: '0 6 * * *' } as any,
           removeOnComplete: 10,
           removeOnFail: 5,
         },
@@ -55,7 +55,7 @@ export class AiModule implements OnModuleInit {
         'daily-anomalies',
         { type: 'anomalies' },
         {
-          repeat: { cron: '0 7 * * *' },
+          repeat: { cron: '0 7 * * *' } as any,
           removeOnComplete: 10,
           removeOnFail: 5,
         },
@@ -66,7 +66,7 @@ export class AiModule implements OnModuleInit {
         'weekly-insights',
         { type: 'insights' },
         {
-          repeat: { cron: '0 8 * * 1' },
+          repeat: { cron: '0 8 * * 1' } as any,
           removeOnComplete: 10,
           removeOnFail: 5,
         },
