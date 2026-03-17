@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bull';
+import { Processor } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,7 +10,7 @@ export interface AiJobPayload {
 }
 
 @Processor('ai')
-export class AiProcessor extends WorkerHost {
+export class AiProcessor {
   private readonly logger = new Logger(AiProcessor.name);
 
   constructor(

@@ -63,6 +63,11 @@ model Organization {
   email_logs            EmailLog[]
   file_attachments      FileAttachment[]
   whatsapp_messages     WhatsAppMessage[]
+  branches              Branch[]
+  budgets               Budget[]
+  quotations            Quotation[]
+  purchase_orders       PurchaseOrder[]
+  recurring_invoices    RecurringInvoice[]
 
   @@map("organizations")
 }
@@ -100,11 +105,12 @@ model Account {
   is_active       Boolean  @default(true)
   created_at      DateTime @default(now()) @db.Timestamptz
 
-  organization  Organization   @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  parent        Account?       @relation("AccountHierarchy", fields: [parent_id], references: [id])
-  children      Account[]      @relation("AccountHierarchy")
-  journal_lines JournalLine[]
-  bank_accounts BankAccount[]
+  organization      Organization      @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  parent            Account?          @relation("AccountHierarchy", fields: [parent_id], references: [id])
+  children          Account[]         @relation("AccountHierarchy")
+  journal_lines     JournalLine[]
+  bank_accounts     BankAccount[]
+  budget_line_items BudgetLineItem[]
 
   @@index([org_id, type])
   @@index([org_id, code])
@@ -175,10 +181,13 @@ model Contact {
   is_active        Boolean  @default(true)
   created_at       DateTime @default(now()) @db.Timestamptz
 
-  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  invoices     Invoice[]
-  tds_entries  TdsEntry[]
-  payments     Payment[]
+  organization       Organization       @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  invoices           Invoice[]
+  tds_entries        TdsEntry[]
+  payments           Payment[]
+  quotations         Quotation[]
+  purchase_orders    PurchaseOrder[]
+  recurring_invoices RecurringInvoice[]
 
   @@index([org_id, type])
   @@index([org_id, is_active])
@@ -279,10 +288,13 @@ model Product {
   is_active       Boolean  @default(true)
   created_at      DateTime @default(now()) @db.Timestamptz
 
-  organization    Organization    @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  invoice_items   InvoiceItem[]
-  stock_movements StockMovement[]
-  stock_levels    StockLevel[]
+  organization           Organization           @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  invoice_items          InvoiceItem[]
+  stock_movements        StockMovement[]
+  stock_levels           StockLevel[]
+  quotation_items        QuotationItem[]
+  purchase_order_items   PurchaseOrderItem[]
+  recurring_invoice_items RecurringInvoiceItem[]
 
   @@index([org_id, is_active])
   @@index([org_id, sku])
@@ -292,11 +304,13 @@ model Product {
 model Warehouse {
   id         String  @id @default(uuid()) @db.Uuid
   org_id     String  @db.Uuid
+  branch_id  String? @db.Uuid
   name       String
   address    Json?
   is_default Boolean @default(false)
 
   organization    Organization    @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  branch          Branch?         @relation(fields: [branch_id], references: [id])
   stock_movements StockMovement[]
   stock_levels    StockLevel[]
 
@@ -764,4 +778,270 @@ model WhatsAppMessage {
   @@index([org_id, created_at])
   @@index([provider_message_id])
   @@map("whatsapp_messages")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Branch
+// ═══════════════════════════════════════════════════════════════
+
+model Branch {
+  id           String   @id @default(uuid()) @db.Uuid
+  org_id       String   @db.Uuid
+  name         String
+  code         String   @db.VarChar(6)
+  address      Json     @default("{}")
+  phone        String?  @db.VarChar(15)
+  email        String?
+  manager_name String?
+  is_main      Boolean  @default(false)
+  is_active    Boolean  @default(true)
+  created_by   String?  @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  warehouses   Warehouse[]
+  budgets      Budget[]
+
+  @@index([org_id, is_active])
+  @@index([org_id, is_main])
+  @@map("branches")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Budget
+// ═══════════════════════════════════════════════════════════════
+
+model Budget {
+  id           String   @id @default(uuid()) @db.Uuid
+  org_id       String   @db.Uuid
+  name         String
+  description  String?
+  fiscal_year  String   @db.VarChar(5)
+  period_type  String   @default("monthly")
+  start_date   DateTime @db.Date
+  end_date     DateTime @db.Date
+  branch_id    String?  @db.Uuid
+  total_amount Decimal  @db.Decimal(15, 2)
+  status       String   @default("draft")
+  created_by   String?  @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  organization Organization     @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  branch       Branch?          @relation(fields: [branch_id], references: [id])
+  line_items   BudgetLineItem[]
+
+  @@index([org_id, status])
+  @@index([org_id, fiscal_year])
+  @@map("budgets")
+}
+
+model BudgetLineItem {
+  id         String  @id @default(uuid()) @db.Uuid
+  budget_id  String  @db.Uuid
+  account_id String  @db.Uuid
+  jan        Decimal @default(0) @db.Decimal(15, 2)
+  feb        Decimal @default(0) @db.Decimal(15, 2)
+  mar        Decimal @default(0) @db.Decimal(15, 2)
+  apr        Decimal @default(0) @db.Decimal(15, 2)
+  may        Decimal @default(0) @db.Decimal(15, 2)
+  jun        Decimal @default(0) @db.Decimal(15, 2)
+  jul        Decimal @default(0) @db.Decimal(15, 2)
+  aug        Decimal @default(0) @db.Decimal(15, 2)
+  sep        Decimal @default(0) @db.Decimal(15, 2)
+  oct        Decimal @default(0) @db.Decimal(15, 2)
+  nov        Decimal @default(0) @db.Decimal(15, 2)
+  dec        Decimal @default(0) @db.Decimal(15, 2)
+
+  budget  Budget  @relation(fields: [budget_id], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [account_id], references: [id])
+
+  @@index([budget_id])
+  @@map("budget_line_items")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Bill (Quotations, Purchase Orders, Recurring Invoices)
+// ═══════════════════════════════════════════════════════════════
+
+model Quotation {
+  id               String    @id @default(uuid()) @db.Uuid
+  org_id           String    @db.Uuid
+  quotation_number String    @unique
+  contact_id       String    @db.Uuid
+  status           String    @default("draft")
+  date             DateTime  @db.Date
+  validity_date    DateTime? @db.Date
+  place_of_supply  String?   @db.VarChar(2)
+  is_igst          Boolean   @default(false)
+  subtotal         Decimal   @db.Decimal(15, 2)
+  discount_amount  Decimal   @default(0) @db.Decimal(15, 2)
+  tax_amount       Decimal   @default(0) @db.Decimal(15, 2)
+  total            Decimal   @db.Decimal(15, 2)
+  notes            String?
+  terms            String?
+  created_by       String?   @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  organization Organization    @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  contact      Contact         @relation(fields: [contact_id], references: [id])
+  items        QuotationItem[]
+
+  @@index([org_id, status])
+  @@index([org_id, contact_id])
+  @@index([org_id, date])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  quotation_id   String  @db.Uuid
+  product_id     String? @db.Uuid
+  description    String
+  hsn_code       String? @db.VarChar(8)
+  quantity       Decimal @db.Decimal(10, 3)
+  unit           String  @default("pcs")
+  rate           Decimal @db.Decimal(15, 2)
+  discount_pct   Decimal @default(0) @db.Decimal(5, 2)
+  taxable_amount Decimal @db.Decimal(15, 2)
+  cgst_rate      Decimal @default(0) @db.Decimal(5, 2)
+  cgst_amount    Decimal @default(0) @db.Decimal(15, 2)
+  sgst_rate      Decimal @default(0) @db.Decimal(5, 2)
+  sgst_amount    Decimal @default(0) @db.Decimal(15, 2)
+  igst_rate      Decimal @default(0) @db.Decimal(5, 2)
+  igst_amount    Decimal @default(0) @db.Decimal(15, 2)
+  cess_rate      Decimal @default(0) @db.Decimal(5, 2)
+  cess_amount    Decimal @default(0) @db.Decimal(15, 2)
+  total          Decimal @db.Decimal(15, 2)
+
+  quotation Quotation @relation(fields: [quotation_id], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [product_id], references: [id])
+
+  @@index([quotation_id])
+  @@map("quotation_items")
+}
+
+model PurchaseOrder {
+  id               String    @id @default(uuid()) @db.Uuid
+  org_id           String    @db.Uuid
+  po_number        String    @unique
+  contact_id       String    @db.Uuid
+  status           String    @default("draft")
+  date             DateTime  @db.Date
+  delivery_date    DateTime? @db.Date
+  shipping_address Json      @default("{}")
+  place_of_supply  String?   @db.VarChar(2)
+  is_igst          Boolean   @default(false)
+  subtotal         Decimal   @db.Decimal(15, 2)
+  discount_amount  Decimal   @default(0) @db.Decimal(15, 2)
+  tax_amount       Decimal   @default(0) @db.Decimal(15, 2)
+  total            Decimal   @db.Decimal(15, 2)
+  notes            String?
+  terms            String?
+  created_by       String?   @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  organization Organization          @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  contact      Contact               @relation(fields: [contact_id], references: [id])
+  items        PurchaseOrderItem[]
+
+  @@index([org_id, status])
+  @@index([org_id, contact_id])
+  @@index([org_id, date])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id                String  @id @default(uuid()) @db.Uuid
+  purchase_order_id String  @db.Uuid
+  product_id        String? @db.Uuid
+  description       String
+  hsn_code          String? @db.VarChar(8)
+  quantity          Decimal @db.Decimal(10, 3)
+  unit              String  @default("pcs")
+  rate              Decimal @db.Decimal(15, 2)
+  discount_pct      Decimal @default(0) @db.Decimal(5, 2)
+  taxable_amount    Decimal @db.Decimal(15, 2)
+  cgst_rate         Decimal @default(0) @db.Decimal(5, 2)
+  cgst_amount       Decimal @default(0) @db.Decimal(15, 2)
+  sgst_rate         Decimal @default(0) @db.Decimal(5, 2)
+  sgst_amount       Decimal @default(0) @db.Decimal(15, 2)
+  igst_rate         Decimal @default(0) @db.Decimal(5, 2)
+  igst_amount       Decimal @default(0) @db.Decimal(15, 2)
+  cess_rate         Decimal @default(0) @db.Decimal(5, 2)
+  cess_amount       Decimal @default(0) @db.Decimal(15, 2)
+  total             Decimal @db.Decimal(15, 2)
+
+  purchase_order PurchaseOrder @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
+  product        Product?      @relation(fields: [product_id], references: [id])
+
+  @@index([purchase_order_id])
+  @@map("purchase_order_items")
+}
+
+model RecurringInvoice {
+  id                 String    @id @default(uuid()) @db.Uuid
+  org_id             String    @db.Uuid
+  name               String
+  contact_id         String    @db.Uuid
+  frequency          String
+  start_date         DateTime  @db.Date
+  end_date           DateTime? @db.Date
+  next_issue_date    DateTime  @db.Timestamptz
+  payment_terms_days Int       @default(30)
+  auto_send          Boolean   @default(false)
+  place_of_supply    String?   @db.VarChar(2)
+  is_igst            Boolean   @default(false)
+  subtotal           Decimal   @db.Decimal(15, 2)
+  discount_amount    Decimal   @default(0) @db.Decimal(15, 2)
+  tax_amount         Decimal   @default(0) @db.Decimal(15, 2)
+  total              Decimal   @db.Decimal(15, 2)
+  notes              String?
+  terms              String?
+  status             String    @default("active")
+  generation_count   Int       @default(0)
+  last_generated_at  DateTime? @db.Timestamptz
+  created_by         String?   @db.Uuid
+  created_at         DateTime  @default(now()) @db.Timestamptz
+  updated_at         DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  organization Organization          @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  contact      Contact               @relation(fields: [contact_id], references: [id])
+  items        RecurringInvoiceItem[]
+
+  @@index([org_id, status])
+  @@index([org_id, next_issue_date])
+  @@index([org_id, contact_id])
+  @@map("recurring_invoices")
+}
+
+model RecurringInvoiceItem {
+  id                   String  @id @default(uuid()) @db.Uuid
+  recurring_invoice_id String  @db.Uuid
+  product_id           String? @db.Uuid
+  description          String
+  hsn_code             String? @db.VarChar(8)
+  quantity             Decimal @db.Decimal(10, 3)
+  unit                 String  @default("pcs")
+  rate                 Decimal @db.Decimal(15, 2)
+  discount_pct         Decimal @default(0) @db.Decimal(5, 2)
+  taxable_amount       Decimal @db.Decimal(15, 2)
+  cgst_rate            Decimal @default(0) @db.Decimal(5, 2)
+  cgst_amount          Decimal @default(0) @db.Decimal(15, 2)
+  sgst_rate            Decimal @default(0) @db.Decimal(5, 2)
+  sgst_amount          Decimal @default(0) @db.Decimal(15, 2)
+  igst_rate            Decimal @default(0) @db.Decimal(5, 2)
+  igst_amount          Decimal @default(0) @db.Decimal(15, 2)
+  cess_rate            Decimal @default(0) @db.Decimal(5, 2)
+  cess_amount          Decimal @default(0) @db.Decimal(15, 2)
+  total                Decimal @db.Decimal(15, 2)
+
+  recurring_invoice RecurringInvoice @relation(fields: [recurring_invoice_id], references: [id], onDelete: Cascade)
+  product           Product?         @relation(fields: [product_id], references: [id])
+
+  @@index([recurring_invoice_id])
+  @@map("recurring_invoice_items")
 }
