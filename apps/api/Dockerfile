@@ -45,13 +45,13 @@ COPY --from=builder /app/packages/db/package.json ./packages/db/
 
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy Prisma schema and generated client, then re-generate in prod context
-COPY --from=builder /app/packages/db/prisma ./packages/db/prisma
-COPY --from=builder /app/packages/db/src ./packages/db/src
-RUN cd packages/db && npx prisma generate
-
+# Copy built artifacts and Prisma generated client from builder
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/db/prisma ./packages/db/prisma
+COPY --from=builder /app/packages/db/src ./packages/db/src
+COPY --from=builder /app/node_modules/.pnpm/@prisma+client*/node_modules/@prisma/client ./node_modules/@prisma/client/
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 ENV NODE_ENV=production
 ENV PORT=5002
