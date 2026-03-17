@@ -1,10 +1,10 @@
-import { Processor, WorkerHost } from '@nestjs/bull';
+import { Processor } from "@nestjs/bull";
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { RecurringService } from './recurring.service';
 
 @Processor('recurring-invoices')
-export class RecurringProcessor extends WorkerHost {
+export class RecurringProcessor  {
   private readonly logger = new Logger(RecurringProcessor.name);
 
   constructor(private readonly recurringService: RecurringService) {

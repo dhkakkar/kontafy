@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bull';
+import { Processor } from "@nestjs/bull";
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { EInvoiceService } from './einvoice.service';
@@ -10,7 +10,7 @@ interface BulkEInvoiceJobData {
 }
 
 @Processor('einvoice')
-export class EInvoiceProcessor extends WorkerHost {
+export class EInvoiceProcessor  {
   private readonly logger = new Logger(EInvoiceProcessor.name);
 
   constructor(private readonly einvoiceService: EInvoiceService) {

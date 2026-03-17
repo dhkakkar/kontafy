@@ -1,11 +1,11 @@
-import { Processor, WorkerHost } from '@nestjs/bull';
+import { Processor } from "@nestjs/bull";
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService, EmailPayload } from './email.service';
 
 @Processor('email')
-export class EmailProcessor extends WorkerHost {
+export class EmailProcessor  {
   private readonly logger = new Logger(EmailProcessor.name);
 
   constructor(

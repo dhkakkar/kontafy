@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bull';
+import { Processor } from "@nestjs/bull";
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,7 +12,7 @@ export interface CommerceSyncJobData {
 }
 
 @Processor('commerce-sync')
-export class CommerceProcessor extends WorkerHost {
+export class CommerceProcessor  {
   private readonly logger = new Logger(CommerceProcessor.name);
 
   constructor(
