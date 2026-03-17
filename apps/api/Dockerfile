@@ -19,7 +19,7 @@ COPY packages/shared ./packages/shared
 COPY packages/db ./packages/db
 COPY apps/api ./apps/api
 
-# Generate Prisma client (run from both db and api contexts)
+# Generate Prisma client
 RUN cd packages/db && npx prisma generate
 
 # Build shared packages first, then API
@@ -45,13 +45,13 @@ COPY --from=builder /app/packages/db/package.json ./packages/db/
 
 RUN pnpm install --frozen-lockfile --prod
 
-# Re-generate Prisma client in production context
+# Copy Prisma schema and generated client, then re-generate in prod context
+COPY --from=builder /app/packages/db/prisma ./packages/db/prisma
+COPY --from=builder /app/packages/db/src ./packages/db/src
 RUN cd packages/db && npx prisma generate
 
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/packages/db/prisma ./packages/db/prisma
-COPY --from=builder /app/packages/db/src ./packages/db/src
 
 ENV NODE_ENV=production
 ENV PORT=5002
