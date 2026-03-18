@@ -147,7 +147,7 @@ export default function FreelancersIndustryPage() {
               </p>
 
               <div className="flex flex-wrap items-center gap-4">
-                <CTAButton variant="primary" size="lg" href="/signup">
+                <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                   Start Free — It&apos;s Simple
                 </CTAButton>
                 <CTAButton variant="ghost" size="lg" href="/demo">
@@ -400,7 +400,7 @@ export default function FreelancersIndustryPage() {
               all most freelancers need.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <CTAButton variant="primary" size="lg" href="/signup">
+              <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                 Start Free — No Card Needed
               </CTAButton>
               <CTAButton variant="ghost" size="lg" href="/demo">

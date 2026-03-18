@@ -237,7 +237,7 @@ export default function KontafyVsBusyClient() {
                 e-commerce sync, and AI insights.
               </p>
               <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-                <CTAButton variant="primary" size="lg" href="/signup">
+                <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                   Try Kontafy Free
                 </CTAButton>
                 <CTAButton variant="ghost" size="lg" href="/demo">
@@ -446,7 +446,7 @@ export default function KontafyVsBusyClient() {
               free — no credit card, no commitment, no installation.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <CTAButton variant="primary" size="lg" href="/signup">
+              <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                 Start Free Trial
               </CTAButton>
               <CTAButton

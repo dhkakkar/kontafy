@@ -255,7 +255,7 @@ export default function AboutPageClient() {
             team — we&apos;d love to hear from you.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-            <CTAButton href="/signup" variant="primary" size="lg">
+            <CTAButton href="https://app.kontafy.com/signup" variant="primary" size="lg">
               Start Free Trial
               <ArrowRight className="h-5 w-5" />
             </CTAButton>

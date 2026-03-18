@@ -158,7 +158,7 @@ export default function FeaturesOverviewClient() {
             transition={{ duration: 0.4, delay: 0.15 }}
             className="mt-10 flex items-center justify-center gap-4 flex-wrap"
           >
-            <CTAButton variant="primary" size="lg" href="/signup">
+            <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
               Start Free Trial <ArrowRight className="h-4 w-4" />
             </CTAButton>
             <CTAButton
@@ -323,7 +323,7 @@ export default function FeaturesOverviewClient() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="mt-10 flex items-center justify-center gap-4 flex-wrap"
           >
-            <CTAButton variant="primary" size="lg" href="/signup">
+            <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
               Get Started Free <ArrowRight className="h-4 w-4" />
             </CTAButton>
             <CTAButton

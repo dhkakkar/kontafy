@@ -30,7 +30,7 @@ const steps = [
     step: "Step 2",
     title: "Sign Up for Kontafy",
     description:
-      "Create your Kontafy account at kontafy.com/signup. Set up your company profile with your business name, GSTIN, address, and financial year. This takes about 2 minutes.",
+      "Create your Kontafy account at app.kontafy.com/signup. Set up your company profile with your business name, GSTIN, address, and financial year. This takes about 2 minutes.",
     tip: "Start with the free trial — no credit card required. You get full access to all features for 14 days.",
   },
   {
@@ -130,7 +130,7 @@ export default function SwitchFromTallyClient() {
               description="Move your entire accounting from Tally to Kontafy in 5 simple steps. Free migration, dedicated support, and zero data loss — guaranteed."
             />
             <div className="mt-8 flex flex-wrap gap-4">
-              <CTAButton href="/signup" variant="primary" size="lg">
+              <CTAButton href="https://app.app.kontafy.com/signup" variant="primary" size="lg">
                 Start Free Migration
               </CTAButton>
               <CTAButton href="/demo" variant="ghost" size="lg">
@@ -250,7 +250,7 @@ export default function SwitchFromTallyClient() {
             team is ready to help.
           </p>
           <div className="mt-8">
-            <CTAButton href="/signup" variant="primary" size="lg">
+            <CTAButton href="https://app.app.kontafy.com/signup" variant="primary" size="lg">
               Start Free Migration
             </CTAButton>
           </div>

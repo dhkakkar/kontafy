@@ -292,7 +292,7 @@ function PlanCard({
       <CTAButton
         variant={plan.popular ? "secondary" : "ghost"}
         size="md"
-        href={isEnterprise ? "/contact" : "/signup"}
+        href={isEnterprise ? "/contact" : "https://app.kontafy.com/signup"}
         className="w-full justify-center"
       >
         {plan.cta}

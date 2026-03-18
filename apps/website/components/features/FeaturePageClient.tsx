@@ -184,7 +184,7 @@ function HeroSection({
         </motion.p>
 
         <motion.div {...fadeUp(0.2)} className="mt-10 flex items-center justify-center gap-4 flex-wrap">
-          <CTAButton variant="primary" size="lg" href="/signup">
+          <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
             Start Free Trial <ArrowRight className="h-4 w-4" />
           </CTAButton>
           <CTAButton variant="ghost" size="lg" href="/pricing" className="border-white/20 text-white hover:bg-white/10">
@@ -368,7 +368,7 @@ function CTASection({
           {ctaDescription}
         </motion.p>
         <motion.div {...fadeIn(0.1)} className="mt-10 flex items-center justify-center gap-4 flex-wrap">
-          <CTAButton variant="primary" size="lg" href="/signup">
+          <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
             Get Started Free <ArrowRight className="h-4 w-4" />
           </CTAButton>
           <CTAButton variant="ghost" size="lg" href="/contact" className="border-white/20 text-white hover:bg-white/10">

@@ -279,7 +279,7 @@ export default function TallyAlternativeClient() {
                 Kontafy leads the pack.
               </p>
               <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-                <CTAButton variant="primary" size="lg" href="/signup">
+                <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                   Try Kontafy Free
                 </CTAButton>
                 <CTAButton
@@ -583,7 +583,7 @@ export default function TallyAlternativeClient() {
               Kontafy. Start free — no credit card, no installation, no lock-in.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <CTAButton variant="primary" size="lg" href="/signup">
+              <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                 Start Free Trial
               </CTAButton>
               <CTAButton

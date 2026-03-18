@@ -139,7 +139,7 @@ export default function AccountingGlossaryPage() {
           <p className="font-medium text-ink">
             Kontafy handles all these concepts automatically.{" "}
             <a
-              href="/signup"
+              href="https://app.kontafy.com/signup"
               className="text-green underline underline-offset-2 hover:text-green/80"
             >
               Start your free trial

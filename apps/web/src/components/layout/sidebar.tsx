@@ -242,12 +242,15 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className="flex items-center h-16 px-4 border-b border-primary-700/50">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
-            <span className="text-lg font-bold text-white">K</span>
-          </div>
+        <div className="flex items-center gap-2.5">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+            <rect width="32" height="32" rx="7" fill="#0F2D5E" />
+            <rect x="7" y="6" width="18" height="20" rx="2" fill="#1A3F7A" />
+            <rect x="11" y="6" width="3" height="20" fill="#0A8A54" />
+            <path d="M18 10v4.5l3.5-4.5h2.2l-3.8 4.8L24 20h-2.3l-3.7-4.7V20h-1.8V10H18Z" fill="white" />
+          </svg>
           {!sidebarCollapsed && (
-            <span className="text-lg font-bold tracking-tight">Kontafy</span>
+            <span className="text-lg font-bold tracking-tight text-white">Kontafy</span>
           )}
         </div>
       </div>

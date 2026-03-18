@@ -154,7 +154,7 @@ export default function RetailIndustryPage() {
               </p>
 
               <div className="flex flex-wrap items-center gap-4">
-                <CTAButton variant="primary" size="lg" href="/signup">
+                <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                   Start Free Trial
                 </CTAButton>
                 <CTAButton variant="ghost" size="lg" href="/demo">
@@ -389,7 +389,7 @@ export default function RetailIndustryPage() {
               required.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <CTAButton variant="primary" size="lg" href="/signup">
+              <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                 Start Free Trial
               </CTAButton>
               <CTAButton variant="ghost" size="lg" href="/demo">

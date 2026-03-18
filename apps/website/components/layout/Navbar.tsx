@@ -186,10 +186,10 @@ function MobileMenu({
 
         {/* CTA buttons */}
         <div className="mt-8 flex flex-col gap-3">
-          <CTAButton variant="ghost" href="/sign-in" className="w-full justify-center">
+          <CTAButton variant="ghost" href="https://app.kontafy.com/login" className="w-full justify-center">
             Sign in
           </CTAButton>
-          <CTAButton variant="primary" href="/signup" className="w-full justify-center">
+          <CTAButton variant="primary" href="https://app.kontafy.com/signup" className="w-full justify-center">
             Start Free
           </CTAButton>
         </div>
@@ -269,10 +269,10 @@ export default function Navbar() {
 
         {/* Right — CTAs */}
         <div className="hidden items-center gap-3 md:flex">
-          <CTAButton variant="ghost" size="sm" href="/sign-in">
+          <CTAButton variant="ghost" size="sm" href="https://app.kontafy.com/login">
             Sign in
           </CTAButton>
-          <CTAButton variant="primary" size="md" href="/signup" className="px-6 py-2.5">
+          <CTAButton variant="primary" size="md" href="https://app.kontafy.com/signup" className="px-6 py-2.5">
             Start Free
           </CTAButton>
         </div>

@@ -305,7 +305,7 @@ export default function GSTGuidePage() {
             <div className="mt-6 rounded-xl border border-green/20 bg-green/5 p-6">
               <p className="font-medium text-ink">
                 Ready to simplify your GST compliance?{" "}
-                <a href="/signup" className="text-green underline underline-offset-2 hover:text-green/80">
+                <a href="https://app.kontafy.com/signup" className="text-green underline underline-offset-2 hover:text-green/80">
                   Start your free trial
                 </a>{" "}
                 and see how Kontafy handles GST automatically.

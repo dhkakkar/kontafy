@@ -226,7 +226,7 @@ export default function KontafyVsTallyClient() {
                 and transparent pricing that saves you up to 78%.
               </p>
               <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-                <CTAButton variant="primary" size="lg" href="/signup">
+                <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                   Try Kontafy Free
                 </CTAButton>
                 <CTAButton variant="ghost" size="lg" href="/demo">
@@ -436,7 +436,7 @@ export default function KontafyVsTallyClient() {
               commitment.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <CTAButton variant="primary" size="lg" href="/signup">
+              <CTAButton variant="primary" size="lg" href="https://app.kontafy.com/signup">
                 Start Free Trial
               </CTAButton>
               <CTAButton
