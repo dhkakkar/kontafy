@@ -65,7 +65,7 @@ function getUpcomingDeadlines() {
     {
       type: "TDS Return",
       description: `Quarterly TDS return`,
-      due_date: dayjs().endOf("quarter").add(1, "month").date(7).format("DD MMM YYYY"),
+      due_date: dayjs().month(Math.floor(now.month() / 3) * 3 + 2).endOf("month").add(1, "month").date(7).format("DD MMM YYYY"),
       is_overdue: false,
     },
   ];
