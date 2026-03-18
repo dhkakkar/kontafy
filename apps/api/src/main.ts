@@ -39,10 +39,8 @@ async function bootstrap() {
     }),
   );
 
-  // Global prefix
-  app.setGlobalPrefix(configService.get<string>('API_PREFIX', 'api'));
-
-  // API versioning
+  // API versioning — routes become /v1/health, /v1/auth/signup, etc.
+  // No global prefix since domain is already api.kontafy.com
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: '1',
