@@ -18,6 +18,7 @@ import { WooCommerceAdapter } from './adapters/woocommerce.adapter';
           host: configService.get<string>('REDIS_HOST', 'localhost'),
           port: configService.get<number>('REDIS_PORT', 6379),
           password: configService.get<string>('REDIS_PASSWORD', undefined),
+          maxRetriesPerRequest: null,
         },
       } as any),
       inject: [ConfigService],
