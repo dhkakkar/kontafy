@@ -40,7 +40,7 @@ async function bootstrap() {
   );
 
   // Global prefix
-  app.setGlobalPrefix(configService.get<string>('API_PREFIX', 'api/v1'));
+  app.setGlobalPrefix(configService.get<string>('API_PREFIX', 'api'));
 
   // API versioning
   app.enableVersioning({

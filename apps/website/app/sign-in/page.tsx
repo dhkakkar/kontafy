@@ -51,7 +51,7 @@ export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <div className="flex min-h-[calc(100vh-80px)] bg-white">
+    <div className="flex min-h-screen bg-white">
       {/* ── Left: Branding Panel ── */}
       <motion.div
         initial={{ opacity: 0, x: -30 }}
@@ -188,7 +188,7 @@ export default function SignInPage() {
             </div>
 
             {/* Submit */}
-            <CTAButton variant="primary" size="lg" className="w-full">
+            <CTAButton variant="primary" size="md" className="w-full">
               Sign In
               <ArrowRight className="h-4 w-4" />
             </CTAButton>

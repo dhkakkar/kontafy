@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback } from "react";
 import {
   useReactTable,
   getCoreRowModel,
-  getSortingRowModel,
+  getSortedRowModel,
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
@@ -273,7 +273,7 @@ export default function AuditLogPage() {
     state: { sorting },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
-    getSortingRowModel: getSortingRowModel(),
+    getSortedRowModel: getSortedRowModel(),
     manualPagination: true,
     pageCount: meta?.totalPages || 0,
   });

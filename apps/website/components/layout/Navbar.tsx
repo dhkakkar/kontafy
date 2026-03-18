@@ -61,9 +61,9 @@ function ProductsDropdown({ onClose }: { onClose: () => void }) {
     <div
       ref={ref}
       role="menu"
-      className="absolute left-1/2 top-full z-50 mt-2 w-[680px] -translate-x-1/2 rounded-xl border border-border bg-white p-5 shadow-xl"
+      className="absolute right-0 top-full z-50 mt-2 w-[680px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-white p-5 shadow-xl lg:left-1/2 lg:right-auto lg:-translate-x-1/2"
     >
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {productModules.map((mod) => {
           const Icon = mod.icon;
           return (
@@ -114,9 +114,9 @@ function MobileMenu({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-white">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-white">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
         <Logo />
         <button
           type="button"
@@ -129,7 +129,7 @@ function MobileMenu({
       </div>
 
       {/* Links */}
-      <nav aria-label="Mobile navigation" className="overflow-y-auto px-5 py-6">
+      <nav aria-label="Mobile navigation" className="flex-1 overflow-y-auto px-5 py-6">
         <ul className="space-y-1">
           {navLinks.map((link) =>
             link.dropdown ? (

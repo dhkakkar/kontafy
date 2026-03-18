@@ -50,6 +50,8 @@ services:
       API_PORT: 5002
       DATABASE_URL: postgresql://${POSTGRES_USER:-kontafy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kontafy_prod}
       REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,7 +91,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5001
-      NEXT_PUBLIC_API_URL: https://api.kontafy.com
+      NEXT_PUBLIC_API_URL: https://api.kontafy.com/api/v1
     depends_on:
       - api
     networks:

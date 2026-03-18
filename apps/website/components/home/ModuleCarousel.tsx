@@ -43,7 +43,7 @@ export default function ModuleCarousel() {
         </div>
 
         {/* Scrollable container */}
-        <div className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-4 scrollbar-hide">
+        <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-4 scrollbar-hide">
           {modules.map((mod, i) => {
             const Icon = iconMap[mod.icon] ?? BookOpen;
             return (
@@ -53,7 +53,7 @@ export default function ModuleCarousel() {
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: i * 0.05 }}
                 viewport={{ once: true }}
-                className="min-w-[280px] flex-shrink-0 snap-start rounded-xl border border-border bg-white p-6 transition hover:shadow-lg"
+                className="w-[85vw] max-w-[400px] flex-shrink-0 snap-start rounded-xl border border-border bg-white p-6 transition hover:shadow-lg sm:w-[calc(50%-8px)]"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-navy/10">
                   <Icon className="h-6 w-6 text-navy" />
