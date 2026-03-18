@@ -22,6 +22,8 @@ COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @kontafy/web build
+# Ensure public dir exists even if empty
+RUN mkdir -p /app/apps/web/public
 
 # Stage 3: Production
 FROM node:22-alpine AS runner
