@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { Suspense, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   useReactTable,
@@ -24,6 +24,7 @@ import {
   ArrowLeft,
   Download,
   Filter,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -72,6 +73,14 @@ const PLATFORM_COLORS: Record<string, string> = {
 const columnHelper = createColumnHelper<MarketplaceOrder>();
 
 export default function CommerceOrdersPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center mt-12"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>}>
+      <CommerceOrdersContent />
+    </Suspense>
+  );
+}
+
+function CommerceOrdersContent() {
   const searchParams = useSearchParams();
   const initialPlatform = searchParams.get("platform") ?? "";
 

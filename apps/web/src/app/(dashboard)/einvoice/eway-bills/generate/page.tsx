@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,14 @@ import { ArrowLeft, Truck, Loader2 } from "lucide-react";
 import { useGenerateEwayBill } from "@/hooks/use-einvoice";
 
 export default function GenerateEwayBillPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center mt-12"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>}>
+      <GenerateEwayBillContent />
+    </Suspense>
+  );
+}
+
+function GenerateEwayBillContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedInvoiceId = searchParams.get("invoiceId") || "";
