@@ -12,7 +12,6 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/utils";
@@ -23,12 +22,15 @@ import {
   TrendingUp,
   TrendingDown,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
+import { api } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 
 interface ContactAging {
-  id: string;
-  name: string;
-  type: "customer" | "vendor" | "both";
+  contact_id: string;
+  contact_name: string;
+  type: string;
   total: number;
   current: number;
   days_1_30: number;
@@ -37,91 +39,21 @@ interface ContactAging {
   days_90_plus: number;
 }
 
-const contactAgingData: ContactAging[] = [
-  {
-    id: "1",
-    name: "NovaTech Infra",
-    type: "customer",
-    total: 142000,
-    current: 0,
-    days_1_30: 0,
-    days_31_60: 142000,
-    days_61_90: 0,
-    days_90_plus: 0,
-  },
-  {
-    id: "2",
-    name: "TechStar Solutions",
-    type: "customer",
-    total: 125000,
-    current: 125000,
-    days_1_30: 0,
-    days_31_60: 0,
-    days_61_90: 0,
-    days_90_plus: 0,
-  },
-  {
-    id: "3",
-    name: "GreenLeaf Exports",
-    type: "customer",
-    total: 87500,
-    current: 87500,
-    days_1_30: 0,
-    days_31_60: 0,
-    days_61_90: 0,
-    days_90_plus: 0,
-  },
-  {
-    id: "4",
-    name: "Apex Manufacturing",
-    type: "customer",
-    total: 75000,
-    current: 0,
-    days_1_30: 75000,
-    days_31_60: 0,
-    days_61_90: 0,
-    days_90_plus: 0,
-  },
-  {
-    id: "5",
-    name: "Prism Digital",
-    type: "customer",
-    total: 56000,
-    current: 56000,
-    days_1_30: 0,
-    days_31_60: 0,
-    days_61_90: 0,
-    days_90_plus: 0,
-  },
-  {
-    id: "6",
-    name: "Skyline Properties",
-    type: "vendor",
-    total: 45000,
-    current: 45000,
-    days_1_30: 0,
-    days_31_60: 0,
-    days_61_90: 0,
-    days_90_plus: 0,
-  },
-  {
-    id: "7",
-    name: "Prism Digital",
-    type: "vendor",
-    total: 22000,
-    current: 22000,
-    days_1_30: 0,
-    days_31_60: 0,
-    days_61_90: 0,
-    days_90_plus: 0,
-  },
-];
-
-const summaryData = {
-  total_receivable: 485500,
-  total_payable: 67000,
-  total_overdue: 217000,
-};
+interface OutstandingResponse {
+  data: {
+    summary: {
+      total_receivable: number;
+      total_payable: number;
+      total_overdue: number;
+      net_outstanding: number;
+    };
+    aging: {
+      receivable: { current: number; days_1_30: number; days_31_60: number; days_61_90: number; days_90_plus: number };
+      payable: { current: number; days_1_30: number; days_31_60: number; days_61_90: number; days_90_plus: number };
+    };
+    contact_aging: ContactAging[];
+  };
+}
 
 const columnHelper = createColumnHelper<ContactAging>();
 
@@ -130,10 +62,21 @@ export default function OutstandingPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
 
-  const receivableData = contactAgingData.filter(
+  const { data, isLoading } = useQuery({
+    queryKey: ["outstanding-payments"],
+    queryFn: async () => {
+      const res = await api.get<OutstandingResponse>("/bill/payments/outstanding");
+      return res.data;
+    },
+  });
+
+  const summary = data?.summary || { total_receivable: 0, total_payable: 0, total_overdue: 0 };
+  const contactAging = data?.contact_aging || [];
+
+  const receivableData = contactAging.filter(
     (c) => c.type === "customer" || c.type === "both"
   );
-  const payableData = contactAgingData.filter(
+  const payableData = contactAging.filter(
     (c) => c.type === "vendor" || c.type === "both"
   );
 
@@ -151,13 +94,13 @@ export default function OutstandingPage() {
   const filteredData = useMemo(() => {
     if (!searchQuery) return currentData;
     return currentData.filter((c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase())
+      c.contact_name.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [currentData, searchQuery]);
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("name", {
+      columnHelper.accessor("contact_name", {
         header: "Contact",
         cell: (info) => (
           <Link
@@ -266,7 +209,7 @@ export default function OutstandingPage() {
           <div>
             <p className="text-sm text-gray-500">Total Receivable</p>
             <p className="text-xl font-bold text-success-700">
-              {formatCurrency(summaryData.total_receivable)}
+              {formatCurrency(summary.total_receivable)}
             </p>
           </div>
         </Card>
@@ -277,7 +220,7 @@ export default function OutstandingPage() {
           <div>
             <p className="text-sm text-gray-500">Total Payable</p>
             <p className="text-xl font-bold text-warning-700">
-              {formatCurrency(summaryData.total_payable)}
+              {formatCurrency(summary.total_payable)}
             </p>
           </div>
         </Card>
@@ -288,7 +231,7 @@ export default function OutstandingPage() {
           <div>
             <p className="text-sm text-gray-500">Total Overdue</p>
             <p className="text-xl font-bold text-danger-700">
-              {formatCurrency(summaryData.total_overdue)}
+              {formatCurrency(summary.total_overdue)}
             </p>
           </div>
         </Card>
@@ -310,9 +253,15 @@ export default function OutstandingPage() {
           />
         </div>
 
-        <DataTable table={table} />
+        {isLoading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : (
+          <DataTable table={table} />
+        )}
 
-        {filteredData.length === 0 && (
+        {!isLoading && filteredData.length === 0 && (
           <div className="py-12 text-center">
             <p className="text-gray-500">No outstanding amounts found</p>
           </div>

@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import { Save, FileText, Landmark } from "lucide-react";
+import { Save, FileText, Landmark, Loader2 } from "lucide-react";
 
 export default function InvoiceConfigPage() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [form, setForm] = useState({
     invoice_prefix: "INV-",
@@ -24,6 +25,30 @@ export default function InvoiceConfigPage() {
     bank_ifsc: "",
     bank_branch: "",
   });
+
+  useEffect(() => {
+    api
+      .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
+      .then((res) => {
+        const d = res.data;
+        if (d) {
+          setForm((prev) => ({
+            ...prev,
+            invoice_prefix: String(d.invoice_prefix || prev.invoice_prefix),
+            next_invoice_number: String(d.next_invoice_number || prev.next_invoice_number),
+            default_payment_terms: String(d.default_payment_terms || prev.default_payment_terms),
+            default_terms_conditions: String(d.default_terms_conditions || prev.default_terms_conditions),
+            default_notes: String(d.default_notes || ""),
+            bank_name: String(d.bank_name || ""),
+            bank_account_number: String(d.bank_account_number || ""),
+            bank_ifsc: String(d.bank_ifsc || ""),
+            bank_branch: String(d.bank_branch || ""),
+          }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   const updateField = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -52,6 +77,14 @@ export default function InvoiceConfigPage() {
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-3xl">

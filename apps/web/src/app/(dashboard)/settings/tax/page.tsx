@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import { Save, Landmark, Shield } from "lucide-react";
+import { Save, Landmark, Shield, Loader2 } from "lucide-react";
 
 const INDIAN_STATES = [
   { value: "AN", label: "Andaman and Nicobar Islands" },
@@ -58,6 +58,7 @@ const TDS_SECTIONS = [
 export default function TaxSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [form, setForm] = useState({
     gst_registration_type: "regular",
@@ -69,6 +70,29 @@ export default function TaxSettingsPage() {
     tds_tan: "",
     default_tds_section: "",
   });
+
+  useEffect(() => {
+    api
+      .get<{ data: Record<string, unknown> }>("/settings/tax")
+      .then((res) => {
+        const d = res.data;
+        if (d) {
+          setForm((prev) => ({
+            ...prev,
+            gst_registration_type: String(d.gst_registration_type || prev.gst_registration_type),
+            gstin: String(d.gstin || ""),
+            pan: String(d.pan || ""),
+            filing_frequency: String(d.filing_frequency || prev.filing_frequency),
+            place_of_supply: String(d.place_of_supply || prev.place_of_supply),
+            enable_tds: Boolean(d.enable_tds),
+            tds_tan: String(d.tds_tan || ""),
+            default_tds_section: String(d.default_tds_section || ""),
+          }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   const updateField = (field: string, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -96,6 +120,14 @@ export default function TaxSettingsPage() {
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-3xl">

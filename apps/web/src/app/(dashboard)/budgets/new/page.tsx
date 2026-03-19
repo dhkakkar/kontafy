@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useCreateBudget } from "@/hooks/use-budgets";
 import { ArrowLeft, Save, Plus, Trash2 } from "lucide-react";
+import { api } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 
 interface BudgetLine {
   id: string;
@@ -25,23 +27,29 @@ function genId() {
 const MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
 const MONTH_KEYS = ["apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "jan", "feb", "mar"] as const;
 
-// Sample accounts - in production these would come from API
-const accountOptions = [
-  { value: "acc-rent", label: "Rent Expense" },
-  { value: "acc-salary", label: "Salary & Wages" },
-  { value: "acc-marketing", label: "Marketing Expense" },
-  { value: "acc-travel", label: "Travel & Conveyance" },
-  { value: "acc-utilities", label: "Utilities" },
-  { value: "acc-professional", label: "Professional Fees" },
-  { value: "acc-office", label: "Office Supplies" },
-  { value: "acc-insurance", label: "Insurance" },
-  { value: "acc-depreciation", label: "Depreciation" },
-  { value: "acc-misc", label: "Miscellaneous Expense" },
-];
+interface Account {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+}
 
 export default function NewBudgetPage() {
   const router = useRouter();
   const createMutation = useCreateBudget();
+
+  const { data: accounts = [] } = useQuery<Account[]>({
+    queryKey: ["accounts"],
+    queryFn: async () => {
+      const res = await api.get<{ data: Account[] }>("/books/accounts");
+      return res.data;
+    },
+  });
+
+  const accountOptions = accounts.map((a) => ({
+    value: a.id,
+    label: `${a.code} - ${a.name}`,
+  }));
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");

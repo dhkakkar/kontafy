@@ -9,6 +9,8 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
+import { api } from "@/lib/api";
+import { useQuery, useMutation } from "@tanstack/react-query";
 
 interface JournalLine {
   id: string;
@@ -18,22 +20,12 @@ interface JournalLine {
   credit: number;
 }
 
-const accountOptions = [
-  { value: "1101", label: "1101 - Cash in Hand" },
-  { value: "1102", label: "1102 - Bank Account - HDFC" },
-  { value: "1103", label: "1103 - Accounts Receivable" },
-  { value: "1104", label: "1104 - GST Input Credit" },
-  { value: "1105", label: "1105 - Inventory" },
-  { value: "2101", label: "2101 - Accounts Payable" },
-  { value: "2102", label: "2102 - GST Payable" },
-  { value: "4001", label: "4001 - Sales Revenue" },
-  { value: "4002", label: "4002 - Service Revenue" },
-  { value: "5001", label: "5001 - Cost of Goods Sold" },
-  { value: "5002", label: "5002 - Salaries & Wages" },
-  { value: "5003", label: "5003 - Rent Expense" },
-  { value: "5004", label: "5004 - Utilities" },
-  { value: "5005", label: "5005 - Marketing & Advertising" },
-];
+interface Account {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+}
 
 function generateLineId() {
   return Math.random().toString(36).slice(2, 10);
@@ -47,6 +39,42 @@ export default function NewJournalEntryPage() {
     { id: generateLineId(), accountId: "", description: "", debit: 0, credit: 0 },
     { id: generateLineId(), accountId: "", description: "", debit: 0, credit: 0 },
   ]);
+
+  // Fetch accounts from API
+  const { data: accounts = [] } = useQuery<Account[]>({
+    queryKey: ["accounts"],
+    queryFn: async () => {
+      const res = await api.get<{ data: Account[] }>("/books/accounts");
+      return res.data;
+    },
+  });
+
+  const accountOptions = accounts.map((a) => ({
+    value: a.id,
+    label: `${a.code} - ${a.name}`,
+  }));
+
+  // Create journal entry mutation
+  const createEntry = useMutation({
+    mutationFn: async (isPosted: boolean) => {
+      return api.post("/books/journal-entries", {
+        date,
+        narration: narration || undefined,
+        is_posted: isPosted,
+        lines: lines
+          .filter((l) => l.accountId && (l.debit > 0 || l.credit > 0))
+          .map((l) => ({
+            account_id: l.accountId,
+            debit: l.debit || 0,
+            credit: l.credit || 0,
+            description: l.description || undefined,
+          })),
+      });
+    },
+    onSuccess: () => {
+      router.push("/books/journal");
+    },
+  });
 
   const totalDebit = lines.reduce((sum, l) => sum + (l.debit || 0), 0);
   const totalCredit = lines.reduce((sum, l) => sum + (l.credit || 0), 0);
@@ -74,7 +102,6 @@ export default function NewJournalEntryPage() {
       lines.map((l) => {
         if (l.id !== id) return l;
         const updated = { ...l, [field]: value };
-        // If entering debit, clear credit and vice versa
         if (field === "debit" && Number(value) > 0) {
           updated.credit = 0;
         } else if (field === "credit" && Number(value) > 0) {
@@ -106,17 +133,30 @@ export default function NewJournalEntryPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" icon={<Save className="h-4 w-4" />}>
+          <Button
+            variant="outline"
+            icon={<Save className="h-4 w-4" />}
+            onClick={() => createEntry.mutate(false)}
+            loading={createEntry.isPending}
+          >
             Save as Draft
           </Button>
           <Button
             icon={<Send className="h-4 w-4" />}
             disabled={!isBalanced || !narration}
+            onClick={() => createEntry.mutate(true)}
+            loading={createEntry.isPending}
           >
             Post Entry
           </Button>
         </div>
       </div>
+
+      {createEntry.isError && (
+        <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
+          {createEntry.error?.message || "Failed to create journal entry"}
+        </div>
+      )}
 
       {/* Entry Details */}
       <Card padding="md">
@@ -131,7 +171,6 @@ export default function NewJournalEntryPage() {
             label="Reference Number"
             placeholder="Auto-generated"
             disabled
-            value="JE-0025"
           />
         </div>
         <div className="mt-4">

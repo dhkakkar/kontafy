@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ArrowLeft, Save } from "lucide-react";
+import { api } from "@/lib/api";
 
 const GST_RATE_OPTIONS = [
   { value: "0", label: "0% (Exempt)" },
@@ -39,6 +40,7 @@ const UNIT_OPTIONS = [
 export default function NewProductPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const [form, setForm] = useState({
     name: "",
@@ -61,21 +63,26 @@ export default function NewProductPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError("");
 
     try {
-      // TODO: Replace with actual API call
-      // await api.post('/stock/products', {
-      //   ...form,
-      //   purchase_price: form.purchase_price ? Number(form.purchase_price) : undefined,
-      //   selling_price: form.selling_price ? Number(form.selling_price) : undefined,
-      //   tax_rate: form.tax_rate ? Number(form.tax_rate) : undefined,
-      //   reorder_level: form.reorder_level ? Number(form.reorder_level) : undefined,
-      // });
-      console.log("Creating product:", form);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await api.post("/stock/products", {
+        name: form.name,
+        sku: form.sku || undefined,
+        description: form.description || undefined,
+        type: form.type,
+        hsn_code: form.hsn_code || undefined,
+        unit: form.unit,
+        purchase_price: form.purchase_price ? Number(form.purchase_price) : undefined,
+        selling_price: form.selling_price ? Number(form.selling_price) : undefined,
+        tax_rate: form.tax_rate ? Number(form.tax_rate) : undefined,
+        track_inventory: form.track_inventory,
+        reorder_level: form.reorder_level ? Number(form.reorder_level) : undefined,
+      });
       router.push("/stock/products");
-    } catch (error) {
-      console.error("Failed to create product:", error);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create product";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -97,6 +104,12 @@ export default function NewProductPage() {
           </p>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
+          {error}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
         {/* Basic Info */}

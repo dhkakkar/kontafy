@@ -8,25 +8,37 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
+import { api } from "@/lib/api";
+import { useQuery, useMutation } from "@tanstack/react-query";
 
 interface LineItem {
   id: string;
+  productId?: string;
   productName: string;
   description: string;
   hsnCode: string;
   quantity: number;
   rate: number;
-  taxRate: number; // GST %
+  taxRate: number;
   amount: number;
 }
 
-const customerOptions = [
-  { value: "c1", label: "TechStar Solutions", description: "GSTIN: 27AABCT1234A1Z5" },
-  { value: "c2", label: "GreenLeaf Exports", description: "GSTIN: 07AABCG5678B1Z3" },
-  { value: "c3", label: "Meridian Logistics", description: "GSTIN: 29AABCM9012C1Z1" },
-  { value: "c4", label: "Apex Manufacturing", description: "GSTIN: 24AABCA3456D1Z9" },
-  { value: "c5", label: "Prism Digital" },
-];
+interface Contact {
+  id: string;
+  name: string;
+  gstin?: string;
+  type: string;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  sku?: string;
+  hsn_code?: string;
+  selling_price?: number;
+  tax_rate?: number;
+  unit?: string;
+}
 
 const taxOptions = [
   { value: "0", label: "No Tax (0%)" },
@@ -34,6 +46,44 @@ const taxOptions = [
   { value: "12", label: "GST 12%" },
   { value: "18", label: "GST 18%" },
   { value: "28", label: "GST 28%" },
+];
+
+const INDIAN_STATES = [
+  { value: "AN", label: "Andaman and Nicobar Islands" },
+  { value: "AP", label: "Andhra Pradesh" },
+  { value: "AR", label: "Arunachal Pradesh" },
+  { value: "AS", label: "Assam" },
+  { value: "BR", label: "Bihar" },
+  { value: "CH", label: "Chandigarh" },
+  { value: "CT", label: "Chhattisgarh" },
+  { value: "DN", label: "Dadra and Nagar Haveli and Daman and Diu" },
+  { value: "DL", label: "Delhi" },
+  { value: "GA", label: "Goa" },
+  { value: "GJ", label: "Gujarat" },
+  { value: "HR", label: "Haryana" },
+  { value: "HP", label: "Himachal Pradesh" },
+  { value: "JK", label: "Jammu and Kashmir" },
+  { value: "JH", label: "Jharkhand" },
+  { value: "KA", label: "Karnataka" },
+  { value: "KL", label: "Kerala" },
+  { value: "LA", label: "Ladakh" },
+  { value: "MP", label: "Madhya Pradesh" },
+  { value: "MH", label: "Maharashtra" },
+  { value: "MN", label: "Manipur" },
+  { value: "ML", label: "Meghalaya" },
+  { value: "MZ", label: "Mizoram" },
+  { value: "NL", label: "Nagaland" },
+  { value: "OD", label: "Odisha" },
+  { value: "PY", label: "Puducherry" },
+  { value: "PB", label: "Punjab" },
+  { value: "RJ", label: "Rajasthan" },
+  { value: "SK", label: "Sikkim" },
+  { value: "TN", label: "Tamil Nadu" },
+  { value: "TG", label: "Telangana" },
+  { value: "TR", label: "Tripura" },
+  { value: "UP", label: "Uttar Pradesh" },
+  { value: "UK", label: "Uttarakhand" },
+  { value: "WB", label: "West Bengal" },
 ];
 
 function generateId() {
@@ -71,6 +121,63 @@ export default function NewInvoicePage() {
     },
   ]);
 
+  // Fetch contacts (customers) from API
+  const { data: contacts = [] } = useQuery<Contact[]>({
+    queryKey: ["contacts", "customer"],
+    queryFn: async () => {
+      const res = await api.get<{ data: Contact[] }>("/bill/contacts", {
+        type: "customer",
+        limit: "100",
+      });
+      return res.data;
+    },
+  });
+
+  // Fetch products from API
+  const { data: products = [] } = useQuery<Product[]>({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const res = await api.get<{ data: Product[] }>("/stock/products", {
+        limit: "200",
+      });
+      return res.data;
+    },
+  });
+
+  const customerOptions = contacts.map((c) => ({
+    value: c.id,
+    label: c.name,
+    description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
+  }));
+
+  // Create invoice mutation
+  const createInvoice = useMutation({
+    mutationFn: async (status: "draft" | "sent") => {
+      const halfRate = (rate: number) => rate / 2;
+      return api.post("/bill/invoices", {
+        type: "invoice",
+        contact_id: customer,
+        date: invoiceDate,
+        due_date: dueDate || undefined,
+        place_of_supply: placeOfSupply || undefined,
+        notes: notes || undefined,
+        is_posted: status === "sent",
+        items: items.map((item) => ({
+          product_id: item.productId || undefined,
+          description: item.productName || item.description,
+          hsn_code: item.hsnCode || undefined,
+          quantity: item.quantity,
+          rate: item.rate,
+          cgst_rate: halfRate(item.taxRate),
+          sgst_rate: halfRate(item.taxRate),
+        })),
+      });
+    },
+    onSuccess: () => {
+      router.push("/invoices");
+    },
+  });
+
   const addItem = () => {
     setItems([
       ...items,
@@ -103,9 +210,28 @@ export default function NewInvoicePage() {
     );
   };
 
+  const selectProduct = (itemId: string, productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    setItems(
+      items.map((item) => {
+        if (item.id !== itemId) return item;
+        const rate = product.selling_price || 0;
+        return {
+          ...item,
+          productId: product.id,
+          productName: product.name,
+          hsnCode: product.hsn_code || "",
+          rate,
+          taxRate: product.tax_rate || 18,
+          amount: calcAmount(item.quantity, rate),
+        };
+      })
+    );
+  };
+
   const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
 
-  // Group tax by rate
   const taxBreakdown: Record<number, { rate: number; taxable: number; tax: number }> = {};
   items.forEach((item) => {
     if (!taxBreakdown[item.taxRate]) {
@@ -121,6 +247,8 @@ export default function NewInvoicePage() {
   );
   const grandTotal = subtotal + totalTax;
 
+  const canSubmit = customer && items.some((i) => i.amount > 0);
+
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Header */}
@@ -134,16 +262,35 @@ export default function NewInvoicePage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">New Invoice</h1>
-            <p className="text-sm text-gray-500 mt-0.5">INV-0048</p>
+            <p className="text-sm text-gray-500 mt-0.5">Create a new sales invoice</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" icon={<Save className="h-4 w-4" />}>
+          <Button
+            variant="outline"
+            icon={<Save className="h-4 w-4" />}
+            onClick={() => createInvoice.mutate("draft")}
+            loading={createInvoice.isPending}
+            disabled={!canSubmit}
+          >
             Save Draft
           </Button>
-          <Button icon={<Send className="h-4 w-4" />}>Send Invoice</Button>
+          <Button
+            icon={<Send className="h-4 w-4" />}
+            onClick={() => createInvoice.mutate("sent")}
+            loading={createInvoice.isPending}
+            disabled={!canSubmit}
+          >
+            Send Invoice
+          </Button>
         </div>
       </div>
+
+      {createInvoice.isError && (
+        <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
+          {createInvoice.error?.message || "Failed to create invoice"}
+        </div>
+      )}
 
       {/* Customer & Dates */}
       <Card padding="md">
@@ -158,15 +305,7 @@ export default function NewInvoicePage() {
           />
           <Select
             label="Place of Supply"
-            options={[
-              { value: "MH", label: "Maharashtra" },
-              { value: "DL", label: "Delhi" },
-              { value: "KA", label: "Karnataka" },
-              { value: "GJ", label: "Gujarat" },
-              { value: "TN", label: "Tamil Nadu" },
-              { value: "UP", label: "Uttar Pradesh" },
-              { value: "RJ", label: "Rajasthan" },
-            ]}
+            options={INDIAN_STATES}
             value={placeOfSupply}
             onChange={setPlaceOfSupply}
             searchable
@@ -232,15 +371,29 @@ export default function NewInvoicePage() {
               {items.map((item) => (
                 <tr key={item.id} className="border-b border-gray-100">
                   <td className="py-2 px-4">
-                    <input
-                      type="text"
-                      value={item.productName}
-                      onChange={(e) =>
-                        updateItem(item.id, "productName", e.target.value)
-                      }
-                      placeholder="Product or service name"
-                      className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
+                    {products.length > 0 ? (
+                      <Select
+                        options={products.map((p) => ({
+                          value: p.id,
+                          label: p.name,
+                          description: p.sku || undefined,
+                        }))}
+                        value={item.productId || ""}
+                        onChange={(val) => selectProduct(item.id, val)}
+                        searchable
+                        placeholder="Select product"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={item.productName}
+                        onChange={(e) =>
+                          updateItem(item.id, "productName", e.target.value)
+                        }
+                        placeholder="Product or service name"
+                        className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    )}
                   </td>
                   <td className="py-2 px-4">
                     <input
@@ -333,7 +486,6 @@ export default function NewInvoicePage() {
               </span>
             </div>
 
-            {/* Tax Breakdown */}
             {Object.values(taxBreakdown).map(
               (tax) =>
                 tax.rate > 0 && (
