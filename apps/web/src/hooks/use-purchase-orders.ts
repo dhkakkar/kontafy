@@ -59,7 +59,7 @@ interface ApiResponse<T> {
 
 // ─── Hooks ────────────────────────────────────────────────────
 
-export function usePurchaseOrders(params?: { page?: number; status?: string; search?: string }) {
+export function usePurchaseOrders(params?: { page?: number; status?: string; search?: string; from?: string; to?: string }) {
   return useQuery<ApiResponse<PurchaseOrder[]>>({
     queryKey: ["purchase-orders", params],
     queryFn: () => {
@@ -67,6 +67,8 @@ export function usePurchaseOrders(params?: { page?: number; status?: string; sea
       if (params?.page) query.page = String(params.page);
       if (params?.status) query.status = params.status;
       if (params?.search) query.search = params.search;
+      if (params?.from) query.from = params.from;
+      if (params?.to) query.to = params.to;
       return api.get<ApiResponse<PurchaseOrder[]>>("/purchase-orders", query);
     },
   });

@@ -51,17 +51,22 @@ export default function ProductsPage() {
     queryKey: ["products", activeTab, searchQuery],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (activeTab !== "all") params.type = activeTab;
+      if (activeTab === "goods" || activeTab === "services") params.type = activeTab;
       if (searchQuery) params.search = searchQuery;
       const res = await api.get<ApiResponse<Product[]>>("/stock/products", params);
       return res.data;
     },
   });
 
+  const lowStockProducts = products.filter(
+    (p) => p.type === "goods" && p.total_quantity <= 10
+  );
+
   const tabs = [
     { value: "all", label: "All", count: products.length },
     { value: "goods", label: "Goods", count: products.filter((p) => p.type === "goods").length },
     { value: "services", label: "Services", count: products.filter((p) => p.type === "services").length },
+    { value: "low_stock", label: "Low Stock", count: lowStockProducts.length },
   ];
 
   const columns = useMemo(
@@ -150,8 +155,10 @@ export default function ProductsPage() {
     []
   );
 
+  const displayProducts = activeTab === "low_stock" ? lowStockProducts : products;
+
   const table = useReactTable({
-    data: products,
+    data: displayProducts,
     columns,
     state: { sorting },
     onSortingChange: setSorting,

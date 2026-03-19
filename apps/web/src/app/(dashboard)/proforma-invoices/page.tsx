@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -18,8 +19,19 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { useQuotations, type Quotation } from "@/hooks/use-quotations";
-import { Plus, Search, Download, FileText } from "lucide-react";
+import { api } from "@/lib/api";
+import { Plus, Search, Download, Loader2, FileText } from "lucide-react";
+
+interface ProformaInvoice {
+  id: string;
+  proforma_number: string;
+  contact_name?: string;
+  contact?: { name: string };
+  date: string;
+  validity_date?: string;
+  total: number;
+  status: "draft" | "sent" | "accepted" | "converted" | "expired" | "cancelled";
+}
 
 const statusBadgeMap: Record<
   string,
@@ -29,43 +41,42 @@ const statusBadgeMap: Record<
   sent: { variant: "info", label: "Sent" },
   accepted: { variant: "success", label: "Accepted" },
   converted: { variant: "success", label: "Converted" },
-  invoiced: { variant: "success", label: "Invoiced" },
-  rejected: { variant: "danger", label: "Rejected" },
   expired: { variant: "warning", label: "Expired" },
+  cancelled: { variant: "danger", label: "Cancelled" },
 };
 
-const columnHelper = createColumnHelper<Quotation>();
+const columnHelper = createColumnHelper<ProformaInvoice>();
 
-export default function QuotationsPage() {
+export default function ProformaInvoicesPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
 
-  const { data, isLoading } = useQuotations({
-    status: activeTab !== "all" ? activeTab : undefined,
-    search: searchQuery || undefined,
-    from: dateFrom || undefined,
-    to: dateTo || undefined,
+  const params: Record<string, string> = {};
+  if (activeTab !== "all") params.status = activeTab;
+  if (searchQuery) params.search = searchQuery;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["proforma-invoices", activeTab, searchQuery],
+    queryFn: () =>
+      api.get<{ data: ProformaInvoice[] }>("/bill/proforma-invoices", params),
   });
 
-  const quotations = data?.data || [];
+  const proformaInvoices = data?.data || [];
 
   const tabs = [
-    { value: "all", label: "All", count: quotations.length },
-    { value: "draft", label: "Draft", count: quotations.filter((q) => q.status === "draft").length },
-    { value: "sent", label: "Sent", count: quotations.filter((q) => q.status === "sent").length },
-    { value: "accepted", label: "Accepted", count: quotations.filter((q) => q.status === "accepted").length },
-    { value: "rejected", label: "Rejected", count: quotations.filter((q) => q.status === "rejected").length },
-    { value: "expired", label: "Expired", count: quotations.filter((q) => q.status === "expired").length },
+    { value: "all", label: "All", count: proformaInvoices.length },
+    { value: "draft", label: "Draft", count: proformaInvoices.filter((p) => p.status === "draft").length },
+    { value: "sent", label: "Sent", count: proformaInvoices.filter((p) => p.status === "sent").length },
+    { value: "accepted", label: "Accepted", count: proformaInvoices.filter((p) => p.status === "accepted").length },
+    { value: "expired", label: "Expired", count: proformaInvoices.filter((p) => p.status === "expired").length },
   ];
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("quotation_number", {
-        header: "Quotation #",
+      columnHelper.accessor("proforma_number", {
+        header: "Proforma #",
         cell: (info) => (
           <span className="font-medium text-primary-800">
             {info.getValue()}
@@ -77,7 +88,7 @@ export default function QuotationsPage() {
         header: "Customer",
         cell: (info) => (
           <span className="text-gray-900">
-            {info.row.original.contact?.company_name || info.row.original.contact?.name || "-"}
+            {info.row.original.contact?.name || info.row.original.contact_name || "-"}
           </span>
         ),
       }),
@@ -119,7 +130,7 @@ export default function QuotationsPage() {
   );
 
   const table = useReactTable({
-    data: quotations,
+    data: proformaInvoices,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -132,9 +143,9 @@ export default function QuotationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Quotations</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Proforma Invoices</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Create and manage sales quotations
+            Send preliminary invoices before final billing
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -145,8 +156,8 @@ export default function QuotationsPage() {
           >
             Export
           </Button>
-          <Link href="/quotations/new">
-            <Button icon={<Plus className="h-4 w-4" />}>New Quotation</Button>
+          <Link href="/proforma-invoices/new">
+            <Button icon={<Plus className="h-4 w-4" />}>New Proforma</Button>
           </Link>
         </div>
       </div>
@@ -158,41 +169,27 @@ export default function QuotationsPage() {
 
         <div className="p-4 border-b border-gray-200 flex items-end gap-4 flex-wrap">
           <Input
-            placeholder="Search by customer or quotation number..."
+            placeholder="Search by customer or proforma number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
             className="max-w-sm"
           />
-          <Input
-            label="From"
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-40"
-          />
-          <Input
-            label="To"
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-40"
-          />
         </div>
 
         {isLoading ? (
-          <div className="p-8">
-            <div className="h-40 bg-gray-100 rounded animate-pulse" />
+          <div className="p-8 flex justify-center">
+            <Loader2 className="h-8 w-8 text-gray-400 animate-spin" />
           </div>
-        ) : quotations.length === 0 ? (
+        ) : proformaInvoices.length === 0 ? (
           <div className="p-8 text-center">
             <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No quotations found</p>
+            <p className="text-gray-500">No proforma invoices found</p>
           </div>
         ) : (
           <DataTable
             table={table}
-            onRowClick={(row) => router.push(`/quotations/${row.id}`)}
+            onRowClick={(row) => router.push(`/proforma-invoices/${row.id}`)}
           />
         )}
       </Card>

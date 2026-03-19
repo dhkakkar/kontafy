@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -18,54 +19,66 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { useQuotations, type Quotation } from "@/hooks/use-quotations";
-import { Plus, Search, Download, FileText } from "lucide-react";
+import { Plus, Search, Download, MoreHorizontal, FileText, Loader2 } from "lucide-react";
+import { api } from "@/lib/api";
+
+interface CreditNote {
+  id: string;
+  credit_note_number: string;
+  contact_name?: string;
+  contact?: { name: string };
+  date: string;
+  original_invoice_number?: string;
+  amount: number;
+  status: "draft" | "issued" | "applied" | "cancelled";
+  reason?: string;
+}
+
+interface ApiResponse<T> {
+  data: T;
+  meta?: { total?: number; page?: number; limit?: number };
+}
 
 const statusBadgeMap: Record<
   string,
   { variant: "success" | "warning" | "danger" | "info" | "default"; label: string }
 > = {
   draft: { variant: "default", label: "Draft" },
-  sent: { variant: "info", label: "Sent" },
-  accepted: { variant: "success", label: "Accepted" },
-  converted: { variant: "success", label: "Converted" },
-  invoiced: { variant: "success", label: "Invoiced" },
-  rejected: { variant: "danger", label: "Rejected" },
-  expired: { variant: "warning", label: "Expired" },
+  issued: { variant: "info", label: "Issued" },
+  applied: { variant: "success", label: "Applied" },
+  cancelled: { variant: "danger", label: "Cancelled" },
 };
 
-const columnHelper = createColumnHelper<Quotation>();
+const columnHelper = createColumnHelper<CreditNote>();
 
-export default function QuotationsPage() {
+export default function CreditNotesPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
 
-  const { data, isLoading } = useQuotations({
-    status: activeTab !== "all" ? activeTab : undefined,
-    search: searchQuery || undefined,
-    from: dateFrom || undefined,
-    to: dateTo || undefined,
+  const { data: creditNotes = [], isLoading, error } = useQuery<CreditNote[]>({
+    queryKey: ["credit-notes", activeTab, searchQuery],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (activeTab !== "all") params.status = activeTab;
+      if (searchQuery) params.search = searchQuery;
+      const res = await api.get<ApiResponse<CreditNote[]>>("/bill/credit-notes", params);
+      return res.data;
+    },
   });
 
-  const quotations = data?.data || [];
-
   const tabs = [
-    { value: "all", label: "All", count: quotations.length },
-    { value: "draft", label: "Draft", count: quotations.filter((q) => q.status === "draft").length },
-    { value: "sent", label: "Sent", count: quotations.filter((q) => q.status === "sent").length },
-    { value: "accepted", label: "Accepted", count: quotations.filter((q) => q.status === "accepted").length },
-    { value: "rejected", label: "Rejected", count: quotations.filter((q) => q.status === "rejected").length },
-    { value: "expired", label: "Expired", count: quotations.filter((q) => q.status === "expired").length },
+    { value: "all", label: "All", count: creditNotes.length },
+    { value: "draft", label: "Draft", count: creditNotes.filter((c) => c.status === "draft").length },
+    { value: "issued", label: "Issued", count: creditNotes.filter((c) => c.status === "issued").length },
+    { value: "applied", label: "Applied", count: creditNotes.filter((c) => c.status === "applied").length },
   ];
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("quotation_number", {
-        header: "Quotation #",
+      columnHelper.accessor("credit_note_number", {
+        header: "Credit Note #",
         cell: (info) => (
           <span className="font-medium text-primary-800">
             {info.getValue()}
@@ -77,7 +90,7 @@ export default function QuotationsPage() {
         header: "Customer",
         cell: (info) => (
           <span className="text-gray-900">
-            {info.row.original.contact?.company_name || info.row.original.contact?.name || "-"}
+            {info.row.original.contact_name || info.row.original.contact?.name || "-"}
           </span>
         ),
       }),
@@ -87,19 +100,19 @@ export default function QuotationsPage() {
           <span className="text-gray-600">{formatDate(info.getValue())}</span>
         ),
       }),
-      columnHelper.accessor("validity_date", {
-        header: "Valid Until",
+      columnHelper.accessor("original_invoice_number", {
+        header: "Original Invoice",
         cell: (info) => (
           <span className="text-gray-600">
-            {info.getValue() ? formatDate(info.getValue()!) : "-"}
+            {info.getValue() || "-"}
           </span>
         ),
       }),
-      columnHelper.accessor("total", {
+      columnHelper.accessor("amount", {
         header: "Amount",
         cell: (info) => (
           <span className="font-semibold text-gray-900">
-            {formatCurrency(Number(info.getValue()))}
+            {formatCurrency(info.getValue())}
           </span>
         ),
       }),
@@ -114,12 +127,20 @@ export default function QuotationsPage() {
           );
         },
       }),
+      columnHelper.display({
+        id: "actions",
+        cell: () => (
+          <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+        ),
+      }),
     ],
     []
   );
 
   const table = useReactTable({
-    data: quotations,
+    data: creditNotes,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -132,9 +153,9 @@ export default function QuotationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Quotations</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Credit Notes</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Create and manage sales quotations
+            Manage credit notes for returns and adjustments
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -145,8 +166,8 @@ export default function QuotationsPage() {
           >
             Export
           </Button>
-          <Link href="/quotations/new">
-            <Button icon={<Plus className="h-4 w-4" />}>New Quotation</Button>
+          <Link href="/credit-notes/new">
+            <Button icon={<Plus className="h-4 w-4" />}>New Credit Note</Button>
           </Link>
         </div>
       </div>
@@ -156,43 +177,33 @@ export default function QuotationsPage() {
           <Tabs tabs={tabs} value={activeTab} onChange={setActiveTab} />
         </div>
 
-        <div className="p-4 border-b border-gray-200 flex items-end gap-4 flex-wrap">
+        <div className="p-4 border-b border-gray-200">
           <Input
-            placeholder="Search by customer or quotation number..."
+            placeholder="Search by customer or credit note number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
             className="max-w-sm"
           />
-          <Input
-            label="From"
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-40"
-          />
-          <Input
-            label="To"
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-40"
-          />
         </div>
 
         {isLoading ? (
-          <div className="p-8">
-            <div className="h-40 bg-gray-100 rounded animate-pulse" />
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
-        ) : quotations.length === 0 ? (
+        ) : error ? (
+          <div className="py-12 text-center text-danger-600">
+            Failed to load credit notes. Please try again.
+          </div>
+        ) : creditNotes.length === 0 ? (
           <div className="p-8 text-center">
             <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No quotations found</p>
+            <p className="text-gray-500">No credit notes found</p>
           </div>
         ) : (
           <DataTable
             table={table}
-            onRowClick={(row) => router.push(`/quotations/${row.id}`)}
+            onRowClick={(row) => router.push(`/credit-notes/${row.id}`)}
           />
         )}
       </Card>

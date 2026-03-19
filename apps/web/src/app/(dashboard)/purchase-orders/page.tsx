@@ -39,10 +39,14 @@ export default function PurchaseOrdersPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const { data, isLoading } = usePurchaseOrders({
     status: activeTab !== "all" ? activeTab : undefined,
     search: searchQuery || undefined,
+    from: dateFrom || undefined,
+    to: dateTo || undefined,
   });
 
   const orders = data?.data || [];
@@ -151,13 +155,27 @@ export default function PurchaseOrdersPage() {
           <Tabs tabs={tabs} value={activeTab} onChange={setActiveTab} />
         </div>
 
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-gray-200 flex items-end gap-4 flex-wrap">
           <Input
             placeholder="Search by vendor or PO number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
             className="max-w-sm"
+          />
+          <Input
+            label="From"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-40"
+          />
+          <Input
+            label="To"
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-40"
           />
         </div>
 

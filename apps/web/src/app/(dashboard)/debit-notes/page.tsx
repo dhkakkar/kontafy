@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -18,54 +19,63 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { useQuotations, type Quotation } from "@/hooks/use-quotations";
-import { Plus, Search, Download, FileText } from "lucide-react";
+import { api } from "@/lib/api";
+import { Plus, Search, Download, Loader2, FileText } from "lucide-react";
+
+interface DebitNote {
+  id: string;
+  debit_note_number: string;
+  contact_name?: string;
+  contact?: { name: string };
+  date: string;
+  original_bill_number?: string;
+  amount: number;
+  status: "draft" | "issued" | "applied" | "cancelled";
+  reason?: string;
+}
 
 const statusBadgeMap: Record<
   string,
   { variant: "success" | "warning" | "danger" | "info" | "default"; label: string }
 > = {
   draft: { variant: "default", label: "Draft" },
-  sent: { variant: "info", label: "Sent" },
-  accepted: { variant: "success", label: "Accepted" },
-  converted: { variant: "success", label: "Converted" },
-  invoiced: { variant: "success", label: "Invoiced" },
-  rejected: { variant: "danger", label: "Rejected" },
-  expired: { variant: "warning", label: "Expired" },
+  issued: { variant: "info", label: "Issued" },
+  applied: { variant: "success", label: "Applied" },
+  cancelled: { variant: "danger", label: "Cancelled" },
 };
 
-const columnHelper = createColumnHelper<Quotation>();
+const columnHelper = createColumnHelper<DebitNote>();
 
-export default function QuotationsPage() {
+export default function DebitNotesPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
 
-  const { data, isLoading } = useQuotations({
-    status: activeTab !== "all" ? activeTab : undefined,
-    search: searchQuery || undefined,
-    from: dateFrom || undefined,
-    to: dateTo || undefined,
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["debit-notes", activeTab, searchQuery],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (activeTab !== "all") params.status = activeTab;
+      if (searchQuery) params.search = searchQuery;
+      const res = await api.get<{ data: DebitNote[] }>("/bill/debit-notes", params);
+      return res.data;
+    },
   });
 
-  const quotations = data?.data || [];
+  const debitNotes = data || [];
 
   const tabs = [
-    { value: "all", label: "All", count: quotations.length },
-    { value: "draft", label: "Draft", count: quotations.filter((q) => q.status === "draft").length },
-    { value: "sent", label: "Sent", count: quotations.filter((q) => q.status === "sent").length },
-    { value: "accepted", label: "Accepted", count: quotations.filter((q) => q.status === "accepted").length },
-    { value: "rejected", label: "Rejected", count: quotations.filter((q) => q.status === "rejected").length },
-    { value: "expired", label: "Expired", count: quotations.filter((q) => q.status === "expired").length },
+    { value: "all", label: "All", count: debitNotes.length },
+    { value: "draft", label: "Draft", count: debitNotes.filter((d) => d.status === "draft").length },
+    { value: "issued", label: "Issued", count: debitNotes.filter((d) => d.status === "issued").length },
+    { value: "applied", label: "Applied", count: debitNotes.filter((d) => d.status === "applied").length },
   ];
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("quotation_number", {
-        header: "Quotation #",
+      columnHelper.accessor("debit_note_number", {
+        header: "Debit Note #",
         cell: (info) => (
           <span className="font-medium text-primary-800">
             {info.getValue()}
@@ -73,11 +83,11 @@ export default function QuotationsPage() {
         ),
       }),
       columnHelper.display({
-        id: "customer",
-        header: "Customer",
+        id: "vendor",
+        header: "Vendor",
         cell: (info) => (
           <span className="text-gray-900">
-            {info.row.original.contact?.company_name || info.row.original.contact?.name || "-"}
+            {info.row.original.contact?.name || info.row.original.contact_name || "-"}
           </span>
         ),
       }),
@@ -87,15 +97,15 @@ export default function QuotationsPage() {
           <span className="text-gray-600">{formatDate(info.getValue())}</span>
         ),
       }),
-      columnHelper.accessor("validity_date", {
-        header: "Valid Until",
+      columnHelper.accessor("original_bill_number", {
+        header: "Original Bill",
         cell: (info) => (
           <span className="text-gray-600">
-            {info.getValue() ? formatDate(info.getValue()!) : "-"}
+            {info.getValue() || "-"}
           </span>
         ),
       }),
-      columnHelper.accessor("total", {
+      columnHelper.accessor("amount", {
         header: "Amount",
         cell: (info) => (
           <span className="font-semibold text-gray-900">
@@ -119,7 +129,7 @@ export default function QuotationsPage() {
   );
 
   const table = useReactTable({
-    data: quotations,
+    data: debitNotes,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -132,9 +142,9 @@ export default function QuotationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Quotations</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Debit Notes</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Create and manage sales quotations
+            Manage debit notes for purchase returns
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -145,8 +155,10 @@ export default function QuotationsPage() {
           >
             Export
           </Button>
-          <Link href="/quotations/new">
-            <Button icon={<Plus className="h-4 w-4" />}>New Quotation</Button>
+          <Link href="/debit-notes/new">
+            <Button icon={<Plus className="h-4 w-4" />}>
+              New Debit Note
+            </Button>
           </Link>
         </div>
       </div>
@@ -158,41 +170,32 @@ export default function QuotationsPage() {
 
         <div className="p-4 border-b border-gray-200 flex items-end gap-4 flex-wrap">
           <Input
-            placeholder="Search by customer or quotation number..."
+            placeholder="Search by vendor or debit note number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
             className="max-w-sm"
           />
-          <Input
-            label="From"
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-40"
-          />
-          <Input
-            label="To"
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-40"
-          />
         </div>
 
         {isLoading ? (
-          <div className="p-8">
-            <div className="h-40 bg-gray-100 rounded animate-pulse" />
+          <div className="p-8 text-center">
+            <Loader2 className="h-8 w-8 text-gray-400 mx-auto mb-3 animate-spin" />
+            <p className="text-gray-500">Loading debit notes...</p>
           </div>
-        ) : quotations.length === 0 ? (
+        ) : isError ? (
+          <div className="p-8 text-center">
+            <p className="text-red-500">Failed to load debit notes. Please try again.</p>
+          </div>
+        ) : debitNotes.length === 0 ? (
           <div className="p-8 text-center">
             <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No quotations found</p>
+            <p className="text-gray-500">No debit notes found</p>
           </div>
         ) : (
           <DataTable
             table={table}
-            onRowClick={(row) => router.push(`/quotations/${row.id}`)}
+            onRowClick={(row) => router.push(`/debit-notes/${row.id}`)}
           />
         )}
       </Card>

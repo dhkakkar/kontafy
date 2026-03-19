@@ -19,6 +19,7 @@ interface LineItem {
   hsnCode: string;
   quantity: number;
   rate: number;
+  discount: number;
   taxRate: number;
   amount: number;
 }
@@ -90,8 +91,8 @@ function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function calcAmount(qty: number, rate: number): number {
-  return qty * rate;
+function calcAmount(qty: number, rate: number, discount: number = 0): number {
+  return qty * rate * (1 - discount / 100);
 }
 
 function calcTax(amount: number, taxRate: number): number {
@@ -116,6 +117,7 @@ export default function NewInvoicePage() {
       hsnCode: "",
       quantity: 1,
       rate: 0,
+      discount: 0,
       taxRate: 18,
       amount: 0,
     },
@@ -168,6 +170,7 @@ export default function NewInvoicePage() {
           hsn_code: item.hsnCode || undefined,
           quantity: item.quantity,
           rate: item.rate,
+          discount_pct: item.discount || undefined,
           cgst_rate: halfRate(item.taxRate),
           sgst_rate: halfRate(item.taxRate),
         })),
@@ -188,6 +191,7 @@ export default function NewInvoicePage() {
         hsnCode: "",
         quantity: 1,
         rate: 0,
+        discount: 0,
         taxRate: 18,
         amount: 0,
       },
@@ -204,7 +208,7 @@ export default function NewInvoicePage() {
       items.map((item) => {
         if (item.id !== id) return item;
         const updated = { ...item, [field]: value };
-        updated.amount = calcAmount(updated.quantity, updated.rate);
+        updated.amount = calcAmount(updated.quantity, updated.rate, updated.discount);
         return updated;
       })
     );
@@ -224,13 +228,17 @@ export default function NewInvoicePage() {
           hsnCode: product.hsn_code || "",
           rate,
           taxRate: product.tax_rate || 18,
-          amount: calcAmount(item.quantity, rate),
+          amount: calcAmount(item.quantity, rate, item.discount),
         };
       })
     );
   };
 
   const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+  const totalDiscount = items.reduce(
+    (sum, item) => sum + item.quantity * item.rate * (item.discount / 100),
+    0
+  );
 
   const taxBreakdown: Record<number, { rate: number; taxable: number; tax: number }> = {};
   items.forEach((item) => {
@@ -358,6 +366,9 @@ export default function NewInvoicePage() {
                 <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">
                   Rate
                 </th>
+                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
+                  Disc %
+                </th>
                 <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">
                   Tax
                 </th>
@@ -437,6 +448,23 @@ export default function NewInvoicePage() {
                     />
                   </td>
                   <td className="py-2 px-4">
+                    <input
+                      type="number"
+                      value={item.discount || ""}
+                      onChange={(e) =>
+                        updateItem(
+                          item.id,
+                          "discount",
+                          parseFloat(e.target.value) || 0
+                        )
+                      }
+                      placeholder="0"
+                      min="0"
+                      max="100"
+                      className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </td>
+                  <td className="py-2 px-4">
                     <Select
                       options={taxOptions}
                       value={String(item.taxRate)}
@@ -482,9 +510,18 @@ export default function NewInvoicePage() {
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-500">Subtotal</span>
               <span className="font-medium text-gray-900">
-                {formatCurrency(subtotal)}
+                {formatCurrency(subtotal + totalDiscount)}
               </span>
             </div>
+
+            {totalDiscount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Discount</span>
+                <span className="text-danger-600">
+                  - {formatCurrency(totalDiscount)}
+                </span>
+              </div>
+            )}
 
             {Object.values(taxBreakdown).map(
               (tax) =>

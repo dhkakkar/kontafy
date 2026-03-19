@@ -65,6 +65,9 @@ const navItems: NavItem[] = [
       { label: "Create Invoice", href: "/invoices/new" },
       { label: "Purchase Bills", href: "/purchases" },
       { label: "Credit Notes", href: "/credit-notes" },
+      { label: "Debit Notes", href: "/debit-notes" },
+      { label: "Proforma Invoice", href: "/proforma-invoices" },
+      { label: "Delivery Challan", href: "/delivery-challans" },
       { label: "Quotations", href: "/quotations" },
       { label: "Purchase Orders", href: "/purchase-orders" },
       { label: "Recurring", href: "/recurring-invoices" },
@@ -109,6 +112,7 @@ const navItems: NavItem[] = [
       { label: "Received", href: "/payments?tab=received" },
       { label: "Made", href: "/payments?tab=made" },
       { label: "Outstanding", href: "/payments/outstanding" },
+      { label: "Expenses", href: "/expenses" },
     ],
   },
   {
