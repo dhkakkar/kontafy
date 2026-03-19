@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { ArrowRight, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuthStore } from "@/stores/auth.store";
+import { api } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,6 +17,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { login } = useAuthStore();
 
   const handleEmailLogin = async () => {
     if (!email || !password) return;
@@ -23,14 +26,50 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
       if (authError) {
         setError(authError.message);
         return;
+      }
+
+      // Fetch user's organizations
+      const res = await api.get<{
+        data: Array<{
+          id: string;
+          name: string;
+          gstin?: string;
+          logo_url?: string;
+          fiscal_year_start: number;
+          role: string;
+        }>;
+      }>("/organizations");
+      const orgs = res.data;
+
+      const user = authData.user;
+      const meta = user?.user_metadata || {};
+
+      if (orgs.length > 0) {
+        // Set the first org as active
+        login(
+          {
+            id: user.id,
+            email: user.email!,
+            fullName: meta.full_name || user.email!,
+            avatarUrl: meta.avatar_url,
+          },
+          {
+            id: orgs[0].id,
+            name: orgs[0].name,
+            gstin: orgs[0].gstin,
+            logoUrl: orgs[0].logo_url,
+            financialYearStart: orgs[0].fiscal_year_start,
+          }
+        );
       }
 
       router.push("/");

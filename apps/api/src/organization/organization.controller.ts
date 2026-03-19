@@ -22,6 +22,12 @@ import { RoleGuard } from '../common/guards/role.guard';
 export class OrganizationController {
   constructor(private readonly orgService: OrganizationService) {}
 
+  @Get()
+  @ApiOperation({ summary: 'List organizations for the current user' })
+  async list(@CurrentUser() user: CurrentUserPayload) {
+    return this.orgService.listByUser(user.sub);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a new organization' })
   async create(

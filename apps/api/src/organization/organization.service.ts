@@ -71,6 +71,21 @@ export class OrganizationService {
   }
 
   /**
+   * List all organizations the user is a member of.
+   */
+  async listByUser(userId: string) {
+    const memberships = await this.prisma.orgMember.findMany({
+      where: { user_id: userId },
+      include: { organization: true },
+    });
+
+    return memberships.map((m) => ({
+      ...m.organization,
+      role: m.role,
+    }));
+  }
+
+  /**
    * Get organization details (only accessible by members).
    */
   async findOne(orgId: string, userId: string) {

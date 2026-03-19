@@ -1,3 +1,5 @@
+import { createClient } from "@/lib/supabase/client";
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -18,9 +20,28 @@ class ApiClient {
     };
 
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("access_token");
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.access_token) {
+          headers["Authorization"] = `Bearer ${data.session.access_token}`;
+        }
+      } catch {
+        // Silently fail if Supabase is not available
+      }
+
+      // Add organization ID from persisted auth store
+      try {
+        const stored = localStorage.getItem("kontafy-auth");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const orgId = parsed?.state?.organization?.id;
+          if (orgId) {
+            headers["X-Org-Id"] = orgId;
+          }
+        }
+      } catch {
+        // Silently fail
       }
     }
 
