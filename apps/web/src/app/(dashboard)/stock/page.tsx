@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
   Package,
   Warehouse,
@@ -22,65 +24,18 @@ import {
   Plus,
   ArrowRightLeft,
   TrendingDown,
+  Loader2,
 } from "lucide-react";
 
-// Dashboard summary (mock data — will be replaced by API call)
-const dashboardSummary = {
-  total_products: 48,
-  total_goods: 35,
-  total_services: 13,
-  total_quantity: 2450,
-  total_stock_value: 1245000,
-  low_stock_count: 5,
-  warehouse_count: 3,
-  low_stock_items: [
-    {
-      id: "1",
-      name: "A4 Printing Paper (Ream)",
-      sku: "PAP-A4-500",
-      unit: "ream",
-      reorder_level: 50,
-      current_quantity: 12,
-      deficit: 38,
-    },
-    {
-      id: "2",
-      name: "Ballpoint Pen (Blue)",
-      sku: "PEN-BP-BLU",
-      unit: "pcs",
-      reorder_level: 100,
-      current_quantity: 28,
-      deficit: 72,
-    },
-    {
-      id: "3",
-      name: "Laptop Stand - Aluminium",
-      sku: "ACC-LS-ALU",
-      unit: "pcs",
-      reorder_level: 10,
-      current_quantity: 3,
-      deficit: 7,
-    },
-    {
-      id: "4",
-      name: "USB-C Cable (1m)",
-      sku: "CAB-USBC-1M",
-      unit: "pcs",
-      reorder_level: 30,
-      current_quantity: 8,
-      deficit: 22,
-    },
-    {
-      id: "5",
-      name: "Thermal Receipt Roll",
-      sku: "POS-TR-80",
-      unit: "roll",
-      reorder_level: 25,
-      current_quantity: 5,
-      deficit: 20,
-    },
-  ],
-};
+interface StockDashboard {
+  total_products: number;
+  total_goods: number;
+  total_services: number;
+  total_quantity: number;
+  total_stock_value: number;
+  low_stock_count: number;
+  warehouse_count: number;
+}
 
 interface LowStockItem {
   id: string;
@@ -92,42 +47,65 @@ interface LowStockItem {
   deficit: number;
 }
 
+interface ApiResponse<T> {
+  data: T;
+}
+
 const columnHelper = createColumnHelper<LowStockItem>();
 
 export default function StockDashboardPage() {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const summary = dashboardSummary;
 
-  const summaryCards = [
-    {
-      title: "Total Products",
-      value: formatNumber(summary.total_products),
-      subtitle: `${summary.total_goods} goods, ${summary.total_services} services`,
-      icon: <Package className="h-5 w-5 text-primary-600" />,
-      color: "bg-primary-50",
+  const { data: summary, isLoading: summaryLoading } = useQuery<StockDashboard>({
+    queryKey: ["stock", "dashboard"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<StockDashboard>>("/stock/dashboard");
+      return res.data;
     },
-    {
-      title: "Stock Value",
-      value: formatCurrency(summary.total_stock_value),
-      subtitle: `${formatNumber(summary.total_quantity)} total units`,
-      icon: <IndianRupee className="h-5 w-5 text-success-600" />,
-      color: "bg-success-50",
+  });
+
+  const { data: lowStockItems = [], isLoading: lowStockLoading } = useQuery<LowStockItem[]>({
+    queryKey: ["stock", "low-stock"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<LowStockItem[]>>("/stock/low-stock");
+      return res.data;
     },
-    {
-      title: "Warehouses",
-      value: formatNumber(summary.warehouse_count),
-      subtitle: "Active locations",
-      icon: <Warehouse className="h-5 w-5 text-primary-600" />,
-      color: "bg-primary-50",
-    },
-    {
-      title: "Low Stock Alerts",
-      value: formatNumber(summary.low_stock_count),
-      subtitle: "Products below reorder level",
-      icon: <AlertTriangle className="h-5 w-5 text-warning-600" />,
-      color: "bg-warning-50",
-    },
-  ];
+  });
+
+  const isLoading = summaryLoading || lowStockLoading;
+
+  const summaryCards = summary
+    ? [
+        {
+          title: "Total Products",
+          value: formatNumber(summary.total_products),
+          subtitle: `${summary.total_goods} goods, ${summary.total_services} services`,
+          icon: <Package className="h-5 w-5 text-primary-600" />,
+          color: "bg-primary-50",
+        },
+        {
+          title: "Stock Value",
+          value: formatCurrency(summary.total_stock_value),
+          subtitle: `${formatNumber(summary.total_quantity)} total units`,
+          icon: <IndianRupee className="h-5 w-5 text-success-600" />,
+          color: "bg-success-50",
+        },
+        {
+          title: "Warehouses",
+          value: formatNumber(summary.warehouse_count),
+          subtitle: "Active locations",
+          icon: <Warehouse className="h-5 w-5 text-primary-600" />,
+          color: "bg-primary-50",
+        },
+        {
+          title: "Low Stock Alerts",
+          value: formatNumber(summary.low_stock_count),
+          subtitle: "Products below reorder level",
+          icon: <AlertTriangle className="h-5 w-5 text-warning-600" />,
+          color: "bg-warning-50",
+        },
+      ]
+    : [];
 
   const columns = useMemo(
     () => [
@@ -182,7 +160,7 @@ export default function StockDashboardPage() {
   );
 
   const table = useReactTable({
-    data: summary.low_stock_items,
+    data: lowStockItems,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -190,9 +168,16 @@ export default function StockDashboardPage() {
     getSortedRowModel: getSortedRowModel(),
   });
 
+  if (isLoading) {
+    return (
+      <div className="py-24 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">

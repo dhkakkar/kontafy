@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -17,7 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/utils";
-import { Plus, Search, Download, MoreHorizontal } from "lucide-react";
+import { api } from "@/lib/api";
+import { Plus, Search, Download, MoreHorizontal, Loader2 } from "lucide-react";
 
 interface Product {
   id: string;
@@ -34,121 +36,9 @@ interface Product {
   is_active: boolean;
 }
 
-// Mock data — will be replaced by API call
-const products: Product[] = [
-  {
-    id: "1",
-    name: "A4 Printing Paper (Ream)",
-    sku: "PAP-A4-500",
-    type: "goods",
-    hsn_code: "4802",
-    unit: "ream",
-    tax_rate: 12,
-    selling_price: 350,
-    purchase_price: 280,
-    total_quantity: 12,
-    stock_value: 3360,
-    is_active: true,
-  },
-  {
-    id: "2",
-    name: "Laptop Stand - Aluminium",
-    sku: "ACC-LS-ALU",
-    type: "goods",
-    hsn_code: "7616",
-    unit: "pcs",
-    tax_rate: 18,
-    selling_price: 2500,
-    purchase_price: 1800,
-    total_quantity: 3,
-    stock_value: 5400,
-    is_active: true,
-  },
-  {
-    id: "3",
-    name: "Annual Software License",
-    sku: null,
-    type: "services",
-    hsn_code: "998314",
-    unit: "nos",
-    tax_rate: 18,
-    selling_price: 25000,
-    purchase_price: null,
-    total_quantity: 0,
-    stock_value: 0,
-    is_active: true,
-  },
-  {
-    id: "4",
-    name: "USB-C Cable (1m)",
-    sku: "CAB-USBC-1M",
-    type: "goods",
-    hsn_code: "8544",
-    unit: "pcs",
-    tax_rate: 18,
-    selling_price: 350,
-    purchase_price: 180,
-    total_quantity: 8,
-    stock_value: 1440,
-    is_active: true,
-  },
-  {
-    id: "5",
-    name: "Ballpoint Pen (Blue)",
-    sku: "PEN-BP-BLU",
-    type: "goods",
-    hsn_code: "9608",
-    unit: "pcs",
-    tax_rate: 18,
-    selling_price: 15,
-    purchase_price: 8,
-    total_quantity: 28,
-    stock_value: 224,
-    is_active: true,
-  },
-  {
-    id: "6",
-    name: "Web Design Service",
-    sku: null,
-    type: "services",
-    hsn_code: "998314",
-    unit: "nos",
-    tax_rate: 18,
-    selling_price: 50000,
-    purchase_price: null,
-    total_quantity: 0,
-    stock_value: 0,
-    is_active: true,
-  },
-  {
-    id: "7",
-    name: "Thermal Receipt Roll",
-    sku: "POS-TR-80",
-    type: "goods",
-    hsn_code: "4811",
-    unit: "roll",
-    tax_rate: 12,
-    selling_price: 120,
-    purchase_price: 75,
-    total_quantity: 5,
-    stock_value: 375,
-    is_active: true,
-  },
-  {
-    id: "8",
-    name: "Office Chair - Ergonomic",
-    sku: "FUR-CHR-ERG",
-    type: "goods",
-    hsn_code: "9401",
-    unit: "pcs",
-    tax_rate: 18,
-    selling_price: 15000,
-    purchase_price: 9500,
-    total_quantity: 6,
-    stock_value: 57000,
-    is_active: true,
-  },
-];
+interface ApiResponse<T> {
+  data: T;
+}
 
 const columnHelper = createColumnHelper<Product>();
 
@@ -157,33 +47,22 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
 
+  const { data: products = [], isLoading, error } = useQuery<Product[]>({
+    queryKey: ["products", activeTab, searchQuery],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (activeTab !== "all") params.type = activeTab;
+      if (searchQuery) params.search = searchQuery;
+      const res = await api.get<ApiResponse<Product[]>>("/stock/products", params);
+      return res.data;
+    },
+  });
+
   const tabs = [
     { value: "all", label: "All", count: products.length },
-    {
-      value: "goods",
-      label: "Goods",
-      count: products.filter((p) => p.type === "goods").length,
-    },
-    {
-      value: "services",
-      label: "Services",
-      count: products.filter((p) => p.type === "services").length,
-    },
+    { value: "goods", label: "Goods", count: products.filter((p) => p.type === "goods").length },
+    { value: "services", label: "Services", count: products.filter((p) => p.type === "services").length },
   ];
-
-  const filteredData = useMemo(() => {
-    return products.filter((product) => {
-      if (activeTab !== "all" && product.type !== activeTab) return false;
-      if (
-        searchQuery &&
-        !product.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !(product.sku || "").toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !(product.hsn_code || "").toLowerCase().includes(searchQuery.toLowerCase())
-      )
-        return false;
-      return true;
-    });
-  }, [activeTab, searchQuery]);
 
   const columns = useMemo(
     () => [
@@ -272,7 +151,7 @@ export default function ProductsPage() {
   );
 
   const table = useReactTable({
-    data: filteredData,
+    data: products,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -319,7 +198,17 @@ export default function ProductsPage() {
           />
         </div>
 
-        <DataTable table={table} />
+        {isLoading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : error ? (
+          <div className="py-12 text-center text-danger-600">
+            Failed to load products. Please try again.
+          </div>
+        ) : (
+          <DataTable table={table} />
+        )}
       </Card>
     </div>
   );

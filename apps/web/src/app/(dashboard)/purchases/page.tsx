@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -17,86 +18,26 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Plus, Search, Download, MoreHorizontal } from "lucide-react";
+import { api } from "@/lib/api";
+import { Plus, Search, Download, MoreHorizontal, Loader2 } from "lucide-react";
 
 interface Purchase {
   id: string;
-  number: string;
-  vendor: string;
+  invoice_number: string;
+  contact_name?: string;
+  contact?: { name: string };
   date: string;
-  dueDate: string;
-  amount: number;
+  due_date: string;
+  total: number;
   status: "draft" | "sent" | "overdue" | "paid" | "partially_paid" | "cancelled";
 }
 
-const purchases: Purchase[] = [
-  {
-    id: "1",
-    number: "BILL/25-26/0012",
-    vendor: "Skyline Properties",
-    date: "2026-03-10",
-    dueDate: "2026-04-10",
-    amount: 45000,
-    status: "sent",
-  },
-  {
-    id: "2",
-    number: "BILL/25-26/0011",
-    vendor: "Office Supplies Co.",
-    date: "2026-03-08",
-    dueDate: "2026-04-08",
-    amount: 12500,
-    status: "paid",
-  },
-  {
-    id: "3",
-    number: "BILL/25-26/0010",
-    vendor: "Prism Digital",
-    date: "2026-03-05",
-    dueDate: "2026-04-05",
-    amount: 22000,
-    status: "paid",
-  },
-  {
-    id: "4",
-    number: "BILL/25-26/0009",
-    vendor: "CloudHost India",
-    date: "2026-03-01",
-    dueDate: "2026-03-31",
-    amount: 8500,
-    status: "sent",
-  },
-  {
-    id: "5",
-    number: "BILL/25-26/0008",
-    vendor: "RawMat Suppliers",
-    date: "2026-02-25",
-    dueDate: "2026-03-25",
-    amount: 185000,
-    status: "partially_paid",
-  },
-  {
-    id: "6",
-    number: "BILL/25-26/0007",
-    vendor: "Logistics Express",
-    date: "2026-02-20",
-    dueDate: "2026-03-05",
-    amount: 35000,
-    status: "overdue",
-  },
-  {
-    id: "7",
-    number: "BILL/25-26/0006",
-    vendor: "Power Utilities Ltd.",
-    date: "2026-02-15",
-    dueDate: "2026-03-15",
-    amount: 28000,
-    status: "draft",
-  },
-];
+interface ApiResponse<T> {
+  data: T;
+}
 
 const statusBadgeMap: Record<
-  Purchase["status"],
+  string,
   { variant: "success" | "warning" | "danger" | "info" | "default"; label: string }
 > = {
   draft: { variant: "default", label: "Draft" },
@@ -114,53 +55,42 @@ export default function PurchasesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
 
+  const { data: purchases = [], isLoading, error } = useQuery<Purchase[]>({
+    queryKey: ["purchases", activeTab, searchQuery],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (activeTab !== "all") {
+        if (activeTab === "sent") {
+          params.status = "sent,partially_paid";
+        } else {
+          params.status = activeTab;
+        }
+      }
+      if (searchQuery) params.search = searchQuery;
+      const res = await api.get<ApiResponse<Purchase[]>>("/bill/purchases", params);
+      return res.data;
+    },
+  });
+
+  const totalOutstanding = purchases
+    .filter((p) => ["sent", "overdue", "partially_paid"].includes(p.status))
+    .reduce((sum, p) => sum + p.total, 0);
+
   const tabs = [
     { value: "all", label: "All", count: purchases.length },
-    {
-      value: "draft",
-      label: "Draft",
-      count: purchases.filter((p) => p.status === "draft").length,
-    },
+    { value: "draft", label: "Draft", count: purchases.filter((p) => p.status === "draft").length },
     {
       value: "sent",
       label: "Pending",
       count: purchases.filter((p) => p.status === "sent" || p.status === "partially_paid").length,
     },
-    {
-      value: "overdue",
-      label: "Overdue",
-      count: purchases.filter((p) => p.status === "overdue").length,
-    },
-    {
-      value: "paid",
-      label: "Paid",
-      count: purchases.filter((p) => p.status === "paid").length,
-    },
+    { value: "overdue", label: "Overdue", count: purchases.filter((p) => p.status === "overdue").length },
+    { value: "paid", label: "Paid", count: purchases.filter((p) => p.status === "paid").length },
   ];
-
-  const filteredData = useMemo(() => {
-    return purchases.filter((p) => {
-      if (activeTab !== "all") {
-        if (activeTab === "sent" && p.status !== "sent" && p.status !== "partially_paid") return false;
-        else if (activeTab !== "sent" && p.status !== activeTab) return false;
-      }
-      if (
-        searchQuery &&
-        !p.vendor.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !p.number.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-        return false;
-      return true;
-    });
-  }, [activeTab, searchQuery]);
-
-  const totalOutstanding = purchases
-    .filter((p) => ["sent", "overdue", "partially_paid"].includes(p.status))
-    .reduce((sum, p) => sum + p.amount, 0);
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("number", {
+      columnHelper.accessor("invoice_number", {
         header: "Bill #",
         cell: (info) => (
           <span className="font-medium text-primary-800">
@@ -168,10 +98,13 @@ export default function PurchasesPage() {
           </span>
         ),
       }),
-      columnHelper.accessor("vendor", {
+      columnHelper.display({
+        id: "vendor",
         header: "Vendor",
         cell: (info) => (
-          <span className="text-gray-900">{info.getValue()}</span>
+          <span className="text-gray-900">
+            {info.row.original.contact_name || info.row.original.contact?.name || "-"}
+          </span>
         ),
       }),
       columnHelper.accessor("date", {
@@ -180,13 +113,13 @@ export default function PurchasesPage() {
           <span className="text-gray-600">{formatDate(info.getValue())}</span>
         ),
       }),
-      columnHelper.accessor("dueDate", {
+      columnHelper.accessor("due_date", {
         header: "Due Date",
         cell: (info) => (
           <span className="text-gray-600">{formatDate(info.getValue())}</span>
         ),
       }),
-      columnHelper.accessor("amount", {
+      columnHelper.accessor("total", {
         header: "Amount",
         cell: (info) => (
           <span className="font-semibold text-gray-900">
@@ -197,7 +130,7 @@ export default function PurchasesPage() {
       columnHelper.accessor("status", {
         header: "Status",
         cell: (info) => {
-          const s = statusBadgeMap[info.getValue()];
+          const s = statusBadgeMap[info.getValue()] || statusBadgeMap.draft;
           return (
             <Badge variant={s.variant} dot>
               {s.label}
@@ -218,7 +151,7 @@ export default function PurchasesPage() {
   );
 
   const table = useReactTable({
-    data: filteredData,
+    data: purchases,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -269,7 +202,7 @@ export default function PurchasesPage() {
             {formatCurrency(
               purchases
                 .filter((p) => p.status === "overdue")
-                .reduce((s, p) => s + p.amount, 0)
+                .reduce((s, p) => s + p.total, 0)
             )}{" "}
             overdue
           </p>
@@ -291,7 +224,17 @@ export default function PurchasesPage() {
           />
         </div>
 
-        <DataTable table={table} />
+        {isLoading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : error ? (
+          <div className="py-12 text-center text-danger-600">
+            Failed to load purchase invoices. Please try again.
+          </div>
+        ) : (
+          <DataTable table={table} />
+        )}
       </Card>
     </div>
   );

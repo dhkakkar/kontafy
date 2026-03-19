@@ -8,7 +8,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class NetworkMonitor(
-    private val apiBaseUrl: String = "http://localhost:4001/api",
+    private val apiBaseUrl: String = "https://api.kontafy.com/v1",
     private val checkIntervalMs: Long = 30_000,
 ) {
     private val _isOnline = MutableStateFlow(false)

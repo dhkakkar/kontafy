@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -20,100 +21,34 @@ import { DataTable } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
   Plus,
   Search,
   Download,
-  Edit,
   MoreHorizontal,
   CreditCard,
   ArrowDownLeft,
   ArrowUpRight,
   BarChart3,
+  Loader2,
 } from "lucide-react";
 
 interface Payment {
   id: string;
   date: string;
-  contact: string;
-  invoiceNumber: string;
+  contact_name?: string;
+  contact?: { name: string };
+  invoice_number?: string;
   amount: number;
-  method: "cash" | "upi" | "bank_transfer" | "cheque" | "card";
+  method: string;
   type: "received" | "made";
-  reference?: string;
+  reference?: string | null;
 }
 
-const payments: Payment[] = [
-  {
-    id: "1",
-    date: "2026-03-12",
-    contact: "TechStar Solutions",
-    invoiceNumber: "INV-0045",
-    amount: 210000,
-    method: "bank_transfer",
-    type: "received",
-    reference: "NEFT-20260312-001",
-  },
-  {
-    id: "2",
-    date: "2026-03-10",
-    contact: "Atlas Construction",
-    invoiceNumber: "INV-0043",
-    amount: 340000,
-    method: "cheque",
-    type: "received",
-    reference: "CHQ-445612",
-  },
-  {
-    id: "3",
-    date: "2026-03-08",
-    contact: "Skyline Properties",
-    invoiceNumber: "BILL-0021",
-    amount: 45000,
-    method: "bank_transfer",
-    type: "made",
-    reference: "NEFT-20260308-003",
-  },
-  {
-    id: "4",
-    date: "2026-03-05",
-    contact: "Summit Healthcare",
-    invoiceNumber: "INV-0030",
-    amount: 95000,
-    method: "upi",
-    type: "received",
-    reference: "UPI-TXN-98765",
-  },
-  {
-    id: "5",
-    date: "2026-03-03",
-    contact: "Office Supplies Co.",
-    invoiceNumber: "BILL-0019",
-    amount: 12500,
-    method: "cash",
-    type: "made",
-  },
-  {
-    id: "6",
-    date: "2026-03-01",
-    contact: "Prism Digital",
-    invoiceNumber: "BILL-0018",
-    amount: 22000,
-    method: "upi",
-    type: "made",
-    reference: "UPI-TXN-54321",
-  },
-  {
-    id: "7",
-    date: "2026-02-28",
-    contact: "GreenLeaf Exports",
-    invoiceNumber: "INV-0040",
-    amount: 65000,
-    method: "bank_transfer",
-    type: "received",
-    reference: "RTGS-20260228-002",
-  },
-];
+interface ApiResponse<T> {
+  data: T;
+}
 
 const methodLabels: Record<string, string> = {
   cash: "Cash",
@@ -126,50 +61,69 @@ const methodLabels: Record<string, string> = {
 const columnHelper = createColumnHelper<Payment>();
 
 export default function PaymentsPage() {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showModal, setShowModal] = useState(false);
-  const [editPaymentId, setEditPaymentId] = useState<string | null>(null);
 
   // Form state
   const [formType, setFormType] = useState("received");
-  const [formContact, setFormContact] = useState("");
+  const [formContactId, setFormContactId] = useState("");
   const [formAmount, setFormAmount] = useState("");
   const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
   const [formMethod, setFormMethod] = useState("");
   const [formReference, setFormReference] = useState("");
-  const [formInvoice, setFormInvoice] = useState("");
   const [formNotes, setFormNotes] = useState("");
 
-  const tabs = [
-    { value: "all", label: "All", count: payments.length },
-    {
-      value: "received",
-      label: "Received",
-      count: payments.filter((p) => p.type === "received").length,
+  const { data: payments = [], isLoading, error } = useQuery<Payment[]>({
+    queryKey: ["payments", activeTab, searchQuery],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (activeTab !== "all") params.type = activeTab;
+      if (searchQuery) params.search = searchQuery;
+      const res = await api.get<ApiResponse<Payment[]>>("/bill/payments", params);
+      return res.data;
     },
-    {
-      value: "made",
-      label: "Made",
-      count: payments.filter((p) => p.type === "made").length,
-    },
-  ];
+  });
 
-  const filteredData = useMemo(() => {
-    return payments.filter((p) => {
-      if (activeTab !== "all" && p.type !== activeTab) return false;
-      if (
-        searchQuery &&
-        !p.contact.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !p.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !(p.reference || "").toLowerCase().includes(searchQuery.toLowerCase())
-      )
-        return false;
-      return true;
-    });
-  }, [activeTab, searchQuery]);
+  // Fetch contacts for the dropdown
+  const { data: contacts = [] } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["contacts-list"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Array<{ id: string; name: string }>>>("/bill/contacts");
+      return res.data;
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      return api.post("/bill/payments", {
+        type: formType,
+        contact_id: formContactId || undefined,
+        amount: parseFloat(formAmount),
+        date: formDate,
+        method: formMethod,
+        reference: formReference || undefined,
+        notes: formNotes || undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      setShowModal(false);
+      resetForm();
+    },
+  });
+
+  const resetForm = () => {
+    setFormType("received");
+    setFormContactId("");
+    setFormAmount("");
+    setFormDate(new Date().toISOString().split("T")[0]);
+    setFormMethod("");
+    setFormReference("");
+    setFormNotes("");
+  };
 
   const totalReceived = payments
     .filter((p) => p.type === "received")
@@ -177,6 +131,12 @@ export default function PaymentsPage() {
   const totalMade = payments
     .filter((p) => p.type === "made")
     .reduce((sum, p) => sum + p.amount, 0);
+
+  const tabs = [
+    { value: "all", label: "All", count: payments.length },
+    { value: "received", label: "Received", count: payments.filter((p) => p.type === "received").length },
+    { value: "made", label: "Made", count: payments.filter((p) => p.type === "made").length },
+  ];
 
   const columns = useMemo(
     () => [
@@ -186,17 +146,12 @@ export default function PaymentsPage() {
           <span className="text-gray-600">{formatDate(info.getValue())}</span>
         ),
       }),
-      columnHelper.accessor("contact", {
+      columnHelper.display({
+        id: "contact",
         header: "Contact",
         cell: (info) => (
-          <span className="font-medium text-gray-900">{info.getValue()}</span>
-        ),
-      }),
-      columnHelper.accessor("invoiceNumber", {
-        header: "Invoice #",
-        cell: (info) => (
-          <span className="text-primary-800 font-medium">
-            {info.getValue()}
+          <span className="font-medium text-gray-900">
+            {info.row.original.contact_name || info.row.original.contact?.name || "-"}
           </span>
         ),
       }),
@@ -222,7 +177,7 @@ export default function PaymentsPage() {
         header: "Mode",
         cell: (info) => (
           <Badge variant="default">
-            {methodLabels[info.getValue()] || info.getValue()}
+            {methodLabels[info.getValue()] || info.getValue() || "-"}
           </Badge>
         ),
       }),
@@ -239,31 +194,10 @@ export default function PaymentsPage() {
       }),
       columnHelper.display({
         id: "actions",
-        cell: (info) => (
-          <div className="flex items-center gap-1">
-            <button
-              className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditPaymentId(info.row.original.id);
-                const p = info.row.original;
-                setFormType(p.type);
-                setFormContact(p.contact);
-                setFormAmount(String(p.amount));
-                setFormDate(p.date);
-                setFormMethod(p.method);
-                setFormReference(p.reference || "");
-                setFormInvoice(p.invoiceNumber);
-                setShowModal(true);
-              }}
-              title="Edit Payment"
-            >
-              <Edit className="h-4 w-4" />
-            </button>
-            <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-          </div>
+        cell: () => (
+          <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
         ),
       }),
     ],
@@ -271,7 +205,7 @@ export default function PaymentsPage() {
   );
 
   const table = useReactTable({
-    data: filteredData,
+    data: payments,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -309,15 +243,7 @@ export default function PaymentsPage() {
           <Button
             icon={<Plus className="h-4 w-4" />}
             onClick={() => {
-              setEditPaymentId(null);
-              setFormType("received");
-              setFormContact("");
-              setFormAmount("");
-              setFormDate(new Date().toISOString().split("T")[0]);
-              setFormMethod("");
-              setFormReference("");
-              setFormInvoice("");
-              setFormNotes("");
+              resetForm();
               setShowModal(true);
             }}
           >
@@ -370,7 +296,7 @@ export default function PaymentsPage() {
 
         <div className="p-4 border-b border-gray-200">
           <Input
-            placeholder="Search by contact, invoice, or reference..."
+            placeholder="Search by contact or reference..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
@@ -378,15 +304,25 @@ export default function PaymentsPage() {
           />
         </div>
 
-        <DataTable table={table} />
+        {isLoading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : error ? (
+          <div className="py-12 text-center text-danger-600">
+            Failed to load payments. Please try again.
+          </div>
+        ) : (
+          <DataTable table={table} />
+        )}
       </Card>
 
       {/* Record Payment Modal */}
       <Modal
         open={showModal}
-        onClose={() => { setShowModal(false); setEditPaymentId(null); }}
-        title={editPaymentId ? "Edit Payment" : "Record Payment"}
-        description={editPaymentId ? "Update payment details" : "Record a payment received from a customer or made to a vendor"}
+        onClose={() => setShowModal(false)}
+        title="Record Payment"
+        description="Record a payment received from a customer or made to a vendor"
         size="lg"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -401,15 +337,9 @@ export default function PaymentsPage() {
           />
           <Select
             label="Contact"
-            options={[
-              { value: "c1", label: "TechStar Solutions" },
-              { value: "c2", label: "GreenLeaf Exports" },
-              { value: "c3", label: "Skyline Properties" },
-              { value: "c4", label: "Apex Manufacturing" },
-              { value: "c5", label: "Prism Digital" },
-            ]}
-            value={formContact}
-            onChange={setFormContact}
+            options={contacts.map((c) => ({ value: c.id, label: c.name }))}
+            value={formContactId}
+            onChange={setFormContactId}
             searchable
             placeholder="Select contact"
           />
@@ -446,20 +376,6 @@ export default function PaymentsPage() {
             placeholder="Optional reference number"
           />
           <div className="md:col-span-2">
-            <Select
-              label="Link to Invoice (Optional)"
-              options={[
-                { value: "inv1", label: "INV-0047 - TechStar Solutions" },
-                { value: "inv2", label: "INV-0046 - GreenLeaf Exports" },
-                { value: "inv3", label: "INV-0038 - Apex Manufacturing" },
-              ]}
-              value={formInvoice}
-              onChange={setFormInvoice}
-              searchable
-              placeholder="Select invoice"
-            />
-          </div>
-          <div className="md:col-span-2">
             <Input
               label="Notes"
               value={formNotes}
@@ -472,7 +388,13 @@ export default function PaymentsPage() {
           <Button variant="outline" onClick={() => setShowModal(false)}>
             Cancel
           </Button>
-          <Button>{editPaymentId ? "Update Payment" : "Record Payment"}</Button>
+          <Button
+            onClick={() => createMutation.mutate()}
+            loading={createMutation.isPending}
+            disabled={!formAmount || !formMethod}
+          >
+            Record Payment
+          </Button>
         </div>
       </Modal>
     </div>

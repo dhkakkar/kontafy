@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -18,102 +19,34 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Plus, Search, Download, MoreHorizontal, MessageSquare } from "lucide-react";
+import { Plus, Search, Download, MoreHorizontal, MessageSquare, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface Invoice {
   id: string;
-  number: string;
-  customer: string;
+  invoice_number: string;
+  contact_name?: string;
+  contact?: { name: string };
   date: string;
-  dueDate: string;
-  amount: number;
-  status: "draft" | "sent" | "overdue" | "paid" | "cancelled";
+  due_date: string;
+  total: number;
+  status: "draft" | "sent" | "overdue" | "paid" | "cancelled" | "partially_paid";
 }
 
-const invoices: Invoice[] = [
-  {
-    id: "1",
-    number: "INV-0047",
-    customer: "TechStar Solutions",
-    date: "2026-03-12",
-    dueDate: "2026-04-12",
-    amount: 125000,
-    status: "sent",
-  },
-  {
-    id: "2",
-    number: "INV-0046",
-    customer: "GreenLeaf Exports",
-    date: "2026-03-09",
-    dueDate: "2026-04-09",
-    amount: 87500,
-    status: "sent",
-  },
-  {
-    id: "3",
-    number: "INV-0045",
-    customer: "Meridian Logistics",
-    date: "2026-03-07",
-    dueDate: "2026-04-07",
-    amount: 210000,
-    status: "paid",
-  },
-  {
-    id: "4",
-    number: "INV-0044",
-    customer: "Prism Digital",
-    date: "2026-03-05",
-    dueDate: "2026-03-20",
-    amount: 56000,
-    status: "draft",
-  },
-  {
-    id: "5",
-    number: "INV-0043",
-    customer: "Atlas Construction",
-    date: "2026-03-01",
-    dueDate: "2026-03-15",
-    amount: 340000,
-    status: "paid",
-  },
-  {
-    id: "6",
-    number: "INV-0038",
-    customer: "Apex Manufacturing",
-    date: "2026-02-15",
-    dueDate: "2026-02-28",
-    amount: 75000,
-    status: "overdue",
-  },
-  {
-    id: "7",
-    number: "INV-0032",
-    customer: "NovaTech Infra",
-    date: "2026-02-01",
-    dueDate: "2026-02-15",
-    amount: 142000,
-    status: "overdue",
-  },
-  {
-    id: "8",
-    number: "INV-0030",
-    customer: "Summit Healthcare",
-    date: "2026-01-20",
-    dueDate: "2026-02-20",
-    amount: 95000,
-    status: "paid",
-  },
-];
+interface ApiResponse<T> {
+  data: T;
+  meta?: { total?: number; page?: number; limit?: number };
+}
 
 const statusBadgeMap: Record<
-  Invoice["status"],
+  string,
   { variant: "success" | "warning" | "danger" | "info" | "default"; label: string }
 > = {
   draft: { variant: "default", label: "Draft" },
   sent: { variant: "info", label: "Sent" },
   overdue: { variant: "danger", label: "Overdue" },
   paid: { variant: "success", label: "Paid" },
+  partially_paid: { variant: "warning", label: "Partial" },
   cancelled: { variant: "default", label: "Cancelled" },
 };
 
@@ -125,46 +58,28 @@ export default function InvoicesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
 
+  const { data: invoices = [], isLoading, error } = useQuery<Invoice[]>({
+    queryKey: ["invoices", activeTab, searchQuery],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (activeTab !== "all") params.status = activeTab;
+      if (searchQuery) params.search = searchQuery;
+      const res = await api.get<ApiResponse<Invoice[]>>("/bill/invoices", params);
+      return res.data;
+    },
+  });
+
   const tabs = [
     { value: "all", label: "All", count: invoices.length },
-    {
-      value: "draft",
-      label: "Draft",
-      count: invoices.filter((i) => i.status === "draft").length,
-    },
-    {
-      value: "sent",
-      label: "Sent",
-      count: invoices.filter((i) => i.status === "sent").length,
-    },
-    {
-      value: "overdue",
-      label: "Overdue",
-      count: invoices.filter((i) => i.status === "overdue").length,
-    },
-    {
-      value: "paid",
-      label: "Paid",
-      count: invoices.filter((i) => i.status === "paid").length,
-    },
+    { value: "draft", label: "Draft", count: invoices.filter((i) => i.status === "draft").length },
+    { value: "sent", label: "Sent", count: invoices.filter((i) => i.status === "sent").length },
+    { value: "overdue", label: "Overdue", count: invoices.filter((i) => i.status === "overdue").length },
+    { value: "paid", label: "Paid", count: invoices.filter((i) => i.status === "paid").length },
   ];
-
-  const filteredData = useMemo(() => {
-    return invoices.filter((inv) => {
-      if (activeTab !== "all" && inv.status !== activeTab) return false;
-      if (
-        searchQuery &&
-        !inv.customer.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !inv.number.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-        return false;
-      return true;
-    });
-  }, [activeTab, searchQuery]);
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("number", {
+      columnHelper.accessor("invoice_number", {
         header: "Invoice #",
         cell: (info) => (
           <span className="font-medium text-primary-800">
@@ -172,10 +87,13 @@ export default function InvoicesPage() {
           </span>
         ),
       }),
-      columnHelper.accessor("customer", {
+      columnHelper.display({
+        id: "customer",
         header: "Customer",
         cell: (info) => (
-          <span className="text-gray-900">{info.getValue()}</span>
+          <span className="text-gray-900">
+            {info.row.original.contact_name || info.row.original.contact?.name || "-"}
+          </span>
         ),
       }),
       columnHelper.accessor("date", {
@@ -184,13 +102,13 @@ export default function InvoicesPage() {
           <span className="text-gray-600">{formatDate(info.getValue())}</span>
         ),
       }),
-      columnHelper.accessor("dueDate", {
+      columnHelper.accessor("due_date", {
         header: "Due Date",
         cell: (info) => (
           <span className="text-gray-600">{formatDate(info.getValue())}</span>
         ),
       }),
-      columnHelper.accessor("amount", {
+      columnHelper.accessor("total", {
         header: "Amount",
         cell: (info) => (
           <span className="font-semibold text-gray-900">
@@ -201,7 +119,7 @@ export default function InvoicesPage() {
       columnHelper.accessor("status", {
         header: "Status",
         cell: (info) => {
-          const s = statusBadgeMap[info.getValue()];
+          const s = statusBadgeMap[info.getValue()] || statusBadgeMap.draft;
           return (
             <Badge variant={s.variant} dot>
               {s.label}
@@ -243,7 +161,7 @@ export default function InvoicesPage() {
   );
 
   const table = useReactTable({
-    data: filteredData,
+    data: invoices,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -290,10 +208,20 @@ export default function InvoicesPage() {
           />
         </div>
 
-        <DataTable
-          table={table}
-          onRowClick={(row) => router.push(`/invoices/${row.id}`)}
-        />
+        {isLoading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : error ? (
+          <div className="py-12 text-center text-danger-600">
+            Failed to load invoices. Please try again.
+          </div>
+        ) : (
+          <DataTable
+            table={table}
+            onRowClick={(row) => router.push(`/invoices/${row.id}`)}
+          />
+        )}
       </Card>
     </div>
   );

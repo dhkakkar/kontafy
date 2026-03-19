@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
 
 class ApiClient(
     private val authService: AuthService,
-    baseUrl: String = "http://localhost:4001/api",
+    baseUrl: String = "https://api.kontafy.com/v1",
 ) {
     private val apiBaseUrl = baseUrl.trimEnd('/')
 

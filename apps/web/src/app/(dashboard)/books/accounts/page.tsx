@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
   Plus,
   ChevronRight,
@@ -15,6 +17,7 @@ import {
   Search,
   FolderOpen,
   FileText,
+  Loader2,
 } from "lucide-react";
 
 interface Account {
@@ -22,238 +25,18 @@ interface Account {
   code: string;
   name: string;
   type: string;
-  balance: number;
+  sub_type?: string | null;
+  parent_id?: string | null;
+  is_system: boolean;
+  is_active: boolean;
+  opening_balance: number;
+  balance?: number;
   children?: Account[];
 }
 
-const chartOfAccounts: Account[] = [
-  {
-    id: "1",
-    code: "1000",
-    name: "Assets",
-    type: "group",
-    balance: 2450000,
-    children: [
-      {
-        id: "1-1",
-        code: "1100",
-        name: "Current Assets",
-        type: "group",
-        balance: 1850000,
-        children: [
-          {
-            id: "1-1-1",
-            code: "1101",
-            name: "Cash in Hand",
-            type: "asset",
-            balance: 125000,
-          },
-          {
-            id: "1-1-2",
-            code: "1102",
-            name: "Bank Account - HDFC",
-            type: "asset",
-            balance: 890000,
-          },
-          {
-            id: "1-1-3",
-            code: "1103",
-            name: "Accounts Receivable",
-            type: "asset",
-            balance: 285000,
-          },
-          {
-            id: "1-1-4",
-            code: "1104",
-            name: "GST Input Credit",
-            type: "asset",
-            balance: 48000,
-          },
-          {
-            id: "1-1-5",
-            code: "1105",
-            name: "Inventory",
-            type: "asset",
-            balance: 502000,
-          },
-        ],
-      },
-      {
-        id: "1-2",
-        code: "1200",
-        name: "Fixed Assets",
-        type: "group",
-        balance: 600000,
-        children: [
-          {
-            id: "1-2-1",
-            code: "1201",
-            name: "Office Equipment",
-            type: "asset",
-            balance: 250000,
-          },
-          {
-            id: "1-2-2",
-            code: "1202",
-            name: "Furniture & Fixtures",
-            type: "asset",
-            balance: 350000,
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: "2",
-    code: "2000",
-    name: "Liabilities",
-    type: "group",
-    balance: 680000,
-    children: [
-      {
-        id: "2-1",
-        code: "2100",
-        name: "Current Liabilities",
-        type: "group",
-        balance: 680000,
-        children: [
-          {
-            id: "2-1-1",
-            code: "2101",
-            name: "Accounts Payable",
-            type: "liability",
-            balance: 142000,
-          },
-          {
-            id: "2-1-2",
-            code: "2102",
-            name: "GST Payable",
-            type: "liability",
-            balance: 48600,
-          },
-          {
-            id: "2-1-3",
-            code: "2103",
-            name: "TDS Payable",
-            type: "liability",
-            balance: 15400,
-          },
-          {
-            id: "2-1-4",
-            code: "2104",
-            name: "Salary Payable",
-            type: "liability",
-            balance: 474000,
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: "3",
-    code: "3000",
-    name: "Equity",
-    type: "group",
-    balance: 1770000,
-    children: [
-      {
-        id: "3-1",
-        code: "3001",
-        name: "Owner's Capital",
-        type: "equity",
-        balance: 1500000,
-      },
-      {
-        id: "3-2",
-        code: "3002",
-        name: "Retained Earnings",
-        type: "equity",
-        balance: 270000,
-      },
-    ],
-  },
-  {
-    id: "4",
-    code: "4000",
-    name: "Income",
-    type: "group",
-    balance: 5500000,
-    children: [
-      {
-        id: "4-1",
-        code: "4001",
-        name: "Sales Revenue",
-        type: "income",
-        balance: 5200000,
-      },
-      {
-        id: "4-2",
-        code: "4002",
-        name: "Service Revenue",
-        type: "income",
-        balance: 280000,
-      },
-      {
-        id: "4-3",
-        code: "4003",
-        name: "Interest Income",
-        type: "income",
-        balance: 20000,
-      },
-    ],
-  },
-  {
-    id: "5",
-    code: "5000",
-    name: "Expenses",
-    type: "group",
-    balance: 3100000,
-    children: [
-      {
-        id: "5-1",
-        code: "5001",
-        name: "Cost of Goods Sold",
-        type: "expense",
-        balance: 1800000,
-      },
-      {
-        id: "5-2",
-        code: "5002",
-        name: "Salaries & Wages",
-        type: "expense",
-        balance: 720000,
-      },
-      {
-        id: "5-3",
-        code: "5003",
-        name: "Rent Expense",
-        type: "expense",
-        balance: 270000,
-      },
-      {
-        id: "5-4",
-        code: "5004",
-        name: "Utilities",
-        type: "expense",
-        balance: 45000,
-      },
-      {
-        id: "5-5",
-        code: "5005",
-        name: "Marketing & Advertising",
-        type: "expense",
-        balance: 180000,
-      },
-      {
-        id: "5-6",
-        code: "5006",
-        name: "Office Supplies",
-        type: "expense",
-        balance: 85000,
-      },
-    ],
-  },
-];
+interface ApiResponse<T> {
+  data: T;
+}
 
 const typeColors: Record<string, string> = {
   asset: "info",
@@ -272,7 +55,6 @@ function AccountRow({
 }) {
   const [expanded, setExpanded] = useState(level < 1);
   const hasChildren = account.children && account.children.length > 0;
-  const isGroup = account.type === "group";
 
   return (
     <>
@@ -296,7 +78,7 @@ function AccountRow({
             ) : (
               <span className="w-5" />
             )}
-            {isGroup ? (
+            {hasChildren ? (
               <FolderOpen className="h-4 w-4 text-gray-400" />
             ) : (
               <FileText className="h-4 w-4 text-gray-300" />
@@ -309,14 +91,14 @@ function AccountRow({
         <td className="py-3 px-4">
           <span
             className={`text-sm ${
-              isGroup ? "font-semibold text-gray-900" : "text-gray-700"
+              hasChildren ? "font-semibold text-gray-900" : "text-gray-700"
             }`}
           >
             {account.name}
           </span>
         </td>
         <td className="py-3 px-4">
-          {!isGroup && (
+          {!hasChildren && (
             <Badge variant={typeColors[account.type] as "info" | "warning" | "default" | "success" | "danger"}>
               {account.type}
             </Badge>
@@ -325,10 +107,10 @@ function AccountRow({
         <td className="py-3 px-4 text-right">
           <span
             className={`text-sm font-medium ${
-              isGroup ? "text-gray-900 font-semibold" : "text-gray-700"
+              hasChildren ? "text-gray-900 font-semibold" : "text-gray-700"
             }`}
           >
-            {formatCurrency(account.balance)}
+            {formatCurrency(account.balance ?? account.opening_balance ?? 0)}
           </span>
         </td>
       </tr>
@@ -341,11 +123,62 @@ function AccountRow({
 }
 
 export default function ChartOfAccountsPage() {
+  const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountCode, setNewAccountCode] = useState("");
   const [newAccountType, setNewAccountType] = useState("");
+  const [newAccountParent, setNewAccountParent] = useState("");
+
+  const { data: accounts = [], isLoading, error } = useQuery<Account[]>({
+    queryKey: ["accounts-tree"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Account[]>>("/books/accounts/tree");
+      return res.data;
+    },
+  });
+
+  // Flat list for parent account dropdown
+  const { data: flatAccounts = [] } = useQuery<Account[]>({
+    queryKey: ["accounts-flat"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Account[]>>("/books/accounts");
+      return res.data;
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      return api.post("/books/accounts", {
+        name: newAccountName,
+        code: newAccountCode,
+        type: newAccountType,
+        parent_id: newAccountParent || undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-flat"] });
+      setShowModal(false);
+      setNewAccountName("");
+      setNewAccountCode("");
+      setNewAccountType("");
+      setNewAccountParent("");
+    },
+  });
+
+  // Filter accounts by search
+  const filteredAccounts = searchQuery
+    ? accounts.filter((a) => {
+        const search = searchQuery.toLowerCase();
+        const matchesAccount = (acc: Account): boolean => {
+          if (acc.name.toLowerCase().includes(search) || acc.code.includes(search)) return true;
+          return acc.children?.some(matchesAccount) ?? false;
+        };
+        return matchesAccount(a);
+      })
+    : accounts;
 
   return (
     <div className="space-y-6">
@@ -367,7 +200,6 @@ export default function ChartOfAccountsPage() {
       </div>
 
       <Card padding="none">
-        {/* Search */}
         <div className="p-4 border-b border-gray-200">
           <Input
             placeholder="Search accounts..."
@@ -378,32 +210,41 @@ export default function ChartOfAccountsPage() {
           />
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
-                  Code
-                </th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Account Name
-                </th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
-                  Type
-                </th>
-                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
-                  Balance
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {chartOfAccounts.map((account) => (
-                <AccountRow key={account.id} account={account} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {isLoading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : error ? (
+          <div className="py-12 text-center text-danger-600">
+            Failed to load chart of accounts. Please try again.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                    Code
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Account Name
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
+                    Type
+                  </th>
+                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                    Balance
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAccounts.map((account) => (
+                  <AccountRow key={account.id} account={account} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
       {/* Add Account Modal */}
@@ -441,16 +282,11 @@ export default function ChartOfAccountsPage() {
           />
           <Select
             label="Parent Account"
-            value=""
-            onChange={() => {}}
-            options={[
-              { value: "1100", label: "1100 - Current Assets" },
-              { value: "1200", label: "1200 - Fixed Assets" },
-              { value: "2100", label: "2100 - Current Liabilities" },
-              { value: "3000", label: "3000 - Equity" },
-              { value: "4000", label: "4000 - Income" },
-              { value: "5000", label: "5000 - Expenses" },
-            ]}
+            value={newAccountParent}
+            onChange={setNewAccountParent}
+            options={flatAccounts
+              .filter((a) => a.children && a.children.length > 0 || !a.parent_id)
+              .map((a) => ({ value: a.id, label: `${a.code} - ${a.name}` }))}
             searchable
             placeholder="Select parent (optional)"
           />
@@ -458,7 +294,13 @@ export default function ChartOfAccountsPage() {
             <Button variant="outline" onClick={() => setShowModal(false)}>
               Cancel
             </Button>
-            <Button>Create Account</Button>
+            <Button
+              onClick={() => createMutation.mutate()}
+              loading={createMutation.isPending}
+              disabled={!newAccountName || !newAccountCode || !newAccountType}
+            >
+              Create Account
+            </Button>
           </div>
         </div>
       </Modal>

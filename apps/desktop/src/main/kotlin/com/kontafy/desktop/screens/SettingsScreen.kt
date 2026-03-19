@@ -635,7 +635,7 @@ private fun SyncSettingsSection(apiClient: ApiClient?, appSettingsRepository: Ap
     val savedSettings = remember {
         try { appSettingsRepository.getAll() } catch (e: Exception) { e.printStackTrace(); emptyMap() }
     }
-    var apiUrl by remember { mutableStateOf(savedSettings["api_url"] ?: "http://localhost:4001/api") }
+    var apiUrl by remember { mutableStateOf(savedSettings["api_url"] ?: "https://api.kontafy.com/v1") }
     var syncFrequency by remember { mutableStateOf<DropdownItem<String>?>(
         savedSettings["sync_frequency"]?.let { v ->
             when (v) {
@@ -669,7 +669,7 @@ private fun SyncSettingsSection(apiClient: ApiClient?, appSettingsRepository: Ap
             value = apiUrl,
             onValueChange = { apiUrl = it },
             label = "API Base URL",
-            placeholder = "http://localhost:4001/api",
+            placeholder = "https://api.kontafy.com/v1",
         )
         Spacer(Modifier.height(8.dp))
         Text(
