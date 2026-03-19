@@ -949,6 +949,53 @@ fun KontafyApp(onQuit: () -> Unit = {}) {
                             },
                         )
 
+                        // Credit Notes
+                        is Screen.CreditNotes -> CreditNotesScreen()
+
+                        // E-Invoice
+                        is Screen.EInvoiceDashboard -> EInvoiceDashboardScreen()
+                        is Screen.EInvoiceGenerate -> EInvoiceGenerateScreen()
+                        is Screen.EInvoiceSettings -> EInvoiceSettingsScreen()
+
+                        // Branches
+                        is Screen.Branches -> BranchesScreen()
+
+                        // Budgets
+                        is Screen.BudgetList -> BudgetListScreen()
+                        is Screen.CreateBudget -> CreateBudgetScreen()
+                        is Screen.BudgetVariance -> BudgetVarianceScreen()
+
+                        // Outstanding Payments
+                        is Screen.OutstandingPayments -> OutstandingPaymentsScreen()
+
+                        // E-commerce
+                        is Screen.CommerceConnections -> CommerceConnectionsScreen()
+                        is Screen.CommerceOrders -> CommerceOrdersScreen()
+                        is Screen.CommerceDashboard -> CommerceDashboardScreen()
+
+                        // WhatsApp
+                        is Screen.WhatsAppMessages -> WhatsAppMessagesScreen()
+                        is Screen.WhatsAppSettings -> WhatsAppSettingsScreen()
+
+                        // AI Insights
+                        is Screen.AIInsights -> AIInsightsScreen()
+
+                        // CA Portal
+                        is Screen.CAPortal -> CAPortalScreen()
+
+                        // Billing
+                        is Screen.BillingOverview -> BillingOverviewScreen()
+                        is Screen.BillingPlans -> BillingPlansScreen()
+                        is Screen.BillingInvoices -> BillingInvoicesScreen()
+
+                        // Additional Reports
+                        is Screen.GeneralLedgerReport -> GeneralLedgerReportScreen()
+                        is Screen.DayBook -> DayBookScreen()
+                        is Screen.ARAgingReport -> ARAgingReportScreen()
+                        is Screen.APAgingReport -> APAgingReportScreen()
+                        is Screen.SalesRegister -> SalesRegisterScreen()
+                        is Screen.GSTSummaryReport -> GSTSummaryReportScreen()
+
                         is Screen.Login -> {} // handled above
                         is Screen.Register -> {} // handled above
 

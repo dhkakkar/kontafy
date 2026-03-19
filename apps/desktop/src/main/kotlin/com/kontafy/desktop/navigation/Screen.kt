@@ -84,4 +84,51 @@ sealed class Screen(val route: String, val title: String) {
 
     // Multi-company
     data object AddCompany : Screen("add-company", "Add Company")
+
+    // Credit Notes
+    data object CreditNotes : Screen("credit-notes", "Credit Notes")
+
+    // E-Invoice
+    data object EInvoiceDashboard : Screen("einvoice-dashboard", "E-Invoice Dashboard")
+    data object EInvoiceGenerate : Screen("einvoice-generate", "Generate E-Invoice")
+    data object EInvoiceSettings : Screen("einvoice-settings", "E-Invoice Settings")
+
+    // Branches
+    data object Branches : Screen("branches", "Branches")
+
+    // Budgets
+    data object BudgetList : Screen("budgets", "Budgets")
+    data object CreateBudget : Screen("budgets/create", "New Budget")
+    data object BudgetVariance : Screen("budgets/variance", "Variance Report")
+
+    // Outstanding Payments
+    data object OutstandingPayments : Screen("outstanding-payments", "Outstanding Payments")
+
+    // E-commerce
+    data object CommerceConnections : Screen("commerce", "E-commerce Connections")
+    data object CommerceOrders : Screen("commerce-orders", "Synced Orders")
+    data object CommerceDashboard : Screen("commerce-dashboard", "Commerce Analytics")
+
+    // WhatsApp
+    data object WhatsAppMessages : Screen("whatsapp", "WhatsApp Messages")
+    data object WhatsAppSettings : Screen("whatsapp-settings", "WhatsApp Settings")
+
+    // AI Insights
+    data object AIInsights : Screen("ai-insights", "AI Insights")
+
+    // CA Portal
+    data object CAPortal : Screen("ca-portal", "CA Portal")
+
+    // Billing
+    data object BillingOverview : Screen("billing", "Billing")
+    data object BillingPlans : Screen("billing-plans", "Plans")
+    data object BillingInvoices : Screen("billing-invoices", "Billing Invoices")
+
+    // Additional Reports
+    data object GeneralLedgerReport : Screen("general-ledger-report", "General Ledger")
+    data object DayBook : Screen("day-book", "Day Book")
+    data object ARAgingReport : Screen("ar-aging", "Receivable Aging")
+    data object APAgingReport : Screen("ap-aging", "Payable Aging")
+    data object SalesRegister : Screen("sales-register", "Sales Register")
+    data object GSTSummaryReport : Screen("gst-summary", "GST Summary")
 }

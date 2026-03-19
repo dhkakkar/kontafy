@@ -49,13 +49,35 @@ val sidebarSections = listOf(
         ),
     ),
     SidebarSection(
+        label = "Books",
+        icon = Icons.Outlined.MenuBook,
+        items = listOf(
+            SidebarItem(Screen.ChartOfAccounts, "Chart of Accounts", Icons.Outlined.AccountTree, Icons.Filled.AccountTree),
+            SidebarItem(Screen.JournalEntries, "Journal Entries", Icons.Outlined.MenuBook, Icons.Filled.MenuBook),
+            SidebarItem(Screen.Ledger(), "Ledger", Icons.Outlined.ListAlt, Icons.Filled.ListAlt),
+            SidebarItem(Screen.AuditTrail, "Audit Trail", Icons.Outlined.History, Icons.Filled.History),
+        ),
+    ),
+    SidebarSection(
         label = "Invoicing",
         icon = Icons.Outlined.Receipt,
         items = listOf(
-            SidebarItem(Screen.InvoiceList, "Invoices", Icons.Outlined.Receipt, Icons.Filled.Receipt),
+            SidebarItem(Screen.InvoiceList, "Sales Invoices", Icons.Outlined.Receipt, Icons.Filled.Receipt),
+            SidebarItem(Screen.CreateInvoice, "Create Invoice", Icons.Outlined.NoteAdd, Icons.Filled.NoteAdd),
+            SidebarItem(Screen.CreditNotes, "Credit Notes", Icons.Outlined.RemoveCircle, Icons.Filled.RemoveCircle),
             SidebarItem(Screen.QuotationList, "Quotations", Icons.Outlined.Description, Icons.Filled.Description),
             SidebarItem(Screen.PurchaseOrderList, "Purchase Orders", Icons.Outlined.ShoppingCart, Icons.Filled.ShoppingCart),
             SidebarItem(Screen.RecurringInvoices, "Recurring", Icons.Outlined.Refresh, Icons.Filled.Refresh),
+        ),
+    ),
+    SidebarSection(
+        label = "E-Invoice",
+        icon = Icons.Outlined.VerifiedUser,
+        items = listOf(
+            SidebarItem(Screen.EInvoiceDashboard, "Dashboard", Icons.Outlined.VerifiedUser, Icons.Filled.VerifiedUser),
+            SidebarItem(Screen.EInvoiceGenerate, "Generate", Icons.Outlined.FilePresent, Icons.Filled.FilePresent),
+            SidebarItem(Screen.EWayBillList, "E-Way Bills", Icons.Outlined.LocalShipping, Icons.Filled.LocalShipping),
+            SidebarItem(Screen.EInvoiceSettings, "Settings", Icons.Outlined.Settings, Icons.Filled.Settings),
         ),
     ),
     SidebarSection(
@@ -67,13 +89,28 @@ val sidebarSections = listOf(
         ),
     ),
     SidebarSection(
-        label = "Books",
-        icon = Icons.Outlined.MenuBook,
+        label = "Branches",
+        icon = Icons.Outlined.Business,
         items = listOf(
-            SidebarItem(Screen.ChartOfAccounts, "Chart of Accounts", Icons.Outlined.AccountTree, Icons.Filled.AccountTree),
-            SidebarItem(Screen.JournalEntries, "Journal Entries", Icons.Outlined.MenuBook, Icons.Filled.MenuBook),
-            SidebarItem(Screen.Ledger(), "Ledger", Icons.Outlined.ListAlt, Icons.Filled.ListAlt),
-            SidebarItem(Screen.AuditTrail, "Audit Trail", Icons.Outlined.History, Icons.Filled.History),
+            SidebarItem(Screen.Branches, "Branches", Icons.Outlined.Business, Icons.Filled.Business),
+        ),
+    ),
+    SidebarSection(
+        label = "Budgets",
+        icon = Icons.Outlined.PieChart,
+        items = listOf(
+            SidebarItem(Screen.BudgetList, "All Budgets", Icons.Outlined.PieChart, Icons.Filled.PieChart),
+            SidebarItem(Screen.CreateBudget, "Create Budget", Icons.Outlined.Add, Icons.Filled.Add),
+            SidebarItem(Screen.BudgetVariance, "Variance Report", Icons.Outlined.TrendingUp, Icons.Filled.TrendingUp),
+        ),
+    ),
+    SidebarSection(
+        label = "Payments",
+        icon = Icons.Outlined.Payments,
+        items = listOf(
+            SidebarItem(Screen.Payments, "All Payments", Icons.Outlined.Payments, Icons.Filled.Payments),
+            SidebarItem(Screen.RecordPayment, "Record Payment", Icons.Outlined.AddCard, Icons.Filled.AddCard),
+            SidebarItem(Screen.OutstandingPayments, "Outstanding", Icons.Outlined.Warning, Icons.Filled.Warning),
         ),
     ),
     SidebarSection(
@@ -81,8 +118,20 @@ val sidebarSections = listOf(
         icon = Icons.Outlined.Inventory,
         items = listOf(
             SidebarItem(Screen.ProductList, "Products", Icons.Outlined.Inventory, Icons.Filled.Inventory),
-            SidebarItem(Screen.StockMovements, "Stock Movements", Icons.Outlined.CompareArrows, Icons.Filled.CompareArrows),
             SidebarItem(Screen.Warehouses, "Warehouses", Icons.Outlined.Store, Icons.Filled.Store),
+            SidebarItem(Screen.StockMovements, "Stock Movements", Icons.Outlined.CompareArrows, Icons.Filled.CompareArrows),
+            SidebarItem(Screen.StockAdjustment, "Stock Adjustment", Icons.Outlined.Tune, Icons.Filled.Tune),
+        ),
+    ),
+    SidebarSection(
+        label = "Tax",
+        icon = Icons.Outlined.Receipt,
+        items = listOf(
+            SidebarItem(Screen.GSTDashboard, "GST Dashboard", Icons.Outlined.Receipt, Icons.Filled.Receipt),
+            SidebarItem(Screen.GSTCompute, "GST Compute", Icons.Outlined.Calculate, Icons.Filled.Calculate),
+            SidebarItem(Screen.GSTR1, "GSTR-1", Icons.Outlined.Description, Icons.Filled.Description),
+            SidebarItem(Screen.GSTR3B, "GSTR-3B", Icons.Outlined.Summarize, Icons.Filled.Summarize),
+            SidebarItem(Screen.TDS, "TDS", Icons.Outlined.PriceCheck, Icons.Filled.PriceCheck),
         ),
     ),
     SidebarSection(
@@ -93,32 +142,58 @@ val sidebarSections = listOf(
         ),
     ),
     SidebarSection(
-        label = "Payments",
-        icon = Icons.Outlined.Payments,
-        items = listOf(
-            SidebarItem(Screen.Payments, "All Payments", Icons.Outlined.Payments, Icons.Filled.Payments),
-            SidebarItem(Screen.RecordPayment, "Record Payment", Icons.Outlined.AddCard, Icons.Filled.AddCard),
-        ),
-    ),
-    SidebarSection(
-        label = "Tax",
-        icon = Icons.Outlined.Receipt,
-        items = listOf(
-            SidebarItem(Screen.GSTDashboard, "GST Dashboard", Icons.Outlined.Receipt, Icons.Filled.Receipt),
-            SidebarItem(Screen.GSTR1, "GSTR-1", Icons.Outlined.Description, Icons.Filled.Description),
-            SidebarItem(Screen.GSTR3B, "GSTR-3B", Icons.Outlined.Summarize, Icons.Filled.Summarize),
-            SidebarItem(Screen.EWayBillList, "E-Way Bills", Icons.Outlined.LocalShipping, Icons.Filled.LocalShipping),
-            SidebarItem(Screen.TDS, "TDS", Icons.Outlined.PriceCheck, Icons.Filled.PriceCheck),
-        ),
-    ),
-    SidebarSection(
         label = "Reports",
         icon = Icons.Outlined.BarChart,
         items = listOf(
-            SidebarItem(Screen.ReportsHub, "Reports Hub", Icons.Outlined.BarChart, Icons.Filled.BarChart),
+            SidebarItem(Screen.ReportsHub, "All Reports", Icons.Outlined.BarChart, Icons.Filled.BarChart),
             SidebarItem(Screen.TrialBalance, "Trial Balance", Icons.Outlined.Balance, Icons.Filled.Balance),
             SidebarItem(Screen.ProfitLoss, "Profit & Loss", Icons.Outlined.TrendingUp, Icons.Filled.TrendingUp),
             SidebarItem(Screen.BalanceSheet, "Balance Sheet", Icons.Outlined.AccountBalance, Icons.Filled.AccountBalance),
+            SidebarItem(Screen.CashFlow, "Cash Flow", Icons.Outlined.Payments, Icons.Filled.Payments),
+            SidebarItem(Screen.GeneralLedgerReport, "General Ledger", Icons.Outlined.ListAlt, Icons.Filled.ListAlt),
+            SidebarItem(Screen.DayBook, "Day Book", Icons.Outlined.CalendarToday, Icons.Filled.CalendarToday),
+            SidebarItem(Screen.ARAgingReport, "AR Aging", Icons.Outlined.Schedule, Icons.Filled.Schedule),
+            SidebarItem(Screen.APAgingReport, "AP Aging", Icons.Outlined.Schedule, Icons.Filled.Schedule),
+            SidebarItem(Screen.SalesRegister, "Sales Register", Icons.Outlined.PointOfSale, Icons.Filled.PointOfSale),
+            SidebarItem(Screen.GSTSummaryReport, "GST Summary", Icons.Outlined.Summarize, Icons.Filled.Summarize),
+        ),
+    ),
+    SidebarSection(
+        label = "E-commerce",
+        icon = Icons.Outlined.ShoppingBag,
+        items = listOf(
+            SidebarItem(Screen.CommerceConnections, "Connections", Icons.Outlined.ShoppingBag, Icons.Filled.ShoppingBag),
+            SidebarItem(Screen.CommerceOrders, "Synced Orders", Icons.Outlined.ShoppingCart, Icons.Filled.ShoppingCart),
+            SidebarItem(Screen.CommerceDashboard, "Analytics", Icons.Outlined.Analytics, Icons.Filled.Analytics),
+        ),
+    ),
+    SidebarSection(
+        label = "WhatsApp",
+        icon = Icons.Outlined.Message,
+        items = listOf(
+            SidebarItem(Screen.WhatsAppMessages, "Messages", Icons.Outlined.Message, Icons.Filled.Message),
+            SidebarItem(Screen.WhatsAppSettings, "Settings", Icons.Outlined.Settings, Icons.Filled.Settings),
+        ),
+    ),
+    SidebarSection(
+        label = null,
+        items = listOf(
+            SidebarItem(Screen.AIInsights, "AI Insights", Icons.Outlined.Lightbulb, Icons.Filled.Lightbulb),
+        ),
+    ),
+    SidebarSection(
+        label = null,
+        items = listOf(
+            SidebarItem(Screen.CAPortal, "CA Portal", Icons.Outlined.Security, Icons.Filled.Security),
+        ),
+    ),
+    SidebarSection(
+        label = "Billing",
+        icon = Icons.Outlined.CreditCard,
+        items = listOf(
+            SidebarItem(Screen.BillingOverview, "Overview", Icons.Outlined.CreditCard, Icons.Filled.CreditCard),
+            SidebarItem(Screen.BillingPlans, "Plans", Icons.Outlined.Loyalty, Icons.Filled.Loyalty),
+            SidebarItem(Screen.BillingInvoices, "Invoices", Icons.Outlined.Receipt, Icons.Filled.Receipt),
         ),
     ),
     SidebarSection(

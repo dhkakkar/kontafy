@@ -51,6 +51,8 @@ const navItems: NavItem[] = [
     children: [
       { label: "Chart of Accounts", href: "/books/accounts" },
       { label: "Journal Entries", href: "/books/journal" },
+      { label: "Ledger", href: "/books/ledger" },
+      { label: "Audit Trail", href: "/settings/audit-log" },
       { label: "Reports", href: "/books/reports" },
     ],
   },
@@ -117,6 +119,7 @@ const navItems: NavItem[] = [
       { label: "Products", href: "/stock/products" },
       { label: "Warehouses", href: "/stock/warehouses" },
       { label: "Stock Movements", href: "/stock/movements" },
+      { label: "Stock Adjustment", href: "/stock/adjustments" },
     ],
   },
   {
@@ -124,7 +127,9 @@ const navItems: NavItem[] = [
     href: "/tax",
     icon: <Landmark className="h-5 w-5" />,
     children: [
+      { label: "GST Dashboard", href: "/tax" },
       { label: "GST Returns", href: "/tax/gst" },
+      { label: "GST Compute", href: "/tax/gst/compute" },
       { label: "GSTR-3B", href: "/tax/gstr3b" },
       { label: "GSTR-1 Export", href: "/tax/gstr1-export" },
       { label: "TDS", href: "/tax/tds" },
@@ -145,6 +150,10 @@ const navItems: NavItem[] = [
     icon: <PieChart className="h-5 w-5" />,
     children: [
       { label: "All Reports", href: "/reports" },
+      { label: "Trial Balance", href: "/reports/trial-balance" },
+      { label: "Profit & Loss", href: "/reports/profit-loss" },
+      { label: "Balance Sheet", href: "/reports/balance-sheet" },
+      { label: "Cash Flow", href: "/reports/cash-flow" },
       { label: "General Ledger", href: "/reports/general-ledger" },
       { label: "Day Book", href: "/reports/day-book" },
       { label: "AR Aging", href: "/reports/receivable-aging" },
