@@ -36,7 +36,13 @@ class KontafyScaffold extends ConsumerWidget {
         location.startsWith('/ca-portal') ||
         location.startsWith('/billing') ||
         location.startsWith('/books') ||
-        location.startsWith('/reports')) return 4;
+        location.startsWith('/reports') ||
+        location.startsWith('/purchases') ||
+        location.startsWith('/quotations') ||
+        location.startsWith('/purchase-orders') ||
+        location.startsWith('/credit-notes') ||
+        location.startsWith('/debit-notes') ||
+        location.startsWith('/expenses')) return 4;
     return 0;
   }
 
@@ -232,6 +238,7 @@ class _KontafyDrawer extends StatelessWidget {
                       _DrawerSubItem(label: 'Proforma', onTap: () => _navigate(context, '/proforma')),
                       _DrawerSubItem(label: 'Delivery Challans', onTap: () => _navigate(context, '/delivery-challans')),
                       _DrawerSubItem(label: 'Recurring', onTap: () => _navigate(context, '/recurring')),
+                      _DrawerSubItem(label: 'Expenses', onTap: () => _navigate(context, '/expenses')),
                     ],
                   ),
                   // Books
@@ -253,9 +260,14 @@ class _KontafyDrawer extends StatelessWidget {
                       _DrawerSubItem(label: 'Balance Sheet', onTap: () => _navigate(context, '/reports/balance-sheet')),
                       _DrawerSubItem(label: 'Cash Flow', onTap: () => _navigate(context, '/reports/cash-flow')),
                       _DrawerSubItem(label: 'Trial Balance', onTap: () => _navigate(context, '/reports/trial-balance')),
-                      _DrawerSubItem(label: 'Aging Report', onTap: () => _navigate(context, '/reports/aging')),
-                      _DrawerSubItem(label: 'Tax Summary', onTap: () => _navigate(context, '/reports/tax-summary')),
-                      _DrawerSubItem(label: 'Expense Report', onTap: () => _navigate(context, '/reports/expenses')),
+                      _DrawerSubItem(label: 'Receivable Aging', onTap: () => _navigate(context, '/reports/receivable-aging')),
+                      _DrawerSubItem(label: 'Payable Aging', onTap: () => _navigate(context, '/reports/payable-aging')),
+                      _DrawerSubItem(label: 'Sales Register', onTap: () => _navigate(context, '/reports/sales-register')),
+                      _DrawerSubItem(label: 'Purchase Register', onTap: () => _navigate(context, '/reports/purchase-register')),
+                      _DrawerSubItem(label: 'Stock Summary', onTap: () => _navigate(context, '/reports/stock-summary')),
+                      _DrawerSubItem(label: 'Stock Movement', onTap: () => _navigate(context, '/reports/stock-movement')),
+                      _DrawerSubItem(label: 'GST Summary', onTap: () => _navigate(context, '/reports/gst-summary')),
+                      _DrawerSubItem(label: 'TDS Summary', onTap: () => _navigate(context, '/reports/tds-summary')),
                     ],
                   ),
                   _DrawerItem(
@@ -277,7 +289,7 @@ class _KontafyDrawer extends StatelessWidget {
                     icon: Icons.inventory_2_outlined,
                     label: 'Inventory',
                     children: [
-                      _DrawerSubItem(label: 'Products', onTap: () => _navigate(context, '/inventory/products')),
+                      _DrawerSubItem(label: 'Products', onTap: () => _navigate(context, '/products')),
                       _DrawerSubItem(label: 'Warehouses', onTap: () => _navigate(context, '/inventory/warehouses')),
                       _DrawerSubItem(label: 'Movements', onTap: () => _navigate(context, '/inventory/movements')),
                       _DrawerSubItem(label: 'Adjustments', onTap: () => _navigate(context, '/inventory/adjustments')),

@@ -24,6 +24,7 @@ import {
   ArrowRight,
   Download,
   Clock,
+  Edit3,
 } from "lucide-react";
 
 const statusBadgeMap: Record<
@@ -110,6 +111,14 @@ export default function QuotationDetailPage() {
 
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          icon={<Edit3 className="h-4 w-4" />}
+          onClick={() => router.push(`/quotations/new?edit=${quotationId}`)}
+        >
+          Edit
+        </Button>
         {isDraft && (
           <Button
             variant="outline"
@@ -157,17 +166,15 @@ export default function QuotationDetailPage() {
             Convert to Invoice
           </Button>
         )}
-        {isDraft && (
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={<Trash2 className="h-4 w-4" />}
-            className="text-danger-600 hover:text-danger-700 hover:bg-danger-50"
-            onClick={() => setShowDeleteModal(true)}
-          >
-            Delete
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Trash2 className="h-4 w-4" />}
+          className="text-danger-600 hover:text-danger-700 hover:bg-danger-50"
+          onClick={() => setShowDeleteModal(true)}
+        >
+          Delete
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

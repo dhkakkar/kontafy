@@ -76,7 +76,10 @@ export function useQuotations(params?: { page?: number; status?: string; search?
 export function useQuotation(id: string) {
   return useQuery<Quotation>({
     queryKey: ["quotation", id],
-    queryFn: () => api.get<Quotation>(`/quotations/${id}`),
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Quotation>>(`/quotations/${id}`);
+      return res.data;
+    },
     enabled: !!id,
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   useReactTable,
@@ -237,6 +237,7 @@ const txnColumns = [
 
 export default function ContactDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const contactId = params.id as string;
   const [activeTab, setActiveTab] = useState("transactions");
   const [txnSorting, setTxnSorting] = useState<SortingState>([]);
@@ -361,7 +362,7 @@ export default function ContactDetailPage() {
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">
-              {contact.name}
+              {contact.company_name || contact.name}
             </h1>
             <Badge variant={typeInfo.variant}>{typeInfo.label}</Badge>
             {!contact.is_active && (
@@ -379,6 +380,7 @@ export default function ContactDetailPage() {
             variant="outline"
             size="sm"
             icon={<Edit3 className="h-4 w-4" />}
+            onClick={() => router.push(`/contacts?edit=${contactId}`)}
           >
             Edit
           </Button>

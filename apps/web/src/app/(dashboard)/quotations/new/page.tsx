@@ -38,6 +38,7 @@ interface ContactOption {
   name: string;
   gstin?: string;
   state?: string | null;
+  billing_address?: { state?: string | null } | null;
 }
 
 function generateId() {
@@ -167,8 +168,9 @@ export default function NewQuotationPage() {
   useEffect(() => {
     if (!customer) return;
     const selected = customers.find((c) => c.id === customer);
-    if (selected?.state) {
-      setPlaceOfSupply(selected.state);
+    const customerState = selected?.state || selected?.billing_address?.state;
+    if (customerState) {
+      setPlaceOfSupply(customerState);
     }
   }, [customer, customers]);
 
@@ -370,19 +372,19 @@ export default function NewQuotationPage() {
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[180px]">
                     Product
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px]">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
                     Item Name
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                     HSN/SAC
                   </th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[70px]">
+                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                     Qty
                   </th>
                   <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
                     Rate
                   </th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
+                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                     Disc %
                   </th>
                   <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">
