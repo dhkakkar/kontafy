@@ -30,6 +30,11 @@ import {
 
 // ─── Types ─────────────────────────────────────────────────────
 
+interface ApiResponse<T> {
+  data: T;
+  meta?: any;
+}
+
 interface Address {
   line1?: string;
   line2?: string;
@@ -166,7 +171,8 @@ export default function InvoiceDetailPage() {
 
   const { data: invoice, isLoading } = useQuery<Invoice>({
     queryKey: ["invoice", invoiceId],
-    queryFn: () => api.get(`/bill/invoices/${invoiceId}`),
+    queryFn: () =>
+      api.get<ApiResponse<Invoice>>(`/bill/invoices/${invoiceId}`).then((res) => res.data),
   });
 
   // ─── Mutations ────────────────────────────────────────────────
@@ -187,7 +193,8 @@ export default function InvoiceDetailPage() {
   });
 
   const duplicateMutation = useMutation({
-    mutationFn: () => api.post(`/bill/invoices/${invoiceId}/duplicate`),
+    mutationFn: () =>
+      api.post<ApiResponse<{ id: string }>>(`/bill/invoices/${invoiceId}/duplicate`).then((res) => res.data),
     onSuccess: (data: any) => {
       router.push(`/invoices/${data.id}`);
     },
@@ -195,11 +202,11 @@ export default function InvoiceDetailPage() {
 
   const downloadPdf = async () => {
     try {
-      const result = await api.get<{ url: string }>(
+      const res = await api.get<ApiResponse<{ url: string }>>(
         `/bill/invoices/${invoiceId}/pdf`
       );
-      if (result.url) {
-        window.open(result.url, "_blank");
+      if (res.data.url) {
+        window.open(res.data.url, "_blank");
       }
     } catch {
       // Fallback: direct download

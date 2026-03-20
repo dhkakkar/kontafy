@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ArrowRight, AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SignupPage() {
@@ -16,6 +16,7 @@ export default function SignupPage() {
   const [gstin, setGstin] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -121,10 +122,15 @@ export default function SignupPage() {
         />
         <Input
           label="Password"
-          type="password"
+          type={showPassword ? "text" : "password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Min 8 characters"
+          rightIcon={
+            <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-600">
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          }
         />
 
         <label className="flex items-start gap-3 cursor-pointer">

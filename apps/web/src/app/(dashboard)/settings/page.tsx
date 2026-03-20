@@ -7,7 +7,19 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useAuthStore } from "@/stores/auth.store";
 import { api } from "@/lib/api";
-import { Save, Upload, Building2, Loader2 } from "lucide-react";
+import { Save, Upload, Building2, Loader2, Search } from "lucide-react";
+
+// GST state code to state abbreviation mapping
+const GST_STATE_CODE_MAP: Record<string, string> = {
+  "01": "JK", "02": "HP", "03": "PB", "04": "CH", "05": "UK",
+  "06": "HR", "07": "DL", "08": "RJ", "09": "UP", "10": "BR",
+  "11": "SK", "12": "AR", "13": "NL", "14": "MN", "15": "MZ",
+  "16": "TR", "17": "ML", "18": "AS", "19": "WB", "20": "JH",
+  "21": "OD", "22": "CT", "23": "MP", "24": "GJ", "25": "DN",
+  "26": "DN", "27": "MH", "28": "AP", "29": "KA", "30": "GA",
+  "31": "LA", "32": "KL", "33": "TN", "34": "PY", "35": "AN",
+  "36": "TG", "37": "AP",
+};
 
 const INDIAN_STATES = [
   { value: "AN", label: "Andaman and Nicobar Islands" },
@@ -67,6 +79,8 @@ export default function OrganizationSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
+  const [gstinLoading, setGstinLoading] = useState(false);
+  const [gstinError, setGstinError] = useState("");
 
   const [form, setForm] = useState({
     name: organization?.name || "",
@@ -119,6 +133,41 @@ export default function OrganizationSettingsPage() {
   const updateField = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setSuccess(false);
+  };
+
+  const handleGstinLookup = async () => {
+    const gstin = form.gstin.trim().toUpperCase();
+    if (!gstin || gstin.length !== 15) {
+      setGstinError("Please enter a valid 15-character GSTIN");
+      return;
+    }
+    setGstinLoading(true);
+    setGstinError("");
+    try {
+      const res = await fetch(`https://sheet.gstincheck.co.in/check/free/${gstin}`);
+      const json = await res.json();
+      if (!json.flag) {
+        setGstinError(json.message || "Invalid GSTIN or lookup failed");
+        return;
+      }
+      const data = json.data;
+      const addr = data.pradr?.addr || {};
+      const stateCode = addr.stcd ? GST_STATE_CODE_MAP[addr.stcd] || "" : "";
+      const addressParts = [addr.flno, addr.bno, addr.st].filter(Boolean);
+      setForm((prev) => ({
+        ...prev,
+        legal_name: data.lgnm || prev.legal_name,
+        pan: gstin.substring(2, 12),
+        state: stateCode || prev.state,
+        city: addr.loc || prev.city,
+        pincode: addr.pncd || prev.pincode,
+        address_line1: addressParts.join(", ") || prev.address_line1,
+      }));
+    } catch (err) {
+      setGstinError("Failed to fetch GSTIN details. Please try again.");
+    } finally {
+      setGstinLoading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -215,13 +264,30 @@ export default function OrganizationSettingsPage() {
             onChange={(e) => updateField("legal_name", e.target.value)}
             placeholder="Registered legal name"
           />
-          <Input
-            label="GSTIN"
-            value={form.gstin}
-            onChange={(e) => updateField("gstin", e.target.value)}
-            placeholder="15-character GSTIN"
-            hint="e.g., 27AABCK1234A1Z5"
-          />
+          <div>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Input
+                  label="GSTIN"
+                  value={form.gstin}
+                  onChange={(e) => updateField("gstin", e.target.value)}
+                  placeholder="15-character GSTIN"
+                  hint={gstinError || "e.g., 27AABCK1234A1Z5"}
+                  error={gstinError || undefined}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGstinLookup}
+                disabled={gstinLoading || !form.gstin.trim()}
+                icon={gstinLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                className="mb-[2px]"
+              >
+                {gstinLoading ? "Fetching..." : "Get Details"}
+              </Button>
+            </div>
+          </div>
           <Input
             label="PAN"
             value={form.pan}

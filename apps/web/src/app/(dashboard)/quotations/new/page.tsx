@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +37,7 @@ interface ContactOption {
   id: string;
   name: string;
   gstin?: string;
+  state?: string | null;
 }
 
 function generateId() {
@@ -124,10 +125,52 @@ export default function NewQuotationPage() {
   const [quotationDate, setQuotationDate] = useState(
     new Date().toISOString().split("T")[0]
   );
-  const [validityDate, setValidityDate] = useState("");
+  const [validityDate, setValidityDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 15);
+    return d.toISOString().split("T")[0];
+  });
   const [placeOfSupply, setPlaceOfSupply] = useState("");
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
+  const validityManuallySet = useRef(false);
+
+  // Auto-fill terms & notes from invoice settings
+  useEffect(() => {
+    api
+      .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
+      .then((res) => {
+        const d = res.data;
+        if (d) {
+          if (d.default_terms_conditions) {
+            setTerms(String(d.default_terms_conditions));
+          }
+          if (d.default_notes) {
+            setNotes(String(d.default_notes));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Auto-set Valid Until to 15 days after Quotation Date
+  useEffect(() => {
+    if (validityManuallySet.current) return;
+    if (!quotationDate) return;
+    const d = new Date(quotationDate);
+    if (isNaN(d.getTime())) return;
+    d.setDate(d.getDate() + 15);
+    setValidityDate(d.toISOString().split("T")[0]);
+  }, [quotationDate]);
+
+  // Auto-fill Place of Supply from selected customer's state
+  useEffect(() => {
+    if (!customer) return;
+    const selected = customers.find((c) => c.id === customer);
+    if (selected?.state) {
+      setPlaceOfSupply(selected.state);
+    }
+  }, [customer, customers]);
 
   const [items, setItems] = useState<LineItem[]>([
     {
@@ -240,7 +283,7 @@ export default function NewQuotationPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
@@ -295,7 +338,10 @@ export default function NewQuotationPage() {
               label="Valid Until"
               type="date"
               value={validityDate}
-              onChange={(e) => setValidityDate(e.target.value)}
+              onChange={(e) => {
+                validityManuallySet.current = true;
+                setValidityDate(e.target.value);
+              }}
             />
           </div>
         </Card>

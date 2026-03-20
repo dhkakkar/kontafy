@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
+import { api } from "@/lib/api";
 import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
 
 interface LineItem {
@@ -59,6 +60,25 @@ export default function NewPurchasePage() {
   const [placeOfSupply, setPlaceOfSupply] = useState("");
   const [vendorInvoiceNo, setVendorInvoiceNo] = useState("");
   const [notes, setNotes] = useState("");
+  const [terms, setTerms] = useState("");
+
+  // Auto-fill terms & notes from invoice settings
+  useEffect(() => {
+    api
+      .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
+      .then((res) => {
+        const d = res.data;
+        if (d) {
+          if (d.default_terms_conditions) {
+            setTerms(String(d.default_terms_conditions));
+          }
+          if (d.default_notes) {
+            setNotes(String(d.default_notes));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const [items, setItems] = useState<LineItem[]>([
     {
@@ -329,12 +349,28 @@ export default function NewPurchasePage() {
       {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card padding="md">
-          <Input
-            label="Notes / Terms"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Add any notes or payment terms..."
-          />
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+              <textarea
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add any notes..."
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Terms & Conditions</label>
+              <textarea
+                rows={3}
+                value={terms}
+                onChange={(e) => setTerms(e.target.value)}
+                placeholder="Payment terms, validity, etc."
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+            </div>
+          </div>
         </Card>
 
         <Card padding="md">

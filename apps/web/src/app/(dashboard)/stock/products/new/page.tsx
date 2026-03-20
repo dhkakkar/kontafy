@@ -1,14 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, ImagePlus, X } from "lucide-react";
 import { api } from "@/lib/api";
+
+const MAX_IMAGES = 5;
+
+interface ProductImage {
+  file: File;
+  preview: string;
+}
 
 const GST_RATE_OPTIONS = [
   { value: "0", label: "0% (Exempt)" },
@@ -41,6 +48,43 @@ export default function NewProductPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [images, setImages] = useState<ProductImage[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Clean up object URLs on unmount
+  useEffect(() => {
+    return () => {
+      images.forEach((img) => URL.revokeObjectURL(img.preview));
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAddImages = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const remaining = MAX_IMAGES - images.length;
+    const newFiles = Array.from(files).slice(0, remaining);
+
+    const newImages: ProductImage[] = newFiles.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+
+    setImages((prev) => [...prev, ...newImages]);
+
+    // Reset input so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setImages((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
 
   const [form, setForm] = useState({
     name: "",
@@ -51,6 +95,7 @@ export default function NewProductPage() {
     unit: "pcs",
     purchase_price: "",
     selling_price: "",
+    price_includes_gst: true,
     tax_rate: "18",
     track_inventory: true,
     reorder_level: "",
@@ -66,7 +111,7 @@ export default function NewProductPage() {
     setError("");
 
     try {
-      await api.post("/stock/products", {
+      const product = await api.post<{ id: string }>("/stock/products", {
         name: form.name,
         sku: form.sku || undefined,
         description: form.description || undefined,
@@ -75,10 +120,21 @@ export default function NewProductPage() {
         unit: form.unit,
         purchase_price: form.purchase_price ? Number(form.purchase_price) : undefined,
         selling_price: form.selling_price ? Number(form.selling_price) : undefined,
+        price_includes_gst: form.price_includes_gst,
         tax_rate: form.tax_rate ? Number(form.tax_rate) : undefined,
         track_inventory: form.track_inventory,
         reorder_level: form.reorder_level ? Number(form.reorder_level) : undefined,
       });
+
+      // Upload images if any were added
+      if (images.length > 0 && product?.id) {
+        const formData = new FormData();
+        images.forEach((img) => {
+          formData.append("images", img.file);
+        });
+        await api.post(`/stock/products/${product.id}/images`, formData);
+      }
+
       router.push("/stock/products");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create product";
@@ -111,7 +167,62 @@ export default function NewProductPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Product Images */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Product Images</CardTitle>
+              <span className="text-sm text-gray-500">
+                {images.length}/{MAX_IMAGES} images
+              </span>
+            </div>
+          </CardHeader>
+
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleAddImages}
+              className="hidden"
+            />
+            <div className="flex flex-wrap gap-3">
+              {images.map((img, index) => (
+                <div
+                  key={index}
+                  className="relative h-24 w-24 rounded-lg overflow-hidden border border-gray-200 group"
+                >
+                  <img
+                    src={img.preview}
+                    alt={`Product image ${index + 1}`}
+                    className="h-24 w-24 rounded-lg object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(index)}
+                    className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+
+              {images.length < MAX_IMAGES && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-24 w-24 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-colors"
+                >
+                  <ImagePlus className="h-6 w-6" />
+                  <span className="text-xs">Add</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </Card>
+
         {/* Basic Info */}
         <Card>
           <CardHeader>
@@ -202,23 +313,46 @@ export default function NewProductPage() {
             <CardTitle>Pricing</CardTitle>
           </CardHeader>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Purchase Price"
-              type="number"
-              value={form.purchase_price}
-              onChange={(e) => updateField("purchase_price", e.target.value)}
-              placeholder="0.00"
-              hint="Cost price per unit"
-            />
-            <Input
-              label="Selling Price"
-              type="number"
-              value={form.selling_price}
-              onChange={(e) => updateField("selling_price", e.target.value)}
-              placeholder="0.00"
-              hint="Sale price per unit"
-            />
+          <div className="space-y-4">
+            <div className="max-w-xs">
+              <Select
+                label="Price Type"
+                value={form.price_includes_gst ? "with_gst" : "without_gst"}
+                onChange={(value) =>
+                  updateField("price_includes_gst", value === "with_gst")
+                }
+                options={[
+                  { value: "with_gst", label: "With GST (Inclusive)" },
+                  { value: "without_gst", label: "Without GST (Exclusive)" },
+                ]}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Purchase Price"
+                type="number"
+                value={form.purchase_price}
+                onChange={(e) => updateField("purchase_price", e.target.value)}
+                placeholder="0.00"
+                hint={
+                  form.price_includes_gst
+                    ? "Cost price per unit (includes GST)"
+                    : "Cost price per unit (excludes GST)"
+                }
+              />
+              <Input
+                label="Selling Price"
+                type="number"
+                value={form.selling_price}
+                onChange={(e) => updateField("selling_price", e.target.value)}
+                placeholder="0.00"
+                hint={
+                  form.price_includes_gst
+                    ? "Sale price per unit (includes GST)"
+                    : "Sale price per unit (excludes GST)"
+                }
+              />
+            </div>
           </div>
         </Card>
 

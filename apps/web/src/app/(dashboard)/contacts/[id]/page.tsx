@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -11,7 +11,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
@@ -34,6 +34,12 @@ import {
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────
+
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  meta?: Record<string, any>;
+}
 
 interface Address {
   line1?: string;
@@ -240,32 +246,37 @@ export default function ContactDetailPage() {
 
   const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
     queryKey: ["contact", contactId],
-    queryFn: () => api.get(`/bill/contacts/${contactId}`),
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Contact>>(`/bill/contacts/${contactId}`);
+      return res.data;
+    },
   });
 
   const { data: summary } = useQuery<ContactSummary>({
     queryKey: ["contact-summary", contactId],
-    queryFn: () => api.get(`/bill/contacts/${contactId}/summary`),
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<ContactSummary>>(`/bill/contacts/${contactId}/summary`);
+      return res.data;
+    },
   });
 
-  const { data: transactionsRes } = useQuery<{
-    data: Transaction[];
-    meta: any;
-  }>({
+  const { data: transactions = [] } = useQuery<Transaction[]>({
     queryKey: ["contact-transactions", contactId, txnFilter],
-    queryFn: () => {
+    queryFn: async () => {
       const params: Record<string, string> = { limit: "100" };
       if (txnFilter) params.type = txnFilter;
-      return api.get(`/bill/contacts/${contactId}/transactions`, params);
+      const res = await api.get<ApiResponse<Transaction[]>>(`/bill/contacts/${contactId}/transactions`, params);
+      return res.data;
     },
   });
 
   const { data: outstandingData } = useQuery<OutstandingData>({
     queryKey: ["contact-outstanding", contactId],
-    queryFn: () => api.get(`/bill/contacts/${contactId}/outstanding`),
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<OutstandingData>>(`/bill/contacts/${contactId}/outstanding`);
+      return res.data;
+    },
   });
-
-  const transactions = transactionsRes?.data ?? [];
 
   // ─── Table ────────────────────────────────────────────────────
 
