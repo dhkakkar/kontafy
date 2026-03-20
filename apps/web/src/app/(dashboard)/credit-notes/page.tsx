@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Plus, Search, Download, MoreHorizontal, FileText, Loader2 } from "lucide-react";
+import { Plus, Search, Download, FileText, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface CreditNote {
@@ -31,8 +31,15 @@ interface CreditNote {
   original_invoice_number?: string;
   amount: number;
   status: "draft" | "issued" | "applied" | "cancelled";
-  reason?: string;
+  reason?: "return" | "discount" | "correction" | "other";
 }
+
+const reasonLabelMap: Record<string, { label: string; color: string }> = {
+  return: { label: "Sale Return", color: "text-orange-600 bg-orange-50" },
+  discount: { label: "Discount", color: "text-blue-600 bg-blue-50" },
+  correction: { label: "Correction", color: "text-purple-600 bg-purple-50" },
+  other: { label: "Other", color: "text-gray-600 bg-gray-50" },
+};
 
 interface ApiResponse<T> {
   data: T;
@@ -108,6 +115,19 @@ export default function CreditNotesPage() {
           </span>
         ),
       }),
+      columnHelper.accessor("reason", {
+        header: "Reason",
+        cell: (info) => {
+          const r = reasonLabelMap[info.getValue() || ""] || reasonLabelMap.other;
+          return info.getValue() ? (
+            <span className={`text-xs font-medium px-2 py-1 rounded-full ${r.color}`}>
+              {r.label}
+            </span>
+          ) : (
+            <span className="text-gray-400">-</span>
+          );
+        },
+      }),
       columnHelper.accessor("amount", {
         header: "Amount",
         cell: (info) => (
@@ -126,14 +146,6 @@ export default function CreditNotesPage() {
             </Badge>
           );
         },
-      }),
-      columnHelper.display({
-        id: "actions",
-        cell: () => (
-          <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
-        ),
       }),
     ],
     []

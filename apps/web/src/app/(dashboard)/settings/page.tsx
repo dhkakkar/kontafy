@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useAuthStore } from "@/stores/auth.store";
 import { api } from "@/lib/api";
-import { Save, Upload, Building2 } from "lucide-react";
+import { Save, Upload, Building2, Loader2 } from "lucide-react";
 
 const INDIAN_STATES = [
   { value: "AN", label: "Andaman and Nicobar Islands" },
@@ -63,8 +63,9 @@ const MONTHS = [
 ];
 
 export default function OrganizationSettingsPage() {
-  const { organization } = useAuthStore();
+  const { organization, setOrganization } = useAuthStore();
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
 
   const [form, setForm] = useState({
@@ -83,6 +84,37 @@ export default function OrganizationSettingsPage() {
     website: "",
     fiscal_year_start: String(organization?.financialYearStart || 4),
   });
+
+  // Load existing settings from API on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get<{ data: any }>("/settings/organization");
+        const org = res.data || res;
+        setForm((prev) => ({
+          ...prev,
+          name: org.name || prev.name,
+          legal_name: org.legal_name || "",
+          gstin: org.gstin || prev.gstin,
+          pan: org.pan || "",
+          cin: org.cin || "",
+          address_line1: org.address?.line1 || "",
+          address_line2: org.address?.line2 || "",
+          city: org.address?.city || "",
+          state: org.address?.state || "",
+          pincode: org.address?.pincode || "",
+          phone: org.phone || "",
+          email: org.email || "",
+          website: org.website || "",
+          fiscal_year_start: String(org.fiscal_year_start || org.financialYearStart || 4),
+        }));
+      } catch {
+        // Fall back to auth store values
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   const updateField = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -110,6 +142,15 @@ export default function OrganizationSettingsPage() {
         email: form.email || undefined,
         fiscal_year_start: parseInt(form.fiscal_year_start),
       });
+      // Update auth store so header reflects new name immediately
+      if (organization) {
+        setOrganization({
+          ...organization,
+          name: form.name,
+          gstin: form.gstin || undefined,
+          financialYearStart: parseInt(form.fiscal_year_start),
+        });
+      }
       setSuccess(true);
     } catch (err) {
       console.error("Failed to save organization settings:", err);
@@ -117,6 +158,18 @@ export default function OrganizationSettingsPage() {
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 max-w-3xl">
+        <Card padding="md">
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-3xl">

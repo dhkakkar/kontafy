@@ -31,8 +31,15 @@ interface DebitNote {
   original_bill_number?: string;
   amount: number;
   status: "draft" | "issued" | "applied" | "cancelled";
-  reason?: string;
+  reason?: "return" | "discount" | "correction" | "other";
 }
+
+const reasonLabelMap: Record<string, { label: string; color: string }> = {
+  return: { label: "Purchase Return", color: "text-orange-600 bg-orange-50" },
+  discount: { label: "Discount", color: "text-blue-600 bg-blue-50" },
+  correction: { label: "Correction", color: "text-purple-600 bg-purple-50" },
+  other: { label: "Other", color: "text-gray-600 bg-gray-50" },
+};
 
 const statusBadgeMap: Record<
   string,
@@ -104,6 +111,19 @@ export default function DebitNotesPage() {
             {info.getValue() || "-"}
           </span>
         ),
+      }),
+      columnHelper.accessor("reason", {
+        header: "Reason",
+        cell: (info) => {
+          const r = reasonLabelMap[info.getValue() || ""] || reasonLabelMap.other;
+          return info.getValue() ? (
+            <span className={`text-xs font-medium px-2 py-1 rounded-full ${r.color}`}>
+              {r.label}
+            </span>
+          ) : (
+            <span className="text-gray-400">-</span>
+          );
+        },
       }),
       columnHelper.accessor("amount", {
         header: "Amount",
