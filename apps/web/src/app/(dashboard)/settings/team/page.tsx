@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
   Mail,
   Calendar,
   UserCircle,
+  Loader2,
 } from "lucide-react";
 
 interface TeamMember {
@@ -41,45 +42,29 @@ const roleVariantMap: Record<string, "info" | "success" | "warning" | "default">
   viewer: "default",
 };
 
-// Demo members for initial render before API call
-const demoMembers: TeamMember[] = [
-  {
-    id: "1",
-    user_id: "u1",
-    name: "Dhruv Kakkar",
-    email: "dhruv@kontafy.in",
-    phone: "+91 98765 43210",
-    role: "owner",
-    joined_at: new Date().toISOString(),
-  },
-  {
-    id: "2",
-    user_id: "u2",
-    name: "Priya Sharma",
-    email: "priya@kontafy.in",
-    phone: "+91 87654 32109",
-    role: "accountant",
-    joined_at: new Date(Date.now() - 86400000 * 10).toISOString(),
-  },
-  {
-    id: "3",
-    user_id: "u3",
-    name: "Rahul Verma",
-    email: "rahul@kontafy.in",
-    phone: null,
-    role: "viewer",
-    joined_at: new Date(Date.now() - 86400000 * 5).toISOString(),
-  },
-];
-
 export default function TeamSettingsPage() {
-  const [members, setMembers] = useState<TeamMember[]>(demoMembers);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showRemoveModal, setShowRemoveModal] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("viewer");
   const [inviting, setInviting] = useState(false);
   const [removing, setRemoving] = useState(false);
+
+  // Load team members from API
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get<{ data: TeamMember[] }>("/settings/users");
+        setMembers(res.data || []);
+      } catch {
+        // API may not exist yet, show empty state
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) return;
@@ -168,6 +153,11 @@ export default function TeamSettingsPage() {
           </Button>
         </div>
 
+        {loading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : (
         <div className="divide-y divide-gray-100">
           {members.map((member) => (
             <div
@@ -232,8 +222,9 @@ export default function TeamSettingsPage() {
             </div>
           ))}
         </div>
+        )}
 
-        {members.length === 0 && (
+        {!loading && members.length === 0 && (
           <div className="py-12 text-center">
             <UserCircle className="h-12 w-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500">No team members yet</p>

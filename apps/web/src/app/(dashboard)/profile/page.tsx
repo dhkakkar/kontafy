@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,24 @@ export default function ProfilePage() {
     email: user?.email || "",
     phone: user?.phone || "",
   });
+
+  // Load fresh profile data from API
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get<{ data: any }>("/profile");
+        const profile = res.data || res;
+        setForm((prev) => ({
+          ...prev,
+          fullName: profile.name || profile.fullName || prev.fullName,
+          email: profile.email || prev.email,
+          phone: profile.phone || "",
+        }));
+      } catch {
+        // Fall back to auth store values
+      }
+    })();
+  }, []);
 
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
