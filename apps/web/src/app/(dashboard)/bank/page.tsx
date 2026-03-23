@@ -59,17 +59,25 @@ export default function BankDashboardPage() {
     BankAccount[]
   >({
     queryKey: ["bank-accounts"],
-    queryFn: () => api.get("/bank/accounts"),
+    queryFn: async () => {
+      const res = await api.get<{ data: BankAccount[] }>("/bank/accounts");
+      return res.data;
+    },
   });
 
   const { data: summary } = useQuery<ReconciliationSummary>({
     queryKey: ["reconciliation-summary"],
-    queryFn: () => api.get("/bank/reconciliation/summary"),
+    queryFn: async () => {
+      const res = await api.get<{ data: ReconciliationSummary }>("/bank/reconciliation/summary");
+      return res.data;
+    },
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      api.post("/bank/accounts", data),
+    mutationFn: async (data: Record<string, unknown>) => {
+      const res = await api.post<{ data: unknown }>("/bank/accounts", data);
+      return res.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
       setShowAddModal(false);

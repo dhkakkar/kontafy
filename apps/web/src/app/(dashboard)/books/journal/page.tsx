@@ -12,25 +12,28 @@ import { Plus, Search, Filter, Calendar, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 
-interface JournalEntry {
-  id: string;
-  number: string;
-  date: string;
-  narration: string;
-  debit_total: number;
-  credit_total: number;
-  is_posted: boolean;
-  line_count: number;
+interface JournalLine {
+  debit: number | string | null;
+  credit: number | string | null;
 }
 
-interface JournalResponse {
+interface JournalEntry {
+  id: string;
+  entry_number: number;
+  date: string;
+  narration: string | null;
+  is_posted: boolean;
+  lines: JournalLine[];
+}
+
+interface ApiResponse {
+  success: boolean;
   data: JournalEntry[];
   meta?: {
     total?: number;
     page?: number;
     limit?: number;
-    posted_count?: number;
-    draft_count?: number;
+    totalPages?: number;
   };
 }
 
@@ -38,20 +41,20 @@ export default function JournalEntriesPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data, isLoading } = useQuery<JournalResponse>({
+  const { data: apiResponse, isLoading } = useQuery<ApiResponse>({
     queryKey: ["journal-entries", activeTab],
     queryFn: async () => {
       const params: Record<string, string> = { limit: "50" };
       if (activeTab === "posted") params.posted = "true";
       if (activeTab === "draft") params.posted = "false";
-      return api.get<JournalResponse>("/books/journal-entries", params);
+      return api.get<ApiResponse>("/books/journal-entries", params);
     },
   });
 
-  const entries = data?.data || [];
-  const totalCount = data?.meta?.total || entries.length;
-  const postedCount = data?.meta?.posted_count ?? entries.filter((e) => e.is_posted).length;
-  const draftCount = data?.meta?.draft_count ?? entries.filter((e) => !e.is_posted).length;
+  const entries = apiResponse?.data || [];
+  const totalCount = apiResponse?.meta?.total || entries.length;
+  const postedCount = entries.filter((e) => e.is_posted).length;
+  const draftCount = entries.filter((e) => !e.is_posted).length;
 
   const tabs = [
     { value: "all", label: "All Entries", count: totalCount },
@@ -63,7 +66,7 @@ export default function JournalEntriesPage() {
     if (
       searchQuery &&
       !entry.narration?.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !entry.number?.toLowerCase().includes(searchQuery.toLowerCase())
+      !String(entry.entry_number).includes(searchQuery)
     )
       return false;
     return true;
@@ -147,20 +150,22 @@ export default function JournalEntriesPage() {
                   >
                     <td className="py-3.5 px-4">
                       <span className="font-medium text-primary-800">
-                        {entry.number}
+                        JE-{entry.entry_number}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-gray-600">
                       {formatDate(entry.date)}
                     </td>
                     <td className="py-3.5 px-4 text-gray-700 max-w-md truncate">
-                      {entry.narration}
+                      {entry.narration || "-"}
                     </td>
                     <td className="py-3.5 px-4 text-center text-gray-500">
-                      {entry.line_count}
+                      {entry.lines?.length || 0}
                     </td>
                     <td className="py-3.5 px-4 text-right font-medium text-gray-900">
-                      {formatCurrency(entry.debit_total)}
+                      {formatCurrency(
+                        entry.lines?.reduce((sum, l) => sum + (Number(l.debit) || 0), 0) || 0
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <Badge

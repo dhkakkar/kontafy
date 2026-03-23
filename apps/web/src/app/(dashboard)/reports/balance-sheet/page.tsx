@@ -32,7 +32,7 @@ export default function BalanceSheetPage() {
   const { data: report, isLoading } = useQuery<BSReport>({
     queryKey: ["balance-sheet", asOfDate],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<BSReport>>("/books/reports/balance-sheet", { as_of: asOfDate });
+      const res = await api.get<ApiResponse<BSReport>>("/books/reports/balance-sheet", { asOfDate });
       return res.data;
     },
   });
@@ -42,7 +42,7 @@ export default function BalanceSheetPage() {
       <tr className="bg-gray-50">
         <td className="py-3 px-4 font-bold text-gray-900" colSpan={2}>{section.label}</td>
       </tr>
-      {section.accounts.map((a) => (
+      {(section.accounts || []).map((a) => (
         <tr key={a.account_code} className="border-b border-gray-50 hover:bg-gray-50/50">
           <td className="py-2.5 px-4 pl-8 text-gray-700">{a.account_name}</td>
           <td className="py-2.5 px-4 text-right font-medium text-gray-900">{formatCurrency(a.amount)}</td>
@@ -62,7 +62,25 @@ export default function BalanceSheetPage() {
           <h1 className="text-2xl font-bold text-gray-900">Balance Sheet</h1>
           <p className="text-sm text-gray-500 mt-1">Assets, liabilities, and equity</p>
         </div>
-        <Button variant="outline" size="sm" icon={<Download className="h-4 w-4" />}>Export</Button>
+        <Button variant="outline" size="sm" icon={<Download className="h-4 w-4" />} onClick={() => {
+          if (!report) return;
+          const rows = [["Account", "Amount"]];
+          const addSection = (s: BSSection) => {
+            (s.accounts || []).forEach((a) => rows.push([a.account_name, String(a.amount)]));
+            rows.push([`Total ${s.label}`, String(s.total)]);
+          };
+          addSection(report.assets);
+          addSection(report.liabilities);
+          addSection(report.equity);
+          const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+          const blob = new Blob([csv], { type: "text/csv" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `balance-sheet-${asOfDate}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }}>Export</Button>
       </div>
 
       <Card>

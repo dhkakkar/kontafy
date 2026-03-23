@@ -90,7 +90,7 @@ const settingsNav = [
 export default function SettingsLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: any;
 }) {
   const pathname = usePathname();
 

@@ -111,7 +111,7 @@ export default function NewProductPage() {
     setError("");
 
     try {
-      const product = await api.post<{ id: string }>("/stock/products", {
+      const res = await api.post<{ success: boolean; data: { id: string } }>("/stock/products", {
         name: form.name,
         sku: form.sku || undefined,
         description: form.description || undefined,
@@ -125,14 +125,15 @@ export default function NewProductPage() {
         track_inventory: form.track_inventory,
         reorder_level: form.reorder_level ? Number(form.reorder_level) : undefined,
       });
+      const productId = res?.data?.id;
 
       // Upload images if any were added
-      if (images.length > 0 && product?.id) {
+      if (images.length > 0 && productId) {
         const formData = new FormData();
         images.forEach((img) => {
           formData.append("images", img.file);
         });
-        await api.post(`/stock/products/${product.id}/images`, formData);
+        await api.post(`/stock/products/${productId}/images`, formData);
       }
 
       router.push("/stock/products");

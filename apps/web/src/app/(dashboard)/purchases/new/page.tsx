@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
 
 interface LineItem {
@@ -21,14 +22,12 @@ interface LineItem {
   amount: number;
 }
 
-const vendorOptions = [
-  { value: "v1", label: "Skyline Properties", description: "GSTIN: 27AABCS9012C1Z1" },
-  { value: "v2", label: "Office Supplies Co." },
-  { value: "v3", label: "CloudHost India", description: "GSTIN: 29AABCC4567E1Z5" },
-  { value: "v4", label: "RawMat Suppliers", description: "GSTIN: 24AABCR8901F1Z3" },
-  { value: "v5", label: "Logistics Express" },
-  { value: "v6", label: "Power Utilities Ltd." },
-];
+interface Contact {
+  id: string;
+  name: string;
+  gstin?: string;
+  type: string;
+}
 
 const taxOptions = [
   { value: "0", label: "No Tax (0%)" },
@@ -36,6 +35,44 @@ const taxOptions = [
   { value: "12", label: "GST 12%" },
   { value: "18", label: "GST 18%" },
   { value: "28", label: "GST 28%" },
+];
+
+const INDIAN_STATES = [
+  { value: "AN", label: "Andaman and Nicobar Islands" },
+  { value: "AP", label: "Andhra Pradesh" },
+  { value: "AR", label: "Arunachal Pradesh" },
+  { value: "AS", label: "Assam" },
+  { value: "BR", label: "Bihar" },
+  { value: "CH", label: "Chandigarh" },
+  { value: "CT", label: "Chhattisgarh" },
+  { value: "DN", label: "Dadra and Nagar Haveli and Daman and Diu" },
+  { value: "DL", label: "Delhi" },
+  { value: "GA", label: "Goa" },
+  { value: "GJ", label: "Gujarat" },
+  { value: "HR", label: "Haryana" },
+  { value: "HP", label: "Himachal Pradesh" },
+  { value: "JK", label: "Jammu and Kashmir" },
+  { value: "JH", label: "Jharkhand" },
+  { value: "KA", label: "Karnataka" },
+  { value: "KL", label: "Kerala" },
+  { value: "LA", label: "Ladakh" },
+  { value: "MP", label: "Madhya Pradesh" },
+  { value: "MH", label: "Maharashtra" },
+  { value: "MN", label: "Manipur" },
+  { value: "ML", label: "Meghalaya" },
+  { value: "MZ", label: "Mizoram" },
+  { value: "NL", label: "Nagaland" },
+  { value: "OD", label: "Odisha" },
+  { value: "PY", label: "Puducherry" },
+  { value: "PB", label: "Punjab" },
+  { value: "RJ", label: "Rajasthan" },
+  { value: "SK", label: "Sikkim" },
+  { value: "TN", label: "Tamil Nadu" },
+  { value: "TG", label: "Telangana" },
+  { value: "TR", label: "Tripura" },
+  { value: "UP", label: "Uttar Pradesh" },
+  { value: "UK", label: "Uttarakhand" },
+  { value: "WB", label: "West Bengal" },
 ];
 
 function generateId() {
@@ -80,6 +117,53 @@ export default function NewPurchasePage() {
       .catch(() => {});
   }, []);
 
+  // Fetch contacts (vendors) from API
+  const { data: contacts = [] } = useQuery<Contact[]>({
+    queryKey: ["contacts", "vendor"],
+    queryFn: async () => {
+      const res = await api.get<{ data: { data: Contact[]; meta: unknown } }>("/bill/contacts", {
+        type: "vendor",
+        limit: "100",
+      });
+      return res.data.data;
+    },
+  });
+
+  const vendorOptions = contacts.map((c) => ({
+    value: c.id,
+    label: c.name,
+    description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
+  }));
+
+  // Create purchase mutation
+  const createPurchase = useMutation({
+    mutationFn: async (status: "draft" | "approved") => {
+      const halfRate = (rate: number) => rate / 2;
+      return api.post("/bill/purchases", {
+        type: "purchase",
+        contact_id: vendor,
+        date: invoiceDate,
+        due_date: dueDate || undefined,
+        place_of_supply: placeOfSupply || undefined,
+        vendor_invoice_no: vendorInvoiceNo || undefined,
+        notes: notes || undefined,
+        terms: terms || undefined,
+        is_posted: status === "approved",
+        items: items.map((item) => ({
+          description: item.productName || item.description,
+          hsn_code: item.hsnCode || undefined,
+          quantity: item.quantity,
+          rate: item.rate,
+          cgst_rate: halfRate(item.taxRate),
+          sgst_rate: halfRate(item.taxRate),
+        })),
+      });
+    },
+    onSuccess: () => {
+      router.push("/purchases");
+    },
+  });
+
   const [items, setItems] = useState<LineItem[]>([
     {
       id: generateId(),
@@ -92,6 +176,8 @@ export default function NewPurchasePage() {
       amount: 0,
     },
   ]);
+
+  const canSubmit = vendor && items.some((i) => i.amount > 0);
 
   const addItem = () => {
     setItems([
@@ -163,12 +249,31 @@ export default function NewPurchasePage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" icon={<Save className="h-4 w-4" />}>
+          <Button
+            variant="outline"
+            icon={<Save className="h-4 w-4" />}
+            onClick={() => createPurchase.mutate("draft")}
+            loading={createPurchase.isPending}
+            disabled={!canSubmit}
+          >
             Save Draft
           </Button>
-          <Button icon={<Send className="h-4 w-4" />}>Save & Approve</Button>
+          <Button
+            icon={<Send className="h-4 w-4" />}
+            onClick={() => createPurchase.mutate("approved")}
+            loading={createPurchase.isPending}
+            disabled={!canSubmit}
+          >
+            Save & Approve
+          </Button>
         </div>
       </div>
+
+      {createPurchase.isError && (
+        <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
+          {createPurchase.error?.message || "Failed to create purchase"}
+        </div>
+      )}
 
       {/* Vendor & Dates */}
       <Card padding="md">
@@ -189,15 +294,7 @@ export default function NewPurchasePage() {
           />
           <Select
             label="Place of Supply"
-            options={[
-              { value: "MH", label: "Maharashtra" },
-              { value: "DL", label: "Delhi" },
-              { value: "KA", label: "Karnataka" },
-              { value: "GJ", label: "Gujarat" },
-              { value: "TN", label: "Tamil Nadu" },
-              { value: "UP", label: "Uttar Pradesh" },
-              { value: "RJ", label: "Rajasthan" },
-            ]}
+            options={INDIAN_STATES}
             value={placeOfSupply}
             onChange={setPlaceOfSupply}
             searchable

@@ -11,13 +11,13 @@ import { api } from "@/lib/api";
 import { Search, Download, Loader2 } from "lucide-react";
 
 interface LedgerEntry {
-  id: string;
   date: string;
   entry_number?: number;
   narration: string | null;
+  reference: string | null;
   debit: number;
   credit: number;
-  balance: number;
+  running_balance: number;
 }
 
 interface Account {
@@ -25,6 +25,18 @@ interface Account {
   code: string;
   name: string;
   type: string;
+}
+
+interface LedgerResponse {
+  account: {
+    id: string;
+    code: string;
+    name: string;
+    type: string;
+  };
+  opening_balance: number;
+  closing_balance: number;
+  entries: LedgerEntry[];
 }
 
 interface ApiResponse<T> {
@@ -44,18 +56,20 @@ export default function LedgerPage() {
     },
   });
 
-  const { data: entries = [], isLoading } = useQuery<LedgerEntry[]>({
+  const { data: ledgerData, isLoading } = useQuery<LedgerResponse | null>({
     queryKey: ["ledger", accountId, startDate, endDate],
     queryFn: async () => {
-      if (!accountId) return [];
+      if (!accountId) return null;
       const params: Record<string, string> = {};
-      if (startDate) params.start_date = startDate;
-      if (endDate) params.end_date = endDate;
-      const res = await api.get<ApiResponse<LedgerEntry[]>>(`/books/ledger/${accountId}`, params);
+      if (startDate) params.from = startDate;
+      if (endDate) params.to = endDate;
+      const res = await api.get<ApiResponse<LedgerResponse>>(`/books/ledger/${accountId}`, params);
       return res.data;
     },
     enabled: !!accountId,
   });
+
+  const entries = ledgerData?.entries || [];
 
   return (
     <div className="space-y-6">
@@ -107,8 +121,8 @@ export default function LedgerPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {entries.map((entry) => (
-                    <tr key={entry.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                  {entries.map((entry, index) => (
+                    <tr key={index} className="border-b border-gray-50 hover:bg-gray-50/50">
                       <td className="py-3 px-4 text-gray-600">{formatDate(entry.date)}</td>
                       <td className="py-3 px-4 text-gray-900">{entry.narration || "-"}</td>
                       <td className="py-3 px-4 text-right font-medium text-gray-900">
@@ -118,7 +132,7 @@ export default function LedgerPage() {
                         {entry.credit > 0 ? formatCurrency(entry.credit) : "-"}
                       </td>
                       <td className="py-3 px-4 text-right font-semibold text-gray-900">
-                        {formatCurrency(entry.balance)}
+                        {formatCurrency(entry.running_balance)}
                       </td>
                     </tr>
                   ))}

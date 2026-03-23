@@ -86,10 +86,12 @@ export default function GSTR1ExportPage() {
 
   // Validate mutation
   const validateMutation = useMutation({
-    mutationFn: () =>
-      api.get<ValidationResult>("/tax/gst/returns/gstr1/validate", {
+    mutationFn: async () => {
+      const res = await api.get<{ data: ValidationResult }>("/tax/gst/returns/gstr1/validate", {
         period,
-      }),
+      });
+      return res.data;
+    },
     onSuccess: (data) => {
       setValidationResult(data);
       setExportData(null);
@@ -99,11 +101,13 @@ export default function GSTR1ExportPage() {
 
   // Export mutation (fetches the JSON data)
   const exportMutation = useMutation({
-    mutationFn: () =>
-      api.get<GSTR1JsonExport>("/tax/gst/returns/gstr1/export", {
+    mutationFn: async () => {
+      const res = await api.get<{ data: GSTR1JsonExport }>("/tax/gst/returns/gstr1/export", {
         period,
         format: "json",
-      }),
+      });
+      return res.data;
+    },
     onSuccess: (data) => {
       setExportData(data);
       setCopySuccess(false);

@@ -15,6 +15,8 @@ import { QuotationsController } from './quotations/quotations.controller';
 import { QuotationsService } from './quotations/quotations.service';
 import { PurchaseOrdersController } from './purchase-orders/purchase-orders.controller';
 import { PurchaseOrdersService } from './purchase-orders/purchase-orders.service';
+import { ExpensesController } from './expenses/expenses.controller';
+import { ExpensesService } from './expenses/expenses.service';
 import { PdfModule } from './pdf/pdf.module';
 
 @Module({
@@ -28,6 +30,7 @@ import { PdfModule } from './pdf/pdf.module';
     RecurringController,
     QuotationsController,
     PurchaseOrdersController,
+    ExpensesController,
   ],
   providers: [
     InvoicesService,
@@ -38,6 +41,7 @@ import { PdfModule } from './pdf/pdf.module';
     RecurringService,
     QuotationsService,
     PurchaseOrdersService,
+    ExpensesService,
   ],
   exports: [
     InvoicesService,
@@ -48,6 +52,7 @@ import { PdfModule } from './pdf/pdf.module';
     RecurringService,
     QuotationsService,
     PurchaseOrdersService,
+    ExpensesService,
     PdfModule,
   ],
 })

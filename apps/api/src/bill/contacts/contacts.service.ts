@@ -116,6 +116,28 @@ export class ContactsService {
       if (!gstinResult.valid) {
         throw new BadRequestException(`Invalid GSTIN: ${gstinResult.error}`);
       }
+
+      // Check for duplicate GSTIN within the same org
+      const existingGstin = await this.prisma.contact.findFirst({
+        where: { org_id: orgId, gstin: data.gstin },
+      });
+      if (existingGstin) {
+        throw new BadRequestException(
+          `A contact with GSTIN ${data.gstin} already exists: ${existingGstin.name}`,
+        );
+      }
+    }
+
+    // Check for duplicate phone within the same org
+    if (data.phone) {
+      const existingPhone = await this.prisma.contact.findFirst({
+        where: { org_id: orgId, phone: data.phone },
+      });
+      if (existingPhone) {
+        throw new BadRequestException(
+          `A contact with phone ${data.phone} already exists: ${existingPhone.name}`,
+        );
+      }
     }
 
     // Validate PAN format if provided
@@ -167,6 +189,28 @@ export class ContactsService {
       const gstinResult = validateGstin(data.gstin);
       if (!gstinResult.valid) {
         throw new BadRequestException(`Invalid GSTIN: ${gstinResult.error}`);
+      }
+
+      // Check for duplicate GSTIN within the same org (exclude current contact)
+      const existingGstin = await this.prisma.contact.findFirst({
+        where: { org_id: orgId, gstin: data.gstin, id: { not: id } },
+      });
+      if (existingGstin) {
+        throw new BadRequestException(
+          `A contact with GSTIN ${data.gstin} already exists: ${existingGstin.name}`,
+        );
+      }
+    }
+
+    // Check for duplicate phone within the same org (exclude current contact)
+    if (data.phone) {
+      const existingPhone = await this.prisma.contact.findFirst({
+        where: { org_id: orgId, phone: data.phone, id: { not: id } },
+      });
+      if (existingPhone) {
+        throw new BadRequestException(
+          `A contact with phone ${data.phone} already exists: ${existingPhone.name}`,
+        );
       }
     }
 

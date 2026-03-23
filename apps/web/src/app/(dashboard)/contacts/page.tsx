@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { Suspense, useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -115,11 +116,23 @@ const INDIAN_STATES = [
   { value: "WB", label: "West Bengal" },
 ];
 
-export default function ContactsPage() {
+export default function ContactsPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <ContactsPage />
+    </Suspense>
+  );
+}
+
+function ContactsPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const editId = searchParams.get("edit");
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [showBulkModal, setShowBulkModal] = useState(false);
 
   // Form state
@@ -231,6 +244,48 @@ export default function ContactsPage() {
     }
   };
 
+  // Handle edit query param - fetch contact data and open modal
+  useEffect(() => {
+    if (editId) {
+      setEditingContactId(editId);
+      api
+        .get<ApiResponse<any>>(`/bill/contacts/${editId}`)
+        .then((res) => {
+          const c = res.data;
+          setFormName(c.name || "");
+          setFormType(c.type || "customer");
+          setFormEmail(c.email || "");
+          setFormPhone(c.phone || "");
+          setFormGstin(c.gstin || "");
+          setFormPan(c.pan || "");
+          const billing = c.billing_address || {};
+          setFormAddressLine1(billing.line1 || "");
+          setFormAddressLine2(billing.line2 || "");
+          setFormCity(billing.city || "");
+          setFormState(billing.state || "");
+          setFormPincode(billing.pincode || "");
+          const shipping = c.shipping_address || {};
+          setFormShippingAddressLine1(shipping.line1 || "");
+          setFormShippingAddressLine2(shipping.line2 || "");
+          setFormShippingCity(shipping.city || "");
+          setFormShippingState(shipping.state || "");
+          setFormShippingPincode(shipping.pincode || "");
+          setFormOpeningBalance(c.opening_balance ? String(c.opening_balance) : "");
+          setFormCreditPeriod(c.payment_terms ? String(c.payment_terms) : "");
+          setFormCreditLimit(c.credit_limit ? String(c.credit_limit) : "");
+          setFormContactPerson(c.contact_person || "");
+          setFormDateOfBirth(c.date_of_birth || "");
+          if (c.bank_accounts && c.bank_accounts.length > 0) {
+            setFormBankAccounts(c.bank_accounts);
+          }
+          setShowModal(true);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch contact for editing:", err);
+        });
+    }
+  }, [editId]);
+
   const { data: contacts = [], isLoading, error } = useQuery<Contact[]>({
     queryKey: ["contacts", activeTab, searchQuery],
     queryFn: async () => {
@@ -277,10 +332,62 @@ export default function ContactsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      setShowModal(false);
-      resetForm();
+      handleCloseModal();
     },
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingContactId) return;
+      const nonEmptyBankAccounts = formBankAccounts.filter(
+        (ba) => ba.account_name || ba.account_number || ba.ifsc_code || ba.bank_name || ba.branch
+      );
+
+      return api.patch(`/bill/contacts/${editingContactId}`, {
+        name: formName,
+        type: formType || "customer",
+        email: formEmail || null,
+        phone: formPhone || null,
+        gstin: formGstin || null,
+        pan: formPan || null,
+        billing_address: {
+          line1: formAddressLine1 || undefined,
+          line2: formAddressLine2 || undefined,
+          city: formCity || undefined,
+          state: formState || undefined,
+          pincode: formPincode || undefined,
+        },
+        shipping_address: {
+          line1: formShippingAddressLine1 || undefined,
+          line2: formShippingAddressLine2 || undefined,
+          city: formShippingCity || undefined,
+          state: formShippingState || undefined,
+          pincode: formShippingPincode || undefined,
+        },
+        opening_balance: formOpeningBalance ? Number(formOpeningBalance) : 0,
+        payment_terms: formCreditPeriod ? Number(formCreditPeriod) : 30,
+        credit_limit: formCreditLimit ? Number(formCreditLimit) : null,
+        contact_person: formContactPerson || null,
+        date_of_birth: formDateOfBirth || null,
+        bank_accounts: nonEmptyBankAccounts.length > 0 ? nonEmptyBankAccounts : undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["contact", editingContactId] });
+      handleCloseModal();
+    },
+  });
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingContactId(null);
+    resetForm();
+    // Clear the edit query param from URL
+    if (editId) {
+      router.replace("/contacts", { scroll: false });
+    }
+  };
 
   const resetForm = () => {
     setFormName("");
@@ -613,12 +720,12 @@ export default function ContactsPage() {
         )}
       </Card>
 
-      {/* Add Contact Modal */}
+      {/* Add/Edit Contact Modal */}
       <Modal
         open={showModal}
-        onClose={() => setShowModal(false)}
-        title="Add New Contact"
-        description="Add a customer or vendor to your contacts"
+        onClose={handleCloseModal}
+        title={editingContactId ? "Edit Contact" : "Add New Contact"}
+        description={editingContactId ? "Update contact details" : "Add a customer or vendor to your contacts"}
         size="lg"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -836,15 +943,15 @@ export default function ContactsPage() {
           </div>
         </div>
         <div className="flex justify-end gap-3 pt-6">
-          <Button variant="outline" onClick={() => setShowModal(false)}>
+          <Button variant="outline" onClick={handleCloseModal}>
             Cancel
           </Button>
           <Button
-            onClick={() => createMutation.mutate()}
-            loading={createMutation.isPending}
+            onClick={() => editingContactId ? updateMutation.mutate() : createMutation.mutate()}
+            loading={editingContactId ? updateMutation.isPending : createMutation.isPending}
             disabled={!formName}
           >
-            Save Contact
+            {editingContactId ? "Update Contact" : "Save Contact"}
           </Button>
         </div>
       </Modal>

@@ -134,14 +134,15 @@ export default function GstComputePage() {
 
   // Compute mutation
   const computeMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const fromDate = dayjs(period).startOf("month").format("YYYY-MM-DD");
       const toDate = dayjs(period).endOf("month").format("YYYY-MM-DD");
-      return api.post<GSTR1Data | GSTR3BData>("/tax/gst/returns/compute", {
+      const res = await api.post<{ data: GSTR1Data | GSTR3BData }>("/tax/gst/returns/compute", {
         return_type: returnType,
         from_date: fromDate,
         to_date: toDate,
       });
+      return res.data;
     },
     onSuccess: (data) => {
       setComputedData(data);
@@ -151,13 +152,15 @@ export default function GstComputePage() {
 
   // Save mutation
   const saveMutation = useMutation({
-    mutationFn: (status: string) =>
-      api.post("/tax/gst/returns", {
+    mutationFn: async (status: string) => {
+      const res = await api.post<{ data: unknown }>("/tax/gst/returns", {
         return_type: returnType,
         period,
         data: computedData,
         status,
-      }),
+      });
+      return res.data;
+    },
     onSuccess: () => {
       setSaveSuccess(true);
     },

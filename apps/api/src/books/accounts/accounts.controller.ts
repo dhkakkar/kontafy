@@ -21,7 +21,7 @@ export class AccountsController {
   constructor(private readonly accountsService: AccountsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get chart of accounts (tree structure)' })
+  @ApiOperation({ summary: 'Get chart of accounts (flat list)' })
   @ApiQuery({ name: 'type', required: false, description: 'Filter by account type' })
   @ApiQuery({ name: 'active_only', required: false, type: Boolean })
   async findAll(
@@ -30,6 +30,12 @@ export class AccountsController {
     @Query('active_only') activeOnly?: boolean,
   ) {
     return this.accountsService.findAll(orgId, { type, activeOnly });
+  }
+
+  @Get('tree')
+  @ApiOperation({ summary: 'Get accounts as a hierarchical tree' })
+  async getTree(@OrgId() orgId: string) {
+    return this.accountsService.getTree(orgId);
   }
 
   @Get(':id')
@@ -77,11 +83,5 @@ export class AccountsController {
   @ApiOperation({ summary: 'Delete account (only non-system accounts with no transactions)' })
   async remove(@OrgId() orgId: string, @Param('id') id: string) {
     return this.accountsService.remove(orgId, id);
-  }
-
-  @Get('tree')
-  @ApiOperation({ summary: 'Get accounts as a hierarchical tree' })
-  async getTree(@OrgId() orgId: string) {
-    return this.accountsService.getTree(orgId);
   }
 }

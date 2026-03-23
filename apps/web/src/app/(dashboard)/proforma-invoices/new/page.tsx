@@ -1,14 +1,14 @@
 "use client";
 
-import React, { Suspense, useState, useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
-import { useCreateQuotation, useUpdateQuotation, useQuotation } from "@/hooks/use-quotations";
+import { useCreateQuotation } from "@/hooks/use-quotations";
 import { api } from "@/lib/api";
 import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
 
@@ -91,23 +91,9 @@ const INDIAN_STATES = [
   { value: "WB", label: "West Bengal" },
 ];
 
-export default function NewQuotationPageWrapper() {
-  return (
-    <Suspense fallback={<div className="p-6">Loading...</div>}>
-      <NewQuotationPage />
-    </Suspense>
-  );
-}
-
-function NewQuotationPage() {
+export default function NewProformaInvoicePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const editId = searchParams.get("edit");
-  const isEditMode = !!editId;
-
   const createMutation = useCreateQuotation();
-  const updateMutation = useUpdateQuotation();
-  const { data: existingQuotation } = useQuotation(editId || "");
 
   const { data: customers = [] } = useQuery<ContactOption[]>({
     queryKey: ["contacts-customers"],
@@ -137,7 +123,7 @@ function NewQuotationPage() {
   }));
 
   const [customer, setCustomer] = useState("");
-  const [quotationDate, setQuotationDate] = useState(
+  const [proformaDate, setProformaDate] = useState(
     new Date().toISOString().split("T")[0]
   );
   const [validityDate, setValidityDate] = useState(() => {
@@ -150,66 +136,28 @@ function NewQuotationPage() {
   const [terms, setTerms] = useState("");
   const validityManuallySet = useRef(false);
 
-  // Pre-fill form when editing an existing quotation
-  const editLoaded = useRef(false);
   useEffect(() => {
-    if (!isEditMode || !existingQuotation || editLoaded.current) return;
-    editLoaded.current = true;
-    setCustomer(existingQuotation.contact_id || "");
-    setQuotationDate(existingQuotation.date ? existingQuotation.date.split("T")[0] : "");
-    setValidityDate(existingQuotation.validity_date ? existingQuotation.validity_date.split("T")[0] : "");
-    validityManuallySet.current = true; // Don't auto-override the loaded validity date
-    setPlaceOfSupply(existingQuotation.place_of_supply || "");
-    setNotes(existingQuotation.notes || "");
-    setTerms(existingQuotation.terms || "");
-    if (existingQuotation.items && existingQuotation.items.length > 0) {
-      setItems(
-        existingQuotation.items.map((item) => ({
-          id: item.id || generateId(),
-          product_id: "",
-          productName: item.description || "",
-          description: item.description || "",
-          hsnCode: item.hsn_code || "",
-          quantity: Number(item.quantity) || 1,
-          rate: Number(item.rate) || 0,
-          discount: Number(item.discount_pct) || 0,
-          taxRate: Number(item.cgst_rate || 0) * 2 || Number(item.igst_rate) || 18,
-          amount: Number(item.quantity || 0) * Number(item.rate || 0) * (1 - Number(item.discount_pct || 0) / 100),
-        }))
-      );
-    }
-  }, [isEditMode, existingQuotation]);
-
-  // Auto-fill terms & notes from invoice settings (only for new quotations)
-  useEffect(() => {
-    if (isEditMode) return;
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
         const d = res.data;
         if (d) {
-          if (d.default_terms_conditions) {
-            setTerms(String(d.default_terms_conditions));
-          }
-          if (d.default_notes) {
-            setNotes(String(d.default_notes));
-          }
+          if (d.default_terms_conditions) setTerms(String(d.default_terms_conditions));
+          if (d.default_notes) setNotes(String(d.default_notes));
         }
       })
       .catch(() => {});
   }, []);
 
-  // Auto-set Valid Until to 15 days after Quotation Date
   useEffect(() => {
     if (validityManuallySet.current) return;
-    if (!quotationDate) return;
-    const d = new Date(quotationDate);
+    if (!proformaDate) return;
+    const d = new Date(proformaDate);
     if (isNaN(d.getTime())) return;
     d.setDate(d.getDate() + 15);
     setValidityDate(d.toISOString().split("T")[0]);
-  }, [quotationDate]);
+  }, [proformaDate]);
 
-  // Auto-fill Place of Supply from selected customer's state
   useEffect(() => {
     if (!customer) return;
     const selected = customers.find((c) => c.id === customer);
@@ -304,32 +252,26 @@ function NewQuotationPage() {
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const payload = {
-      contact_id: customer,
-      date: quotationDate,
-      validity_date: validityDate || undefined,
-      place_of_supply: placeOfSupply || undefined,
-      notes: notes || undefined,
-      terms: terms || undefined,
-      items: items.map((item) => ({
-        product_id: item.product_id || undefined,
-        description: item.productName || item.description,
-        hsn_code: item.hsnCode || undefined,
-        quantity: item.quantity,
-        rate: item.rate,
-        discount_pct: item.discount || undefined,
-        cgst_rate: item.taxRate / 2,
-        sgst_rate: item.taxRate / 2,
-      })),
-    };
     try {
-      if (isEditMode && editId) {
-        await updateMutation.mutateAsync({ id: editId, data: payload });
-        router.push(`/quotations/${editId}`);
-      } else {
-        await createMutation.mutateAsync(payload);
-        router.push("/quotations");
-      }
+      await createMutation.mutateAsync({
+        contact_id: customer,
+        date: proformaDate,
+        validity_date: validityDate || undefined,
+        place_of_supply: placeOfSupply || undefined,
+        notes: notes || undefined,
+        terms: terms || undefined,
+        items: items.map((item) => ({
+          product_id: item.product_id || undefined,
+          description: item.productName || item.description,
+          hsn_code: item.hsnCode || undefined,
+          quantity: item.quantity,
+          rate: item.rate,
+          discount_pct: item.discount || undefined,
+          cgst_rate: item.taxRate / 2,
+          sgst_rate: item.taxRate / 2,
+        })),
+      });
+      router.push("/proforma-invoices");
     } catch {
       // Error handled by mutation
     }
@@ -346,23 +288,27 @@ function NewQuotationPage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{isEditMode ? "Edit Quotation" : "New Quotation"}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">New Proforma Invoice</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              {isEditMode ? "Update quotation details" : "Create a new sales quotation"}
+              Create a new proforma invoice
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" icon={<Save className="h-4 w-4" />} onClick={() => handleSubmit()} loading={isEditMode ? updateMutation.isPending : createMutation.isPending}>
-            {isEditMode ? "Update" : "Save Draft"}
+          <Button variant="outline" icon={<Save className="h-4 w-4" />} onClick={() => handleSubmit()}>
+            Save Draft
           </Button>
-          {!isEditMode && (
-            <Button icon={<Send className="h-4 w-4" />} onClick={() => handleSubmit()} loading={createMutation.isPending}>
-              Save & Send
-            </Button>
-          )}
+          <Button icon={<Send className="h-4 w-4" />} onClick={() => handleSubmit()} loading={createMutation.isPending}>
+            Save & Send
+          </Button>
         </div>
       </div>
+
+      {createMutation.isError && (
+        <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
+          {createMutation.error?.message || "Failed to create proforma invoice"}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card padding="md">
@@ -384,10 +330,10 @@ function NewQuotationPage() {
               placeholder="Select state"
             />
             <Input
-              label="Quotation Date"
+              label="Proforma Date"
               type="date"
-              value={quotationDate}
-              onChange={(e) => setQuotationDate(e.target.value)}
+              value={proformaDate}
+              onChange={(e) => setProformaDate(e.target.value)}
             />
             <Input
               label="Valid Until"
@@ -401,7 +347,6 @@ function NewQuotationPage() {
           </div>
         </Card>
 
-        {/* Line Items */}
         <Card padding="none">
           <div className="p-4 border-b border-gray-200">
             <CardHeader className="!mb-0">
@@ -537,7 +482,6 @@ function NewQuotationPage() {
           </div>
         </Card>
 
-        {/* Summary */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card padding="md">
             <div className="space-y-4">

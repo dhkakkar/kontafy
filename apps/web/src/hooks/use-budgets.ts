@@ -91,7 +91,10 @@ export function useBudgets(params?: { page?: number; status?: string; fiscal_yea
 export function useBudget(id: string) {
   return useQuery<Budget>({
     queryKey: ["budget", id],
-    queryFn: () => api.get<Budget>(`/budgets/${id}`),
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Budget>>(`/budgets/${id}`);
+      return res.data;
+    },
     enabled: !!id,
   });
 }
@@ -99,19 +102,23 @@ export function useBudget(id: string) {
 export function useBudgetSummary() {
   return useQuery<BudgetSummary>({
     queryKey: ["budgets", "summary"],
-    queryFn: () => api.get<BudgetSummary>("/budgets/summary"),
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<BudgetSummary>>("/budgets/summary");
+      return res.data;
+    },
   });
 }
 
 export function useBudgetVariance(params?: { budget_id?: string; from?: string; to?: string }) {
   return useQuery<VarianceReport>({
     queryKey: ["budgets", "variance", params],
-    queryFn: () => {
+    queryFn: async () => {
       const query: Record<string, string> = {};
       if (params?.budget_id) query.budget_id = params.budget_id;
       if (params?.from) query.from = params.from;
       if (params?.to) query.to = params.to;
-      return api.get<VarianceReport>("/budgets/variance", query);
+      const res = await api.get<ApiResponse<VarianceReport>>("/budgets/variance", query);
+      return res.data;
     },
   });
 }

@@ -37,8 +37,8 @@ const statusBadgeMap: Record<
 export default function VarianceReportPage() {
   const { data, isLoading } = useBudgetVariance();
 
-  const varianceData = data?.data || [];
-  const totals = data?.totals;
+  const varianceData = Array.isArray(data?.data) ? data.data : [];
+  const totals = data?.totals ?? null;
 
   // Chart data
   const chartData = varianceData.map((row) => ({

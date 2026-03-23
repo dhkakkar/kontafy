@@ -18,7 +18,20 @@ const routeLabels: Record<string, string> = {
   banking: "Banking",
   reports: "Reports",
   payments: "Payments",
+  quotations: "Quotations",
+  "purchase-orders": "Purchase Orders",
+  purchases: "Purchases",
+  products: "Products",
+  commerce: "Commerce",
+  profile: "Profile",
+  "audit-log": "Audit Log",
+  preview: "Preview",
+  "record-payment": "Record Payment",
+  edit: "Edit",
 };
+
+// Detect UUID-like segments (e.g. "ce301cce-5e97-4e99-931e-38fca16ab7a7")
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function Breadcrumbs() {
   const pathname = usePathname();
@@ -41,7 +54,7 @@ export function Breadcrumbs() {
       {segments.map((segment, index) => {
         const href = "/" + segments.slice(0, index + 1).join("/");
         const isLast = index === segments.length - 1;
-        const label = routeLabels[segment] || segment;
+        const label = routeLabels[segment] || (UUID_REGEX.test(segment) ? "Details" : segment);
 
         return (
           <React.Fragment key={href}>

@@ -52,7 +52,6 @@ const navItems: NavItem[] = [
       { label: "Chart of Accounts", href: "/books/accounts" },
       { label: "Journal Entries", href: "/books/journal" },
       { label: "Ledger", href: "/books/ledger" },
-      { label: "Audit Trail", href: "/settings/audit-log" },
       { label: "Reports", href: "/books/reports" },
     ],
   },
@@ -213,6 +212,10 @@ const navItems: NavItem[] = [
     label: "Settings",
     href: "/settings",
     icon: <Settings className="h-5 w-5" />,
+    children: [
+      { label: "General", href: "/settings" },
+      { label: "Audit Log", href: "/settings/audit-log" },
+    ],
   },
 ];
 

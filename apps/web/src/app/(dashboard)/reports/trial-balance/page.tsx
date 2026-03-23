@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Printer, Loader2 } from "lucide-react";
 
 interface TrialBalanceLine {
   account_id: string;
@@ -28,13 +28,32 @@ export default function TrialBalancePage() {
   const { data: lines = [], isLoading } = useQuery<TrialBalanceLine[]>({
     queryKey: ["trial-balance", asOfDate],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<TrialBalanceLine[]>>("/books/reports/trial-balance", { as_of: asOfDate });
+      const res = await api.get<ApiResponse<TrialBalanceLine[]>>("/books/reports/trial-balance", { asOfDate });
       return res.data;
     },
   });
 
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
+
+  const handleExport = () => {
+    if (lines.length === 0) return;
+    const headers = ["Code", "Account", "Debit", "Credit"];
+    const rows = lines.map((l) => [l.account_code, l.account_name, l.debit, l.credit]);
+    rows.push(["", "Total", totalDebit, totalCredit]);
+    const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `trial-balance-${asOfDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
     <div className="space-y-6">
@@ -43,7 +62,10 @@ export default function TrialBalancePage() {
           <h1 className="text-2xl font-bold text-gray-900">Trial Balance</h1>
           <p className="text-sm text-gray-500 mt-1">Summary of all account balances</p>
         </div>
-        <Button variant="outline" size="sm" icon={<Download className="h-4 w-4" />}>Export</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" icon={<Printer className="h-4 w-4" />} onClick={handlePrint}>Print</Button>
+          <Button variant="outline" size="sm" icon={<Download className="h-4 w-4" />} onClick={handleExport}>Export</Button>
+        </div>
       </div>
 
       <Card>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,15 @@ const entityTypeBadgeVariant: Record<string, "info" | "success" | "warning"> = {
   contact: "warning",
 };
 
-export default function CaAnnotationsPage() {
+export default function CaAnnotationsPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <CaAnnotationsPage />
+    </Suspense>
+  );
+}
+
+function CaAnnotationsPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const searchParams = useSearchParams();
   const initialEntityType = searchParams.get("entityType") || "";

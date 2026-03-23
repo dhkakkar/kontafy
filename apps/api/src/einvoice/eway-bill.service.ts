@@ -74,10 +74,19 @@ export class EwayBillService {
       );
     }
 
-    // Build the e-way bill payload
-    const payload = this.buildEwayBillPayload(invoice, dto);
+    // Validate transport details are present
+    if (!dto.transport) {
+      throw new BadRequestException(
+        'Transport details are required for e-way bill generation.',
+      );
+    }
+
+    let payload: any;
 
     try {
+      // Build the e-way bill payload (inside try-catch to handle any data issues)
+      payload = this.buildEwayBillPayload(invoice, dto);
+
       const response = await this.gspService.generateEwayBill(orgId, payload);
 
       // Save e-way bill number on invoice
@@ -107,10 +116,10 @@ export class EwayBillService {
         valid_till: validTill,
         status: 'active',
         distance: dto.distance,
-        transport_mode: dto.transport.transport_mode,
-        vehicle_no: dto.transport.vehicle_no || null,
-        transporter_id: dto.transport.transporter_id || null,
-        transporter_name: dto.transport.transporter_name || null,
+        transport_mode: dto.transport?.transport_mode || null,
+        vehicle_no: dto.transport?.vehicle_no || null,
+        transporter_id: dto.transport?.transporter_id || null,
+        transporter_name: dto.transport?.transporter_name || null,
         error_message: null,
         cancel_reason: null,
         cancel_remarks: null,
@@ -127,6 +136,12 @@ export class EwayBillService {
         `E-Way Bill generation failed for ${invoice.invoice_number}: ${errorMessage}`,
       );
 
+      // Re-throw HTTP exceptions (BadRequest, ServiceUnavailable, etc.)
+      // so the client gets a proper error response instead of a silent 200
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
       return {
         id: invoiceId,
         org_id: orgId,
@@ -137,15 +152,15 @@ export class EwayBillService {
         valid_till: null,
         status: 'pending',
         distance: dto.distance,
-        transport_mode: dto.transport.transport_mode,
-        vehicle_no: dto.transport.vehicle_no || null,
-        transporter_id: dto.transport.transporter_id || null,
-        transporter_name: dto.transport.transporter_name || null,
+        transport_mode: dto.transport?.transport_mode || null,
+        vehicle_no: dto.transport?.vehicle_no || null,
+        transporter_id: dto.transport?.transporter_id || null,
+        transporter_name: dto.transport?.transporter_name || null,
         error_message: errorMessage,
         cancel_reason: null,
         cancel_remarks: null,
         cancelled_at: null,
-        payload,
+        payload: payload || null,
         response: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -468,20 +483,17 @@ export class EwayBillService {
   private buildEwayBillPayload(invoice: any, dto: GenerateEwayBillDto) {
     const org = invoice.organization;
     const contact = invoice.contact;
-    const orgAddress = (org.address as Record<string, any>) || {};
+    const orgAddress = (org?.address as Record<string, any>) || {};
     const contactBilling = (contact?.billing_address as Record<string, any>) || {};
 
-    const sellerState = org.gstin?.substring(0, 2) || '';
+    const sellerState = org?.gstin?.substring(0, 2) || '';
     const buyerState = contact?.gstin?.substring(0, 2) || '';
 
     // Build item list for e-way bill
-    const itemList = invoice.items.map((item: any, idx: number) => {
+    const items = invoice.items || [];
+    const itemList = items.map((item: any) => {
       const qty = Number(item.quantity) || 0;
       const taxableAmount = Number(item.taxable_amount) || 0;
-      const cgst = Number(item.cgst_amount) || 0;
-      const sgst = Number(item.sgst_amount) || 0;
-      const igst = Number(item.igst_amount) || 0;
-      const cess = Number(item.cess_amount) || 0;
 
       return {
         productName: item.description || item.product?.name || '',
@@ -498,14 +510,22 @@ export class EwayBillService {
       };
     });
 
+    // Aggregate tax values from invoice items (these fields exist on items, not invoice)
+    const totalCgst = items.reduce((sum: number, item: any) => sum + (Number(item.cgst_amount) || 0), 0);
+    const totalSgst = items.reduce((sum: number, item: any) => sum + (Number(item.sgst_amount) || 0), 0);
+    const totalIgst = items.reduce((sum: number, item: any) => sum + (Number(item.igst_amount) || 0), 0);
+    const totalCess = items.reduce((sum: number, item: any) => sum + (Number(item.cess_amount) || 0), 0);
+
+    const transport = dto.transport || {};
+
     return {
       supplyType: 'O', // Outward
       subSupplyType: Number(dto.sub_type) || 1,
       docType: 'INV',
       docNo: invoice.invoice_number,
       docDate: this.formatDate(invoice.date),
-      fromGstin: org.gstin,
-      fromTrdName: org.name,
+      fromGstin: org?.gstin || '',
+      fromTrdName: org?.name || '',
       fromAddr1: orgAddress.line1 || orgAddress.address || 'N/A',
       fromAddr2: orgAddress.line2 || '',
       fromPlace: orgAddress.city || 'N/A',
@@ -519,19 +539,19 @@ export class EwayBillService {
       toPincode: Number(contactBilling.pincode) || 100001,
       toStateCode: Number(buyerState) || Number(sellerState) || 7,
       totalValue: Math.round(Number(invoice.subtotal || 0) * 100) / 100,
-      cgstValue: Math.round(Number(invoice.cgst_amount || 0) * 100) / 100,
-      sgstValue: Math.round(Number(invoice.sgst_amount || 0) * 100) / 100,
-      igstValue: Math.round(Number(invoice.igst_amount || 0) * 100) / 100,
-      cessValue: Math.round(Number(invoice.cess_amount || 0) * 100) / 100,
+      cgstValue: Math.round(totalCgst * 100) / 100,
+      sgstValue: Math.round(totalSgst * 100) / 100,
+      igstValue: Math.round(totalIgst * 100) / 100,
+      cessValue: Math.round(totalCess * 100) / 100,
       totInvValue: Math.round(Number(invoice.total || 0) * 100) / 100,
-      transporterId: dto.transport.transporter_id || '',
-      transporterName: dto.transport.transporter_name || '',
-      transDocNo: dto.transport.transport_doc_no || '',
-      transDocDate: dto.transport.transport_doc_date || '',
-      transMode: dto.transport.transport_mode,
-      vehicleNo: dto.transport.vehicle_no || '',
-      vehicleType: dto.transport.vehicle_type || 'R',
-      transDistance: String(dto.distance),
+      transporterId: transport.transporter_id || '',
+      transporterName: transport.transporter_name || '',
+      transDocNo: transport.transport_doc_no || '',
+      transDocDate: transport.transport_doc_date || '',
+      transMode: transport.transport_mode || '1',
+      vehicleNo: transport.vehicle_no || '',
+      vehicleType: transport.vehicle_type || 'R',
+      transDistance: String(dto.distance || 0),
       itemList,
     };
   }

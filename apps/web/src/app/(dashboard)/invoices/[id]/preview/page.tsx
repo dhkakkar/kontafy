@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { Suspense, useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -116,7 +116,15 @@ function getInvoiceTitle(type: string): string {
 
 // ─── Component ─────────────────────────────────────────────────
 
-export default function InvoicePreviewPage() {
+export default function InvoicePreviewPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <InvoicePreviewPage />
+    </Suspense>
+  );
+}
+
+function InvoicePreviewPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const invoiceId = params.id as string;
@@ -180,7 +188,7 @@ export default function InvoicePreviewPage() {
   return (
     <>
       {/* Print Styles */}
-      <style jsx global>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           body { background: white !important; }
           .no-print { display: none !important; }
@@ -191,7 +199,7 @@ export default function InvoicePreviewPage() {
             max-width: none !important;
           }
         }
-      `}</style>
+      ` }} />
 
       {/* Action Bar */}
       <div className="no-print mb-6 flex items-center justify-between">

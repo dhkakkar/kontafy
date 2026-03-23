@@ -89,15 +89,19 @@ export default function ReconciliationPage() {
   // Queries
   const { data: accounts = [] } = useQuery<BankAccount[]>({
     queryKey: ["bank-accounts"],
-    queryFn: () => api.get("/bank/accounts"),
+    queryFn: async () => {
+      const res = await api.get<{ data: BankAccount[] }>("/bank/accounts");
+      return res.data;
+    },
   });
 
   const { data: summary } = useQuery<ReconciliationSummary>({
     queryKey: ["reconciliation-summary", selectedAccountId],
-    queryFn: () => {
+    queryFn: async () => {
       const params: Record<string, string> = {};
       if (selectedAccountId) params.bank_account_id = selectedAccountId;
-      return api.get("/bank/reconciliation/summary", params);
+      const res = await api.get<{ data: ReconciliationSummary }>("/bank/reconciliation/summary", params);
+      return res.data;
     },
   });
 
@@ -105,36 +109,43 @@ export default function ReconciliationPage() {
     BankTransaction[]
   >({
     queryKey: ["unreconciled-transactions", selectedAccountId],
-    queryFn: () => {
+    queryFn: async () => {
       const params: Record<string, string> = {};
       if (selectedAccountId) params.bank_account_id = selectedAccountId;
-      return api.get("/bank/transactions/unreconciled", params);
+      const res = await api.get<{ data: BankTransaction[] }>("/bank/transactions/unreconciled", params);
+      return res.data;
     },
   });
 
   // Get unmatched payments and invoices for the right panel
   const { data: payments = [] } = useQuery<Payment[]>({
     queryKey: ["payments-for-reconciliation"],
-    queryFn: () => api.get("/bill/payments", { unmatched: "true" }),
+    queryFn: async () => {
+      const res = await api.get<{ data: Payment[] }>("/bill/payments", { unmatched: "true" });
+      return res.data;
+    },
     enabled: true,
   });
 
-  const { data: invoicesRes } = useQuery<{ data: Invoice[] }>({
+  const { data: invoices = [] } = useQuery<Invoice[]>({
     queryKey: ["invoices-for-reconciliation"],
-    queryFn: () =>
-      api.get("/bill/invoices", { status: "sent,overdue,partial" }),
+    queryFn: async () => {
+      const res = await api.get<{ data: Invoice[] }>("/bill/invoices", { status: "sent,overdue,partial" });
+      return res.data;
+    },
     enabled: true,
   });
-  const invoices = invoicesRes?.data ?? (invoicesRes as unknown as Invoice[]) ?? [];
 
   // Auto-match mutation
   const autoMatchMutation = useMutation<AutoMatchResult>({
-    mutationFn: () =>
-      api.post("/bank/reconciliation/auto-match", {
+    mutationFn: async () => {
+      const res = await api.post<{ data: AutoMatchResult }>("/bank/reconciliation/auto-match", {
         bank_account_id: selectedAccountId,
         date_tolerance_days: 7,
         amount_tolerance_pct: 0,
-      }),
+      });
+      return res.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["unreconciled-transactions"],
@@ -147,13 +158,16 @@ export default function ReconciliationPage() {
 
   // Manual reconcile mutation
   const reconcileMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       txnId,
       data,
     }: {
       txnId: string;
       data: Record<string, unknown>;
-    }) => api.patch(`/bank/transactions/${txnId}/reconcile`, data),
+    }) => {
+      const res = await api.patch<{ data: unknown }>(`/bank/transactions/${txnId}/reconcile`, data);
+      return res.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["unreconciled-transactions"],

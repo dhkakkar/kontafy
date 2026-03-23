@@ -65,7 +65,8 @@ export default function DebitNotesPage() {
       const params: Record<string, string> = {};
       if (activeTab !== "all") params.status = activeTab;
       if (searchQuery) params.search = searchQuery;
-      const res = await api.get<{ data: DebitNote[] }>("/bill/debit-notes", params);
+      params.type = "debit_note";
+      const res = await api.get<{ data: DebitNote[] }>("/bill/invoices", params);
       return res.data;
     },
   });

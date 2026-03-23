@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -15,7 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/utils";
-import { Plus, Warehouse, MoreHorizontal } from "lucide-react";
+import { api } from "@/lib/api";
+import { Plus, Warehouse, MoreHorizontal, Loader2 } from "lucide-react";
 
 interface WarehouseItem {
   id: string;
@@ -32,55 +34,14 @@ interface WarehouseItem {
   total_value: number;
 }
 
-// Mock data
-const warehouses: WarehouseItem[] = [
-  {
-    id: "1",
-    name: "Main Warehouse",
-    address: {
-      line1: "123, Industrial Area Phase 2",
-      city: "Noida",
-      state: "UP",
-      pincode: "201301",
-    },
-    is_default: true,
-    total_items: 28,
-    total_quantity: 1580,
-    total_value: 845000,
-  },
-  {
-    id: "2",
-    name: "Store Room - Office",
-    address: {
-      line1: "45, Sector 18",
-      city: "Noida",
-      state: "UP",
-      pincode: "201301",
-    },
-    is_default: false,
-    total_items: 15,
-    total_quantity: 620,
-    total_value: 285000,
-  },
-  {
-    id: "3",
-    name: "Godown - Delhi",
-    address: {
-      line1: "Karol Bagh",
-      city: "New Delhi",
-      state: "Delhi",
-      pincode: "110005",
-    },
-    is_default: false,
-    total_items: 10,
-    total_quantity: 250,
-    total_value: 115000,
-  },
-];
+interface ApiResponse<T> {
+  data: T;
+}
 
 const columnHelper = createColumnHelper<WarehouseItem>();
 
 export default function WarehousesPage() {
+  const queryClient = useQueryClient();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState("");
@@ -89,6 +50,33 @@ export default function WarehousesPage() {
   const [newState, setNewState] = useState("");
   const [newPincode, setNewPincode] = useState("");
   const [newIsDefault, setNewIsDefault] = useState(false);
+
+  const { data: warehouses = [], isLoading } = useQuery<WarehouseItem[]>({
+    queryKey: ["warehouses"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<WarehouseItem[]>>("/stock/warehouses");
+      return res.data;
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      return api.post("/stock/warehouses", {
+        name: newName,
+        address: {
+          line1: newAddress || undefined,
+          city: newCity || undefined,
+          state: newState || undefined,
+          pincode: newPincode || undefined,
+        },
+        is_default: newIsDefault,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["warehouses"] });
+      resetModal();
+    },
+  });
 
   const columns = useMemo(
     () => [
@@ -216,7 +204,7 @@ export default function WarehousesPage() {
           <p className="text-sm text-gray-500">Total Stock Quantity</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">
             {formatNumber(
-              warehouses.reduce((s, w) => s + w.total_quantity, 0)
+              warehouses.reduce((s, w) => s + (w.total_quantity || 0), 0)
             )}
           </p>
         </Card>
@@ -224,7 +212,7 @@ export default function WarehousesPage() {
           <p className="text-sm text-gray-500">Total Stock Value</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">
             {formatCurrency(
-              warehouses.reduce((s, w) => s + w.total_value, 0)
+              warehouses.reduce((s, w) => s + (w.total_value || 0), 0)
             )}
           </p>
         </Card>
@@ -232,7 +220,13 @@ export default function WarehousesPage() {
 
       {/* Table */}
       <Card padding="none">
-        <DataTable table={table} />
+        {isLoading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : (
+          <DataTable table={table} />
+        )}
       </Card>
 
       {/* Add Warehouse Modal */}
@@ -291,7 +285,13 @@ export default function WarehousesPage() {
             <Button variant="outline" onClick={resetModal}>
               Cancel
             </Button>
-            <Button>Create Warehouse</Button>
+            <Button
+              onClick={() => createMutation.mutate()}
+              loading={createMutation.isPending}
+              disabled={!newName}
+            >
+              Create Warehouse
+            </Button>
           </div>
         </div>
       </Modal>

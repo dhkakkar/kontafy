@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
 import { api } from "@/lib/api";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface LineItem {
   id: string;
@@ -38,7 +38,6 @@ interface Product {
   hsn_code?: string;
   selling_price?: number;
   tax_rate?: number;
-  unit?: string;
 }
 
 const taxOptions = [
@@ -47,6 +46,13 @@ const taxOptions = [
   { value: "12", label: "GST 12%" },
   { value: "18", label: "GST 18%" },
   { value: "28", label: "GST 28%" },
+];
+
+const reasonOptions = [
+  { value: "return", label: "Sale Return" },
+  { value: "discount", label: "Discount" },
+  { value: "correction", label: "Correction" },
+  { value: "other", label: "Other" },
 ];
 
 const INDIAN_STATES = [
@@ -99,30 +105,26 @@ function calcTax(amount: number, taxRate: number): number {
   return (amount * taxRate) / 100;
 }
 
-export default function NewInvoicePage() {
+export default function NewCreditNotePage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [customer, setCustomer] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(
+  const [creditNoteDate, setCreditNoteDate] = useState(
     new Date().toISOString().split("T")[0]
   );
-  const [dueDate, setDueDate] = useState("");
+  const [reason, setReason] = useState("");
   const [placeOfSupply, setPlaceOfSupply] = useState("");
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
 
-  // Auto-fill terms & notes from invoice settings
   useEffect(() => {
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
         const d = res.data;
         if (d) {
-          if (d.default_terms_conditions) {
-            setTerms(String(d.default_terms_conditions));
-          }
-          if (d.default_notes) {
-            setNotes(String(d.default_notes));
-          }
+          if (d.default_terms_conditions) setTerms(String(d.default_terms_conditions));
+          if (d.default_notes) setNotes(String(d.default_notes));
         }
       })
       .catch(() => {});
@@ -142,26 +144,24 @@ export default function NewInvoicePage() {
     },
   ]);
 
-  // Fetch contacts (customers) from API
   const { data: contacts = [] } = useQuery<Contact[]>({
     queryKey: ["contacts", "customer"],
     queryFn: async () => {
-      const res = await api.get<{ data: { data: Contact[]; meta: unknown } }>("/bill/contacts", {
+      const res = await api.get<{ data: Contact[] }>("/bill/contacts", {
         type: "customer",
         limit: "100",
       });
-      return res.data.data;
+      return res.data;
     },
   });
 
-  // Fetch products from API
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ["products"],
     queryFn: async () => {
-      const res = await api.get<{ data: { data: Product[]; meta: unknown } }>("/stock/products", {
+      const res = await api.get<{ data: Product[] }>("/stock/products", {
         limit: "200",
       });
-      return res.data.data;
+      return res.data;
     },
   });
 
@@ -171,19 +171,17 @@ export default function NewInvoicePage() {
     description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
   }));
 
-  // Create invoice mutation
-  const createInvoice = useMutation({
-    mutationFn: async (status: "draft" | "sent") => {
+  const createCreditNote = useMutation({
+    mutationFn: async (status: "draft" | "issued") => {
       const halfRate = (rate: number) => rate / 2;
-      return api.post("/bill/invoices", {
-        type: "invoice",
+      return api.post("/bill/credit-notes", {
         contact_id: customer,
-        date: invoiceDate,
-        due_date: dueDate || undefined,
+        date: creditNoteDate,
+        reason: reason || undefined,
         place_of_supply: placeOfSupply || undefined,
         notes: notes || undefined,
         terms: terms || undefined,
-        is_posted: status === "sent",
+        status,
         items: items.map((item) => ({
           product_id: item.productId || undefined,
           description: item.productName || item.description,
@@ -197,7 +195,8 @@ export default function NewInvoicePage() {
       });
     },
     onSuccess: () => {
-      router.push("/invoices");
+      queryClient.invalidateQueries({ queryKey: ["credit-notes"] });
+      router.push("/credit-notes");
     },
   });
 
@@ -269,17 +268,13 @@ export default function NewInvoicePage() {
     taxBreakdown[item.taxRate].tax += calcTax(item.amount, item.taxRate);
   });
 
-  const totalTax = Object.values(taxBreakdown).reduce(
-    (sum, t) => sum + t.tax,
-    0
-  );
+  const totalTax = Object.values(taxBreakdown).reduce((sum, t) => sum + t.tax, 0);
   const grandTotal = subtotal + totalTax;
 
   const canSubmit = customer && items.some((i) => i.amount > 0);
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
@@ -289,38 +284,37 @@ export default function NewInvoicePage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">New Invoice</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Create a new sales invoice</p>
+            <h1 className="text-2xl font-bold text-gray-900">New Credit Note</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Create a new credit note</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
             icon={<Save className="h-4 w-4" />}
-            onClick={() => createInvoice.mutate("draft")}
-            loading={createInvoice.isPending}
+            onClick={() => createCreditNote.mutate("draft")}
+            loading={createCreditNote.isPending}
             disabled={!canSubmit}
           >
             Save Draft
           </Button>
           <Button
             icon={<Send className="h-4 w-4" />}
-            onClick={() => createInvoice.mutate("sent")}
-            loading={createInvoice.isPending}
+            onClick={() => createCreditNote.mutate("issued")}
+            loading={createCreditNote.isPending}
             disabled={!canSubmit}
           >
-            Send Invoice
+            Issue Credit Note
           </Button>
         </div>
       </div>
 
-      {createInvoice.isError && (
+      {createCreditNote.isError && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
-          {createInvoice.error?.message || "Failed to create invoice"}
+          {createCreditNote.error?.message || "Failed to create credit note"}
         </div>
       )}
 
-      {/* Customer & Dates */}
       <Card padding="md">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Select
@@ -340,21 +334,21 @@ export default function NewInvoicePage() {
             placeholder="Select state"
           />
           <Input
-            label="Invoice Date"
+            label="Credit Note Date"
             type="date"
-            value={invoiceDate}
-            onChange={(e) => setInvoiceDate(e.target.value)}
+            value={creditNoteDate}
+            onChange={(e) => setCreditNoteDate(e.target.value)}
           />
-          <Input
-            label="Due Date"
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
+          <Select
+            label="Reason"
+            options={reasonOptions}
+            value={reason}
+            onChange={setReason}
+            placeholder="Select reason"
           />
         </div>
       </Card>
 
-      {/* Line Items */}
       <Card padding="none">
         <div className="p-4 border-b border-gray-200">
           <CardHeader className="!mb-0">
@@ -442,11 +436,7 @@ export default function NewInvoicePage() {
                       type="number"
                       value={item.quantity || ""}
                       onChange={(e) =>
-                        updateItem(
-                          item.id,
-                          "quantity",
-                          parseFloat(e.target.value) || 0
-                        )
+                        updateItem(item.id, "quantity", parseFloat(e.target.value) || 0)
                       }
                       min="0"
                       className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -457,11 +447,7 @@ export default function NewInvoicePage() {
                       type="number"
                       value={item.rate || ""}
                       onChange={(e) =>
-                        updateItem(
-                          item.id,
-                          "rate",
-                          parseFloat(e.target.value) || 0
-                        )
+                        updateItem(item.id, "rate", parseFloat(e.target.value) || 0)
                       }
                       placeholder="0.00"
                       className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -472,11 +458,7 @@ export default function NewInvoicePage() {
                       type="number"
                       value={item.discount || ""}
                       onChange={(e) =>
-                        updateItem(
-                          item.id,
-                          "discount",
-                          parseFloat(e.target.value) || 0
-                        )
+                        updateItem(item.id, "discount", parseFloat(e.target.value) || 0)
                       }
                       placeholder="0"
                       min="0"
@@ -514,7 +496,6 @@ export default function NewInvoicePage() {
         </div>
       </Card>
 
-      {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card padding="md">
           <div className="space-y-4">

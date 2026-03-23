@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { useCreateRecurringInvoice } from "@/hooks/use-recurring";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { ArrowLeft, Plus, Trash2, Save } from "lucide-react";
 
 interface LineItem {
@@ -22,17 +24,16 @@ interface LineItem {
   sgst_rate: number;
 }
 
+interface Contact {
+  id: string;
+  name: string;
+  gstin?: string;
+  type: string;
+}
+
 function genId() {
   return Math.random().toString(36).slice(2, 10);
 }
-
-const customerOptions = [
-  { value: "c1", label: "TechStar Solutions", description: "GSTIN: 27AABCT1234A1Z5" },
-  { value: "c2", label: "GreenLeaf Exports", description: "GSTIN: 07AABCG5678B1Z3" },
-  { value: "c3", label: "Meridian Logistics", description: "GSTIN: 29AABCM9012C1Z1" },
-  { value: "c4", label: "Apex Manufacturing", description: "GSTIN: 24AABCA3456D1Z9" },
-  { value: "c5", label: "Prism Digital" },
-];
 
 const frequencyOptions = [
   { value: "daily", label: "Daily" },
@@ -62,6 +63,24 @@ export default function NewRecurringInvoicePage() {
   const [paymentTermsDays, setPaymentTermsDays] = useState("30");
   const [autoSend, setAutoSend] = useState(false);
   const [notes, setNotes] = useState("");
+
+  // Fetch contacts (customers) from API
+  const { data: contacts = [] } = useQuery<Contact[]>({
+    queryKey: ["contacts", "customer"],
+    queryFn: async () => {
+      const res = await api.get<{ data: { data: Contact[]; meta: unknown } }>("/bill/contacts", {
+        type: "customer",
+        limit: "100",
+      });
+      return res.data.data;
+    },
+  });
+
+  const customerOptions = contacts.map((c) => ({
+    value: c.id,
+    label: c.name,
+    description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
+  }));
 
   const [items, setItems] = useState<LineItem[]>([
     {
@@ -114,8 +133,8 @@ export default function NewRecurringInvoicePage() {
   }, 0);
   const grandTotal = subtotal + totalTax;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    e?.preventDefault();
     try {
       await createMutation.mutateAsync({
         name,
@@ -170,6 +189,12 @@ export default function NewRecurringInvoicePage() {
           Create Profile
         </Button>
       </div>
+
+      {createMutation.isError && (
+        <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
+          {createMutation.error?.message || "Failed to create recurring invoice"}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card padding="md">

@@ -68,6 +68,7 @@ model Organization {
   quotations            Quotation[]
   purchase_orders       PurchaseOrder[]
   recurring_invoices    RecurringInvoice[]
+  expenses              Expense[]
 
   @@map("organizations")
 }
@@ -1044,4 +1045,32 @@ model RecurringInvoiceItem {
 
   @@index([recurring_invoice_id])
   @@map("recurring_invoice_items")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE: Expenses
+// ═══════════════════════════════════════════════════════════════
+
+model Expense {
+  id              String   @id @default(uuid()) @db.Uuid
+  org_id          String   @db.Uuid
+  date            DateTime @db.Date
+  category        String
+  description     String
+  amount          Decimal  @db.Decimal(15, 2)
+  payment_method  String
+  reference       String?
+  vendor_name     String?
+  notes           String?
+  status          String   @default("pending")
+  created_by      String?  @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, status])
+  @@index([org_id, date])
+  @@index([org_id, category])
+  @@map("expenses")
 }

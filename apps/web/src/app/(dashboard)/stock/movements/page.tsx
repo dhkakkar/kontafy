@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -19,6 +20,7 @@ import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatNumber, formatDate } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
   Plus,
   Search,
@@ -26,6 +28,7 @@ import {
   ArrowUpRight,
   RefreshCw,
   ArrowRightLeft,
+  Loader2,
 } from "lucide-react";
 
 interface StockMovement {
@@ -40,97 +43,19 @@ interface StockMovement {
   created_at: string;
 }
 
-// Mock data
-const movements: StockMovement[] = [
-  {
-    id: "1",
-    type: "purchase_in",
-    product_name: "A4 Printing Paper (Ream)",
-    product_sku: "PAP-A4-500",
-    warehouse_name: "Main Warehouse",
-    quantity: 100,
-    unit: "ream",
-    notes: "PO-2026-034",
-    created_at: "2026-03-12T10:30:00Z",
-  },
-  {
-    id: "2",
-    type: "sale_out",
-    product_name: "Laptop Stand - Aluminium",
-    product_sku: "ACC-LS-ALU",
-    warehouse_name: "Main Warehouse",
-    quantity: 2,
-    unit: "pcs",
-    notes: "INV-0047",
-    created_at: "2026-03-12T09:15:00Z",
-  },
-  {
-    id: "3",
-    type: "transfer",
-    product_name: "USB-C Cable (1m)",
-    product_sku: "CAB-USBC-1M",
-    warehouse_name: "Main Warehouse",
-    quantity: 10,
-    unit: "pcs",
-    notes: "Transfer to Store Room - Office",
-    created_at: "2026-03-11T14:45:00Z",
-  },
-  {
-    id: "4",
-    type: "adjustment",
-    product_name: "Ballpoint Pen (Blue)",
-    product_sku: "PEN-BP-BLU",
-    warehouse_name: "Store Room - Office",
-    quantity: -5,
-    unit: "pcs",
-    notes: "Damaged stock writeoff",
-    created_at: "2026-03-10T16:20:00Z",
-  },
-  {
-    id: "5",
-    type: "purchase_in",
-    product_name: "Thermal Receipt Roll",
-    product_sku: "POS-TR-80",
-    warehouse_name: "Main Warehouse",
-    quantity: 50,
-    unit: "roll",
-    notes: "PO-2026-033",
-    created_at: "2026-03-09T11:00:00Z",
-  },
-  {
-    id: "6",
-    type: "sale_out",
-    product_name: "Office Chair - Ergonomic",
-    product_sku: "FUR-CHR-ERG",
-    warehouse_name: "Main Warehouse",
-    quantity: 3,
-    unit: "pcs",
-    notes: "INV-0045",
-    created_at: "2026-03-07T15:30:00Z",
-  },
-  {
-    id: "7",
-    type: "purchase_in",
-    product_name: "USB-C Cable (1m)",
-    product_sku: "CAB-USBC-1M",
-    warehouse_name: "Godown - Delhi",
-    quantity: 25,
-    unit: "pcs",
-    notes: "PO-2026-031",
-    created_at: "2026-03-05T10:00:00Z",
-  },
-  {
-    id: "8",
-    type: "adjustment",
-    product_name: "A4 Printing Paper (Ream)",
-    product_sku: "PAP-A4-500",
-    warehouse_name: "Main Warehouse",
-    quantity: 10,
-    unit: "ream",
-    notes: "Inventory count correction",
-    created_at: "2026-03-03T09:00:00Z",
-  },
-];
+interface Product {
+  id: string;
+  name: string;
+}
+
+interface Warehouse {
+  id: string;
+  name: string;
+}
+
+interface ApiResponse<T> {
+  data: T;
+}
 
 const typeConfig: Record<
   StockMovement["type"],
@@ -165,6 +90,7 @@ const typeConfig: Record<
 const columnHelper = createColumnHelper<StockMovement>();
 
 export default function StockMovementsPage() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -178,7 +104,54 @@ export default function StockMovementsPage() {
   const [movementNotes, setMovementNotes] = useState("");
   const [movementDestWarehouse, setMovementDestWarehouse] = useState("");
 
-  const tabs = [
+  const { data: movements = [], isLoading } = useQuery<StockMovement[]>({
+    queryKey: ["stock-movements", activeTab, searchQuery],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (activeTab !== "all") params.type = activeTab;
+      if (searchQuery) params.search = searchQuery;
+      const res = await api.get<ApiResponse<StockMovement[]>>("/stock/movements", params);
+      return res.data;
+    },
+  });
+
+  const { data: products = [] } = useQuery<Product[]>({
+    queryKey: ["products-list"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Product[]>>("/stock/products");
+      return res.data;
+    },
+  });
+
+  const { data: warehouses = [] } = useQuery<Warehouse[]>({
+    queryKey: ["warehouses-list"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Warehouse[]>>("/stock/warehouses");
+      return res.data;
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {
+        product_id: movementProduct,
+        warehouse_id: movementWarehouse,
+        type: movementType,
+        quantity: parseInt(movementQuantity),
+        notes: movementNotes || undefined,
+      };
+      if (movementType === "transfer" && movementDestWarehouse) {
+        body.destination_warehouse_id = movementDestWarehouse;
+      }
+      return api.post("/stock/movements", body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
+      resetModal();
+    },
+  });
+
+  const tabs = useMemo(() => [
     { value: "all", label: "All", count: movements.length },
     {
       value: "purchase_in",
@@ -200,27 +173,7 @@ export default function StockMovementsPage() {
       label: "Transfer",
       count: movements.filter((m) => m.type === "transfer").length,
     },
-  ];
-
-  const filteredData = useMemo(() => {
-    return movements.filter((movement) => {
-      if (activeTab !== "all" && movement.type !== activeTab) return false;
-      if (
-        searchQuery &&
-        !movement.product_name
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase()) &&
-        !(movement.product_sku || "")
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase()) &&
-        !(movement.notes || "")
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase())
-      )
-        return false;
-      return true;
-    });
-  }, [activeTab, searchQuery]);
+  ], [movements]);
 
   const columns = useMemo(
     () => [
@@ -236,6 +189,7 @@ export default function StockMovementsPage() {
         header: "Type",
         cell: (info) => {
           const cfg = typeConfig[info.getValue()];
+          if (!cfg) return <span>{info.getValue()}</span>;
           return (
             <Badge variant={cfg.variant}>
               <span className="flex items-center gap-1">
@@ -286,7 +240,6 @@ export default function StockMovementsPage() {
         header: "Reference / Notes",
         cell: (info) => {
           const val = info.getValue() || "-";
-          // Make invoice/PO references clickable
           const invMatch = val.match(/^(INV-\d+)$/);
           const poMatch = val.match(/^(PO-[\w-]+)$/);
           if (invMatch) {
@@ -313,7 +266,7 @@ export default function StockMovementsPage() {
   );
 
   const table = useReactTable({
-    data: filteredData,
+    data: movements,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -364,7 +317,13 @@ export default function StockMovementsPage() {
           />
         </div>
 
-        <DataTable table={table} />
+        {isLoading ? (
+          <div className="py-12 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : (
+          <DataTable table={table} />
+        )}
       </Card>
 
       {/* Record Movement Modal */}
@@ -392,14 +351,7 @@ export default function StockMovementsPage() {
             label="Product"
             value={movementProduct}
             onChange={setMovementProduct}
-            options={[
-              { value: "1", label: "A4 Printing Paper (Ream)" },
-              { value: "2", label: "Laptop Stand - Aluminium" },
-              { value: "4", label: "USB-C Cable (1m)" },
-              { value: "5", label: "Ballpoint Pen (Blue)" },
-              { value: "7", label: "Thermal Receipt Roll" },
-              { value: "8", label: "Office Chair - Ergonomic" },
-            ]}
+            options={products.map((p) => ({ value: p.id, label: p.name }))}
             searchable
             placeholder="Select product"
           />
@@ -413,11 +365,7 @@ export default function StockMovementsPage() {
               }
               value={movementWarehouse}
               onChange={setMovementWarehouse}
-              options={[
-                { value: "1", label: "Main Warehouse" },
-                { value: "2", label: "Store Room - Office" },
-                { value: "3", label: "Godown - Delhi" },
-              ]}
+              options={warehouses.map((w) => ({ value: w.id, label: w.name }))}
               placeholder="Select warehouse"
             />
             <Input
@@ -434,11 +382,7 @@ export default function StockMovementsPage() {
               label="Destination Warehouse"
               value={movementDestWarehouse}
               onChange={setMovementDestWarehouse}
-              options={[
-                { value: "1", label: "Main Warehouse" },
-                { value: "2", label: "Store Room - Office" },
-                { value: "3", label: "Godown - Delhi" },
-              ]}
+              options={warehouses.map((w) => ({ value: w.id, label: w.name }))}
               placeholder="Select destination warehouse"
             />
           )}
@@ -460,7 +404,13 @@ export default function StockMovementsPage() {
             <Button variant="outline" onClick={resetModal}>
               Cancel
             </Button>
-            <Button>Record Movement</Button>
+            <Button
+              onClick={() => createMutation.mutate()}
+              loading={createMutation.isPending}
+              disabled={!movementProduct || !movementWarehouse || !movementQuantity}
+            >
+              Record Movement
+            </Button>
           </div>
         </div>
       </Modal>
