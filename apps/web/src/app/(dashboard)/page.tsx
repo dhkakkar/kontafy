@@ -91,22 +91,24 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">
             Financial overview for {currentMonth}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <Link href="/contacts">
             <Button variant="outline" size="sm" icon={<Users className="h-4 w-4" />}>
-              Add Contact
+              <span className="hidden sm:inline">Add Contact</span>
+              <span className="sm:hidden">Contact</span>
             </Button>
           </Link>
           <Link href="/invoices/new">
             <Button size="sm" icon={<Plus className="h-4 w-4" />}>
-              New Invoice
+              <span className="hidden sm:inline">New Invoice</span>
+              <span className="sm:hidden">Invoice</span>
             </Button>
           </Link>
         </div>

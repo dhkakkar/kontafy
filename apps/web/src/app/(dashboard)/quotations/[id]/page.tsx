@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/components/ui/toast";
 import {
   useQuotation,
   useUpdateQuotationStatus,
@@ -51,6 +52,7 @@ export default function QuotationDetailPage() {
   const quotationId = params.id as string;
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const { toast } = useToast();
 
   const { data: quotation, isLoading } = useQuotation(quotationId);
   const updateStatusMutation = useUpdateQuotationStatus();
@@ -312,8 +314,13 @@ export default function QuotationDetailPage() {
           <Button
             variant="destructive"
             onClick={async () => {
-              await deleteMutation.mutateAsync(quotationId);
-              router.push("/quotations");
+              try {
+                await deleteMutation.mutateAsync(quotationId);
+                router.push("/quotations");
+              } catch (err: any) {
+                setShowDeleteModal(false);
+                toast("error", "Delete failed", err?.message || "Could not delete this quotation");
+              }
             }}
             loading={deleteMutation.isPending}
           >

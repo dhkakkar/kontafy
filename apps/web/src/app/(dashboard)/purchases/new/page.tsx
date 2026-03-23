@@ -121,11 +121,11 @@ export default function NewPurchasePage() {
   const { data: contacts = [] } = useQuery<Contact[]>({
     queryKey: ["contacts", "vendor"],
     queryFn: async () => {
-      const res = await api.get<{ data: { data: Contact[]; meta: unknown } }>("/bill/contacts", {
+      const res = await api.get<{ data: Contact[] }>("/bill/contacts", {
         type: "vendor",
         limit: "100",
       });
-      return res.data.data;
+      return res.data;
     },
   });
 

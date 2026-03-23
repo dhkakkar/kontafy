@@ -311,16 +311,20 @@ function ContactsPage() {
         phone: formPhone || undefined,
         gstin: formGstin || undefined,
         pan: formPan || undefined,
-        address_line1: formAddressLine1 || undefined,
-        address_line2: formAddressLine2 || undefined,
-        city: formCity || undefined,
-        state: formState || undefined,
-        pincode: formPincode || undefined,
-        shipping_address_line1: formShippingAddressLine1 || undefined,
-        shipping_address_line2: formShippingAddressLine2 || undefined,
-        shipping_city: formShippingCity || undefined,
-        shipping_state: formShippingState || undefined,
-        shipping_pincode: formShippingPincode || undefined,
+        billing_address: {
+          line1: formAddressLine1 || undefined,
+          line2: formAddressLine2 || undefined,
+          city: formCity || undefined,
+          state: formState || undefined,
+          pincode: formPincode || undefined,
+        },
+        shipping_address: {
+          line1: formShippingAddressLine1 || undefined,
+          line2: formShippingAddressLine2 || undefined,
+          city: formShippingCity || undefined,
+          state: formShippingState || undefined,
+          pincode: formShippingPincode || undefined,
+        },
         opening_balance: formOpeningBalance ? Number(formOpeningBalance) : undefined,
         balance_type: formBalanceType || undefined,
         payment_terms: formCreditPeriod ? Number(formCreditPeriod) : undefined,
@@ -942,6 +946,11 @@ function ContactsPage() {
             ))}
           </div>
         </div>
+        {(createMutation.error || updateMutation.error) && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            {(editingContactId ? updateMutation.error : createMutation.error)?.message || "An error occurred"}
+          </div>
+        )}
         <div className="flex justify-end gap-3 pt-6">
           <Button variant="outline" onClick={handleCloseModal}>
             Cancel

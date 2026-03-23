@@ -74,24 +74,28 @@ export default function TdsPage() {
   // Fetch TDS entries
   const { data: entriesData, isLoading: entriesLoading } = useQuery({
     queryKey: ["tds-entries"],
-    queryFn: () =>
-      api.get<{ data: TdsEntry[]; meta: any }>("/tax/tds", {
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: TdsEntry[]; meta: any }>("/tax/tds", {
         limit: "100",
-      }),
+      });
+      return res.data;
+    },
   });
 
   // Fetch TDS summary
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ["tds-summary", fyStart, fyEnd],
-    queryFn: () =>
-      api.get<TdsSectionSummary[]>("/tax/tds/summary", {
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: TdsSectionSummary[] }>("/tax/tds/summary", {
         from: fyStart,
         to: fyEnd,
-      }),
+      });
+      return res.data;
+    },
   });
 
-  const entries = entriesData?.data || [];
-  const summary = summaryData || [];
+  const entries = Array.isArray(entriesData) ? entriesData : [];
+  const summary = Array.isArray(summaryData) ? summaryData : [];
 
   const totalTdsDeducted = summary.reduce((acc, s) => acc + s.total_tds_amount, 0);
   const totalPending = summary.reduce((acc, s) => acc + s.entries_pending, 0);

@@ -34,6 +34,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             id={inputId}
+            aria-invalid={!!error}
+            aria-describedby={error ? `${inputId}-error` : undefined}
             className={cn(
               "w-full h-10 rounded-lg border bg-white px-3 text-sm text-gray-900",
               "placeholder:text-gray-400",
@@ -41,7 +43,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
               "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500",
               "disabled:opacity-50 disabled:bg-gray-50",
               error
-                ? "border-danger-500 focus:ring-danger-500"
+                ? "border-danger-500 focus:ring-danger-500 focus:border-danger-500"
                 : "border-gray-300",
               leftIcon && "pl-10",
               rightIcon && "pr-10",
@@ -55,7 +57,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             </div>
           )}
         </div>
-        {error && <p className="mt-1 text-sm text-danger-500">{error}</p>}
+        {error && <p id={`${inputId}-error`} role="alert" className="mt-1.5 text-sm font-medium text-danger-600">{error}</p>}
         {hint && !error && (
           <p className="mt-1 text-sm text-gray-500">{hint}</p>
         )}

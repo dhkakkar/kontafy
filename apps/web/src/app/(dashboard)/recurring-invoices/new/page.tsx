@@ -68,11 +68,11 @@ export default function NewRecurringInvoicePage() {
   const { data: contacts = [] } = useQuery<Contact[]>({
     queryKey: ["contacts", "customer"],
     queryFn: async () => {
-      const res = await api.get<{ data: { data: Contact[]; meta: unknown } }>("/bill/contacts", {
+      const res = await api.get<{ data: Contact[] }>("/bill/contacts", {
         type: "customer",
         limit: "100",
       });
-      return res.data.data;
+      return res.data;
     },
   });
 

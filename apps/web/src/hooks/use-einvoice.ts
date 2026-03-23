@@ -136,11 +136,12 @@ export function useEInvoiceList(params: {
       if (params.to) queryParams.to = params.to;
       if (params.search) queryParams.search = params.search;
 
-      const res = await api.get<ApiResponse<PaginatedResponse<EInvoiceListItem>>>(
+      // The interceptor extracts { data, meta } into { success, data, meta }
+      const res = await api.get<{ success: boolean; data: EInvoiceListItem[]; meta: PaginatedResponse<EInvoiceListItem>["meta"] }>(
         "/einvoice/list",
         queryParams,
       );
-      return res.data;
+      return { data: res.data, meta: res.meta };
     },
   });
 }
@@ -232,11 +233,13 @@ export function useEwayBillList(params: {
       if (params.to) queryParams.to = params.to;
       if (params.search) queryParams.search = params.search;
 
-      const res = await api.get<ApiResponse<PaginatedResponse<EwayBillListItem>>>(
+      // The interceptor extracts { data, meta } into { success, data, meta }
+      // so res.data is the array and res.meta has pagination info
+      const res = await api.get<{ success: boolean; data: EwayBillListItem[]; meta: PaginatedResponse<EwayBillListItem>["meta"] }>(
         "/eway-bill/list",
         queryParams,
       );
-      return res.data;
+      return { data: res.data, meta: res.meta };
     },
   });
 }

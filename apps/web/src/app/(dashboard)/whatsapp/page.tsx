@@ -53,11 +53,13 @@ export default function WhatsAppDashboardPage() {
     setLoading(true);
     try {
       const [statsRes, messagesRes] = await Promise.all([
-        api.get<Stats>("/whatsapp/stats"),
-        api.get<{ data: WhatsAppMessage[] }>("/whatsapp/recent"),
+        api.get<{ success: boolean; data: Stats }>("/whatsapp/stats"),
+        api.get<{ success: boolean; data: { data: WhatsAppMessage[] } }>("/whatsapp/recent"),
       ]);
-      setStats(statsRes);
-      setMessages(messagesRes.data);
+      setStats(statsRes.data);
+      const msgData = messagesRes.data;
+      // The recent endpoint returns { data: messages[] } which the interceptor wraps
+      setMessages(Array.isArray(msgData) ? msgData : (msgData?.data || []));
     } catch {
       // API may not be connected yet; show empty state
     } finally {
@@ -72,9 +74,10 @@ export default function WhatsAppDashboardPage() {
   const handleBulkReminders = async () => {
     setSendingBulk(true);
     try {
-      const result = await api.post<{ total: number; queued: number; failed: number }>(
+      const res = await api.post<{ success: boolean; data: { total: number; queued: number; failed: number } }>(
         "/whatsapp/bulk-reminders"
       );
+      const result = res.data;
       alert(
         `Bulk reminders: ${result.queued} queued, ${result.failed} failed out of ${result.total} overdue invoices.`
       );

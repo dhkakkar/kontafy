@@ -50,10 +50,17 @@ export default function StockAdjustmentPage() {
   const { data: movements = [], isLoading } = useQuery<StockMovement[]>({
     queryKey: ["stock-movements", "adjustment"],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<StockMovement[]>>("/stock/movements", {
-        type: "adjustment_in,adjustment_out",
+      const res = await api.get<{ data: { data: StockMovement[]; pagination: any } }>("/stock/movements", {
+        type: "adjustment",
       });
-      return res.data;
+      const items = res.data?.data ?? [];
+      return items.map((m: any) => ({
+        ...m,
+        product_name: m.product_name || m.product?.name || "",
+        warehouse_name: m.warehouse_name || m.warehouse?.name || "",
+        date: m.date || m.created_at,
+        reason: m.reason || m.notes || null,
+      }));
     },
   });
 
@@ -78,9 +85,9 @@ export default function StockAdjustmentPage() {
       return api.post("/stock/movements", {
         product_id: productId,
         warehouse_id: warehouseId,
-        type: adjustType,
+        type: "adjustment",
         quantity: parseInt(quantity),
-        reason: reason || undefined,
+        notes: reason || undefined,
       });
     },
     onSuccess: () => {
@@ -185,7 +192,7 @@ export default function StockAdjustmentPage() {
           <Button
             onClick={() => createMutation.mutate()}
             loading={createMutation.isPending}
-            disabled={!productId || !quantity}
+            disabled={!productId || !warehouseId || !quantity}
           >
             Submit Adjustment
           </Button>

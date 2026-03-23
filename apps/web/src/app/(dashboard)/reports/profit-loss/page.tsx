@@ -9,21 +9,28 @@ import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { Download, Loader2 } from "lucide-react";
 
+interface PLAccount {
+  account_id: string;
+  code: string | null;
+  name: string;
+  amount: number;
+}
+
 interface PLSection {
-  label: string;
-  accounts: Array<{ account_name: string; account_code: string; amount: number }>;
+  accounts: PLAccount[];
   total: number;
 }
 
 interface PLReport {
-  income: PLSection;
-  expenses: PLSection;
+  from_date: string;
+  to_date: string;
+  revenue: PLSection;
+  cost_of_goods_sold: PLSection;
+  gross_profit: number;
+  operating_expenses: PLSection;
+  operating_profit: number;
+  other_expenses: PLSection;
   net_profit: number;
-  period: { start: string; end: string };
-}
-
-interface ApiResponse<T> {
-  data: T;
 }
 
 export default function ProfitLossPage() {
@@ -35,7 +42,7 @@ export default function ProfitLossPage() {
   const { data: report, isLoading } = useQuery<PLReport>({
     queryKey: ["profit-loss", startDate, endDate],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<PLReport>>("/books/reports/profit-loss", {
+      const res = await api.get<{ success: boolean; data: PLReport }>("/books/reports/profit-loss", {
         fromDate: startDate,
         toDate: endDate,
       });
@@ -43,23 +50,26 @@ export default function ProfitLossPage() {
     },
   });
 
-  const renderSection = (section: PLSection, colorClass: string) => (
-    <>
-      <tr className="bg-gray-50">
-        <td className="py-3 px-4 font-bold text-gray-900" colSpan={2}>{section.label}</td>
-      </tr>
-      {(section.accounts || []).map((a) => (
-        <tr key={a.account_code} className="border-b border-gray-50 hover:bg-gray-50/50">
-          <td className="py-2.5 px-4 pl-8 text-gray-700">{a.account_name}</td>
-          <td className={`py-2.5 px-4 text-right font-medium ${colorClass}`}>{formatCurrency(a.amount)}</td>
+  const renderSection = (section: PLSection | undefined, label: string, colorClass: string) => {
+    if (!section) return null;
+    return (
+      <>
+        <tr className="bg-gray-50">
+          <td className="py-3 px-4 font-bold text-gray-900" colSpan={2}>{label}</td>
         </tr>
-      ))}
-      <tr className="border-t border-gray-200 font-semibold">
-        <td className="py-3 px-4 pl-8">Total {section.label}</td>
-        <td className={`py-3 px-4 text-right ${colorClass}`}>{formatCurrency(section.total)}</td>
-      </tr>
-    </>
-  );
+        {(section.accounts || []).map((a) => (
+          <tr key={a.account_id || a.code} className="border-b border-gray-50 hover:bg-gray-50/50">
+            <td className="py-2.5 px-4 pl-8 text-gray-700">{a.name}</td>
+            <td className={`py-2.5 px-4 text-right font-medium ${colorClass}`}>{formatCurrency(a.amount)}</td>
+          </tr>
+        ))}
+        <tr className="border-t border-gray-200 font-semibold">
+          <td className="py-3 px-4 pl-8">Total {label}</td>
+          <td className={`py-3 px-4 text-right ${colorClass}`}>{formatCurrency(section.total)}</td>
+        </tr>
+      </>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -71,10 +81,13 @@ export default function ProfitLossPage() {
         <Button variant="outline" size="sm" icon={<Download className="h-4 w-4" />} onClick={() => {
           if (!report) return;
           const rows = [["Account", "Amount"]];
-          (report.income.accounts || []).forEach((a) => rows.push([a.account_name, String(a.amount)]));
-          rows.push(["Total Income", String(report.income.total)]);
-          (report.expenses.accounts || []).forEach((a) => rows.push([a.account_name, String(a.amount)]));
-          rows.push(["Total Expenses", String(report.expenses.total)]);
+          (report.revenue?.accounts || []).forEach((a) => rows.push([a.name, String(a.amount)]));
+          rows.push(["Total Revenue", String(report.revenue?.total ?? 0)]);
+          (report.cost_of_goods_sold?.accounts || []).forEach((a) => rows.push([a.name, String(a.amount)]));
+          rows.push(["Gross Profit", String(report.gross_profit ?? 0)]);
+          (report.operating_expenses?.accounts || []).forEach((a) => rows.push([a.name, String(a.amount)]));
+          rows.push(["Operating Profit", String(report.operating_profit ?? 0)]);
+          (report.other_expenses?.accounts || []).forEach((a) => rows.push([a.name, String(a.amount)]));
           rows.push(["Net Profit", String(report.net_profit)]);
           const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
           const blob = new Blob([csv], { type: "text/csv" });
@@ -107,8 +120,16 @@ export default function ProfitLossPage() {
                 </tr>
               </thead>
               <tbody>
-                {renderSection(report.income, "text-success-700")}
-                {renderSection(report.expenses, "text-danger-700")}
+                {renderSection(report.revenue, "Revenue", "text-success-700")}
+                {renderSection(report.cost_of_goods_sold, "Cost of Goods Sold", "text-danger-700")}
+                {report.gross_profit !== undefined && (
+                  <tr className="border-t border-gray-200 font-semibold bg-gray-50">
+                    <td className="py-3 px-4">Gross Profit</td>
+                    <td className={`py-3 px-4 text-right ${report.gross_profit >= 0 ? "text-success-700" : "text-danger-700"}`}>{formatCurrency(report.gross_profit)}</td>
+                  </tr>
+                )}
+                {renderSection(report.operating_expenses, "Operating Expenses", "text-danger-700")}
+                {renderSection(report.other_expenses, "Other Expenses", "text-danger-700")}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-gray-300 bg-primary-50 font-bold text-lg">

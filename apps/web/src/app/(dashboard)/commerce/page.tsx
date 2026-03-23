@@ -93,7 +93,10 @@ export default function CommerceConnectionsPage() {
 
   const { data: statuses = [], isLoading } = useQuery<ConnectionStatus[]>({
     queryKey: ["commerce-status"],
-    queryFn: () => api.get("/commerce/status"),
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: ConnectionStatus[] }>("/commerce/status");
+      return Array.isArray(res.data) ? res.data : [];
+    },
   });
 
   const connectMutation = useMutation({

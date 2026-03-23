@@ -108,9 +108,32 @@ export default function SettingsLayout({
         </p>
       </div>
 
+      {/* Mobile: horizontal tabs */}
+      <div className="md:hidden">
+        <div className="flex gap-1.5 overflow-x-auto pb-2 border-b border-gray-200 scrollbar-hide -mx-1 px-1">
+          {settingsNav.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors",
+                  active
+                    ? "bg-primary-50 text-primary-800"
+                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex gap-8">
-        {/* Settings Sidebar */}
-        <nav className="w-56 shrink-0 hidden lg:block">
+        {/* Settings Sidebar — desktop only */}
+        <nav className="w-56 shrink-0 hidden md:block">
           <div className="space-y-1">
             {settingsNav.map((item) => {
               const Icon = item.icon;
@@ -133,29 +156,6 @@ export default function SettingsLayout({
             })}
           </div>
         </nav>
-
-        {/* Mobile: horizontal tabs */}
-        <div className="lg:hidden w-full">
-          <div className="flex gap-1 overflow-x-auto pb-2 border-b border-gray-200 mb-6">
-            {settingsNav.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors",
-                    active
-                      ? "bg-primary-50 text-primary-800"
-                      : "text-gray-500 hover:text-gray-700"
-                  )}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Content Area */}
         <div className="flex-1 min-w-0">{children}</div>

@@ -322,20 +322,17 @@ export class QuotationsService {
   }
 
   /**
-   * Delete a draft quotation.
+   * Delete a quotation (any status).
    */
   async remove(orgId: string, id: string) {
     const quotation = await this.findOne(orgId, id);
-
-    if (quotation.status !== 'draft') {
-      throw new BadRequestException('Only draft quotations can be deleted');
-    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.quotationItem.deleteMany({ where: { quotation_id: id } });
       await tx.quotation.delete({ where: { id } });
     });
 
+    this.logger.log(`Quotation deleted: ${quotation.quotation_number} (status: ${quotation.status})`);
     return { message: 'Quotation deleted successfully' };
   }
 

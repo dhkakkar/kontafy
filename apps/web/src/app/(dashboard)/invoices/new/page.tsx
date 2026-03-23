@@ -146,11 +146,11 @@ export default function NewInvoicePage() {
   const { data: contacts = [] } = useQuery<Contact[]>({
     queryKey: ["contacts", "customer"],
     queryFn: async () => {
-      const res = await api.get<{ data: { data: Contact[]; meta: unknown } }>("/bill/contacts", {
+      const res = await api.get<{ data: Contact[] }>("/bill/contacts", {
         type: "customer",
         limit: "100",
       });
-      return res.data.data;
+      return res.data;
     },
   });
 
@@ -158,10 +158,10 @@ export default function NewInvoicePage() {
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ["products"],
     queryFn: async () => {
-      const res = await api.get<{ data: { data: Product[]; meta: unknown } }>("/stock/products", {
+      const res = await api.get<{ data: Product[] }>("/stock/products", {
         limit: "200",
       });
-      return res.data.data;
+      return res.data;
     },
   });
 

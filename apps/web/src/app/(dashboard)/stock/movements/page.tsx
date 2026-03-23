@@ -110,8 +110,15 @@ export default function StockMovementsPage() {
       const params: Record<string, string> = {};
       if (activeTab !== "all") params.type = activeTab;
       if (searchQuery) params.search = searchQuery;
-      const res = await api.get<ApiResponse<StockMovement[]>>("/stock/movements", params);
-      return res.data;
+      const res = await api.get<{ data: { data: StockMovement[]; pagination: any } }>("/stock/movements", params);
+      const items = res.data?.data ?? [];
+      return items.map((m: any) => ({
+        ...m,
+        product_name: m.product_name || m.product?.name || "",
+        product_sku: m.product_sku || m.product?.sku || null,
+        warehouse_name: m.warehouse_name || m.warehouse?.name || "",
+        unit: m.unit || m.product?.unit || "pcs",
+      }));
     },
   });
 

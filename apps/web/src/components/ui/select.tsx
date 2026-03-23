@@ -66,6 +66,7 @@ export function Select({
       <button
         type="button"
         disabled={disabled}
+        aria-invalid={!!error}
         onClick={() => setOpen(!open)}
         className={cn(
           "w-full h-10 rounded-lg border bg-white px-3 text-sm text-left",
@@ -87,7 +88,7 @@ export function Select({
           )}
         />
       </button>
-      {error && <p className="mt-1 text-sm text-danger-500">{error}</p>}
+      {error && <p role="alert" className="mt-1.5 text-sm font-medium text-danger-600">{error}</p>}
 
       {open && (
         <div className="absolute z-50 mt-1 w-full bg-white rounded-lg border border-gray-200 shadow-lg py-1 max-h-60 overflow-auto">
