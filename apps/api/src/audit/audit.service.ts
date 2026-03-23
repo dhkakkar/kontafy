@@ -61,8 +61,8 @@ export class AuditService {
   async getAuditLog(orgId: string, userId: string, filters: AuditLogFilters) {
     await this.verifyMembership(orgId, userId);
 
-    const page = filters.page || 1;
-    const limit = Math.min(filters.limit || 50, 100);
+    const page = Number(filters.page) || 1;
+    const limit = Math.min(Number(filters.limit) || 50, 100);
     const skip = (page - 1) * limit;
 
     const where: any = { org_id: orgId };

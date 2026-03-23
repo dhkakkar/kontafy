@@ -36,7 +36,9 @@ export class TdsService {
       to?: string;
     },
   ) {
-    const { page, limit, section, status, from, to } = filters;
+    const { section, status, from, to } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: Prisma.TdsEntryWhereInput = { org_id: orgId };

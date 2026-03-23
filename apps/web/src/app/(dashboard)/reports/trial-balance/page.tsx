@@ -11,27 +11,31 @@ import { Download, Printer, Loader2 } from "lucide-react";
 
 interface TrialBalanceLine {
   account_id: string;
-  account_code: string;
-  account_name: string;
-  account_type: string;
+  code: string | null;
+  name: string;
+  type: string;
   debit: number;
   credit: number;
 }
 
-interface ApiResponse<T> {
-  data: T;
+interface TrialBalanceResponse {
+  as_of: string;
+  entries: TrialBalanceLine[];
+  totals: { debit: number; credit: number; balanced: boolean };
 }
 
 export default function TrialBalancePage() {
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split("T")[0]);
 
-  const { data: lines = [], isLoading } = useQuery<TrialBalanceLine[]>({
+  const { data, isLoading } = useQuery<TrialBalanceResponse>({
     queryKey: ["trial-balance", asOfDate],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<TrialBalanceLine[]>>("/books/reports/trial-balance", { asOfDate });
+      const res = await api.get<{ data: TrialBalanceResponse }>("/books/reports/trial-balance", { asOfDate });
       return res.data;
     },
   });
+
+  const lines = data?.entries ?? [];
 
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
@@ -39,7 +43,7 @@ export default function TrialBalancePage() {
   const handleExport = () => {
     if (lines.length === 0) return;
     const headers = ["Code", "Account", "Debit", "Credit"];
-    const rows = lines.map((l) => [l.account_code, l.account_name, l.debit, l.credit]);
+    const rows = lines.map((l) => [l.code, l.name, l.debit, l.credit]);
     rows.push(["", "Total", totalDebit, totalCredit]);
     const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -91,8 +95,8 @@ export default function TrialBalancePage() {
               <tbody>
                 {lines.map((line) => (
                   <tr key={line.account_id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="py-3 px-4 text-gray-500 font-mono text-xs">{line.account_code}</td>
-                    <td className="py-3 px-4 text-gray-900 font-medium">{line.account_name}</td>
+                    <td className="py-3 px-4 text-gray-500 font-mono text-xs">{line.code}</td>
+                    <td className="py-3 px-4 text-gray-900 font-medium">{line.name}</td>
                     <td className="py-3 px-4 text-right text-gray-900">{line.debit > 0 ? formatCurrency(line.debit) : "-"}</td>
                     <td className="py-3 px-4 text-right text-gray-900">{line.credit > 0 ? formatCurrency(line.credit) : "-"}</td>
                   </tr>

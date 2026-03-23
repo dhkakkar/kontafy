@@ -35,7 +35,9 @@ export class LedgerService {
       throw new NotFoundException('Account not found');
     }
 
-    const { page, limit, from, to } = filters;
+    const { from, to } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     // Build date filter on the parent journal_entry

@@ -129,7 +129,9 @@ export class RecurringService {
     orgId: string,
     filters: { page: number; limit: number; status?: string },
   ) {
-    const { page, limit, status } = filters;
+    const { status } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: any = { org_id: orgId };
@@ -183,7 +185,8 @@ export class RecurringService {
   ) {
     await this.findOne(orgId, id);
 
-    const { page, limit } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: any = {

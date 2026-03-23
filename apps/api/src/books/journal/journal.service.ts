@@ -25,7 +25,9 @@ export class JournalService {
       posted?: boolean;
     },
   ) {
-    const { page, limit, from, to, posted } = filters;
+    const { from, to, posted } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: any = { org_id: orgId };

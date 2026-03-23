@@ -26,7 +26,9 @@ export class ContactsService {
       activeOnly?: boolean;
     },
   ) {
-    const { page, limit, type, search, activeOnly } = filters;
+    const { type, search, activeOnly } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: any = { org_id: orgId };
@@ -214,9 +216,22 @@ export class ContactsService {
       }
     }
 
+    // Only pass known Contact model fields to Prisma
+    const allowedFields = [
+      'type', 'name', 'company_name', 'gstin', 'pan', 'email', 'phone',
+      'whatsapp', 'billing_address', 'shipping_address', 'payment_terms',
+      'credit_limit', 'opening_balance', 'notes', 'is_active',
+    ];
+    const cleanData: Record<string, any> = {};
+    for (const key of allowedFields) {
+      if (key in data) {
+        cleanData[key] = data[key];
+      }
+    }
+
     return this.prisma.contact.update({
       where: { id },
-      data,
+      data: cleanData,
     });
   }
 
@@ -255,7 +270,9 @@ export class ContactsService {
       throw new NotFoundException('Contact not found');
     }
 
-    const { page, limit, type } = filters;
+    const { type } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const results: any[] = [];

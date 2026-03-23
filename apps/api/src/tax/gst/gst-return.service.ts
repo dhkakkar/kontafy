@@ -284,7 +284,9 @@ export class GstReturnService {
       period?: string;
     },
   ) {
-    const { page, limit, return_type, status, period } = filters;
+    const { return_type, status, period } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: Prisma.GstReturnWhereInput = { org_id: orgId };

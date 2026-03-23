@@ -151,7 +151,9 @@ export class PurchaseOrdersService {
       search?: string;
     },
   ) {
-    const { page, limit, status, search } = filters;
+    const { status, search } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: any = { org_id: orgId };

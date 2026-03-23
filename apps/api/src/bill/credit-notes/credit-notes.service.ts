@@ -29,7 +29,9 @@ export class CreditNotesService {
       search?: string;
     },
   ) {
-    const { page, limit, status, contactId, from, to, search } = filters;
+    const { status, contactId, from, to, search } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: any = {

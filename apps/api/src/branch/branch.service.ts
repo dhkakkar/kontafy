@@ -66,7 +66,9 @@ export class BranchService {
       isActive?: boolean;
     },
   ) {
-    const { page, limit, search, isActive } = filters;
+    const { search, isActive } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: any = { org_id: orgId };
@@ -199,7 +201,9 @@ export class BranchService {
   ) {
     await this.findOne(orgId, branchId);
 
-    const { page, limit, search } = filters;
+    const { search } = filters;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: any = {
