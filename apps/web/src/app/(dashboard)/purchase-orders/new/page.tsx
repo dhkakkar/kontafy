@@ -10,7 +10,7 @@ import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { useCreatePurchaseOrder } from "@/hooks/use-purchase-orders";
 import { api } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Send, Upload, ScanLine, X } from "lucide-react";
 
 interface LineItem {
   id: string;
@@ -138,6 +138,11 @@ export default function NewPurchaseOrderPage() {
   const [additionalCharges, setAdditionalCharges] = useState("");
   const [additionalDiscount, setAdditionalDiscount] = useState("");
 
+  // Barcode & Signature
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [showBarcodeInput, setShowBarcodeInput] = useState(false);
+  const [barcodeValue, setBarcodeValue] = useState("");
+
   const [items, setItems] = useState<LineItem[]>([
     {
       id: generateId(),
@@ -206,6 +211,33 @@ export default function NewPurchaseOrderPage() {
         return updated;
       })
     );
+  };
+
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setSignaturePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleBarcodeScan = () => {
+    if (!barcodeValue.trim()) return;
+    const product = products.find(
+      (p) => p.hsn_code === barcodeValue.trim() || p.name.toLowerCase().includes(barcodeValue.trim().toLowerCase())
+    );
+    if (product) {
+      const newId = generateId();
+      const rate = product.purchase_price ?? 0;
+      setItems([...items, {
+        id: newId, product_id: product.id, productName: product.name,
+        hsnCode: product.hsn_code || "",
+        quantity: 1, rate, discount: 0, taxRate: product.tax_rate ?? 18,
+        amount: 1 * rate,
+      }]);
+    }
+    setBarcodeValue("");
+    setShowBarcodeInput(false);
   };
 
   const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
@@ -364,15 +396,42 @@ export default function NewPurchaseOrderPage() {
           <div className="p-4 border-b border-gray-200">
             <CardHeader className="!mb-0">
               <CardTitle>Line Items</CardTitle>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                icon={<Plus className="h-4 w-4" />}
-                onClick={addItem}
-              >
-                Add Item
-              </Button>
+              <div className="flex items-center gap-2">
+                {showBarcodeInput ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={barcodeValue}
+                      onChange={(e) => setBarcodeValue(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleBarcodeScan()}
+                      placeholder="Enter SKU / barcode..."
+                      className="h-9 w-48 rounded-lg border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      autoFocus
+                    />
+                    <Button size="sm" onClick={handleBarcodeScan}>Go</Button>
+                    <button onClick={() => setShowBarcodeInput(false)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    icon={<ScanLine className="h-4 w-4" />}
+                    onClick={() => setShowBarcodeInput(true)}
+                  >
+                    Scan Barcode
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon={<Plus className="h-4 w-4" />}
+                  onClick={addItem}
+                >
+                  Add Item
+                </Button>
+              </div>
             </CardHeader>
           </div>
 
@@ -518,6 +577,28 @@ export default function NewPurchaseOrderPage() {
                   placeholder="Payment terms, delivery terms, etc."
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 />
+              </div>
+              {/* Signature Upload */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Signature</label>
+                {signaturePreview ? (
+                  <div className="relative inline-block">
+                    <img src={signaturePreview} alt="Signature" className="h-16 border border-gray-200 rounded-lg" />
+                    <button
+                      type="button"
+                      onClick={() => setSignaturePreview(null)}
+                      className="absolute -top-2 -right-2 h-5 w-5 bg-danger-500 text-white rounded-full flex items-center justify-center"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-primary-400 hover:bg-primary-50/50 transition-colors">
+                    <Upload className="h-4 w-4 text-gray-400" />
+                    <span className="text-sm text-gray-500">Upload signature image</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleSignatureUpload} />
+                  </label>
+                )}
               </div>
             </div>
           </Card>

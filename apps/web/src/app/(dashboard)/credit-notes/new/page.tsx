@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
-import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Send, Upload, ScanLine, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -116,6 +116,12 @@ export default function NewCreditNotePage() {
   const [placeOfSupply, setPlaceOfSupply] = useState("");
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
+  const [additionalDiscount, setAdditionalDiscount] = useState(0);
+  const [additionalCharges, setAdditionalCharges] = useState(0);
+  const [additionalChargesLabel, setAdditionalChargesLabel] = useState("Shipping");
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [showBarcodeInput, setShowBarcodeInput] = useState(false);
+  const [barcodeValue, setBarcodeValue] = useState("");
 
   useEffect(() => {
     api
@@ -253,6 +259,33 @@ export default function NewCreditNotePage() {
     );
   };
 
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setSignaturePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleBarcodeScan = () => {
+    if (!barcodeValue.trim()) return;
+    const product = products.find(
+      (p) => p.sku === barcodeValue.trim() || p.name.toLowerCase().includes(barcodeValue.trim().toLowerCase())
+    );
+    if (product) {
+      const newId = generateId();
+      const rate = product.selling_price || 0;
+      setItems([...items, {
+        id: newId, productId: product.id, productName: product.name,
+        description: "", hsnCode: product.hsn_code || "",
+        quantity: 1, rate, discount: 0, taxRate: product.tax_rate || 18,
+        amount: calcAmount(1, rate, 0),
+      }]);
+    }
+    setBarcodeValue("");
+    setShowBarcodeInput(false);
+  };
+
   const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
   const totalDiscount = items.reduce(
     (sum, item) => sum + item.quantity * item.rate * (item.discount / 100),
@@ -269,7 +302,7 @@ export default function NewCreditNotePage() {
   });
 
   const totalTax = Object.values(taxBreakdown).reduce((sum, t) => sum + t.tax, 0);
-  const grandTotal = subtotal + totalTax;
+  const grandTotal = subtotal + totalTax - additionalDiscount + additionalCharges;
 
   const canSubmit = customer && items.some((i) => i.amount > 0);
 
@@ -353,14 +386,40 @@ export default function NewCreditNotePage() {
         <div className="p-4 border-b border-gray-200">
           <CardHeader className="!mb-0">
             <CardTitle>Line Items</CardTitle>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Plus className="h-4 w-4" />}
-              onClick={addItem}
-            >
-              Add Item
-            </Button>
+            <div className="flex items-center gap-2">
+              {showBarcodeInput ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={barcodeValue}
+                    onChange={(e) => setBarcodeValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleBarcodeScan()}
+                    placeholder="Enter SKU / barcode..."
+                    className="h-9 w-48 rounded-lg border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    autoFocus
+                  />
+                  <Button size="sm" onClick={handleBarcodeScan}>Go</Button>
+                  <button onClick={() => setShowBarcodeInput(false)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={<ScanLine className="h-4 w-4" />}
+                  onClick={() => setShowBarcodeInput(true)}
+                >
+                  Scan Barcode
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Plus className="h-4 w-4" />}
+                onClick={addItem}
+              >
+                Add Item
+              </Button>
+            </div>
           </CardHeader>
         </div>
 
@@ -519,6 +578,28 @@ export default function NewCreditNotePage() {
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               />
             </div>
+            {/* Signature Upload */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Signature</label>
+              {signaturePreview ? (
+                <div className="relative inline-block">
+                  <img src={signaturePreview} alt="Signature" className="h-16 border border-gray-200 rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={() => setSignaturePreview(null)}
+                    className="absolute -top-2 -right-2 h-5 w-5 bg-danger-500 text-white rounded-full flex items-center justify-center"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-primary-400 hover:bg-primary-50/50 transition-colors">
+                  <Upload className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm text-gray-500">Upload signature image</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleSignatureUpload} />
+                </label>
+              )}
+            </div>
           </div>
         </Card>
 
@@ -556,6 +637,35 @@ export default function NewCreditNotePage() {
                   </div>
                 )
             )}
+
+            {/* Additional Discount */}
+            <div className="flex items-center justify-between text-sm gap-4">
+              <span className="text-gray-500 whitespace-nowrap">Discount</span>
+              <input
+                type="number"
+                value={additionalDiscount || ""}
+                onChange={(e) => setAdditionalDiscount(parseFloat(e.target.value) || 0)}
+                placeholder="0.00"
+                className="w-28 h-8 rounded-md border border-gray-300 px-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            {/* Additional Charges */}
+            <div className="flex items-center justify-between text-sm gap-4">
+              <input
+                type="text"
+                value={additionalChargesLabel}
+                onChange={(e) => setAdditionalChargesLabel(e.target.value)}
+                className="w-28 h-8 rounded-md border border-gray-200 px-2 text-sm text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <input
+                type="number"
+                value={additionalCharges || ""}
+                onChange={(e) => setAdditionalCharges(parseFloat(e.target.value) || 0)}
+                placeholder="0.00"
+                className="w-28 h-8 rounded-md border border-gray-300 px-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
 
             <div className="border-t border-gray-200 pt-3 flex items-center justify-between">
               <span className="text-base font-semibold text-gray-900">

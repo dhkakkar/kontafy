@@ -7,17 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
-import { api } from "@/lib/api";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, Save, Send, Upload, ScanLine, X } from "lucide-react";
+import { api } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface LineItem {
   id: string;
+  productId?: string;
   productName: string;
   description: string;
   hsnCode: string;
   quantity: number;
   rate: number;
+  discount: number;
   taxRate: number;
   amount: number;
 }
@@ -29,6 +31,13 @@ interface Contact {
   type: string;
 }
 
+interface Invoice {
+  id: string;
+  invoice_number: string;
+  contact_id?: string;
+  total?: number;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -36,7 +45,6 @@ interface Product {
   hsn_code?: string;
   selling_price?: number;
   tax_rate?: number;
-  unit?: string;
 }
 
 const taxOptions = [
@@ -47,65 +55,34 @@ const taxOptions = [
   { value: "28", label: "GST 28%" },
 ];
 
-const INDIAN_STATES = [
-  { value: "AN", label: "Andaman and Nicobar Islands" },
-  { value: "AP", label: "Andhra Pradesh" },
-  { value: "AR", label: "Arunachal Pradesh" },
-  { value: "AS", label: "Assam" },
-  { value: "BR", label: "Bihar" },
-  { value: "CH", label: "Chandigarh" },
-  { value: "CT", label: "Chhattisgarh" },
-  { value: "DN", label: "Dadra and Nagar Haveli and Daman and Diu" },
-  { value: "DL", label: "Delhi" },
-  { value: "GA", label: "Goa" },
-  { value: "GJ", label: "Gujarat" },
-  { value: "HR", label: "Haryana" },
-  { value: "HP", label: "Himachal Pradesh" },
-  { value: "JK", label: "Jammu and Kashmir" },
-  { value: "JH", label: "Jharkhand" },
-  { value: "KA", label: "Karnataka" },
-  { value: "KL", label: "Kerala" },
-  { value: "LA", label: "Ladakh" },
-  { value: "MP", label: "Madhya Pradesh" },
-  { value: "MH", label: "Maharashtra" },
-  { value: "MN", label: "Manipur" },
-  { value: "ML", label: "Meghalaya" },
-  { value: "MZ", label: "Mizoram" },
-  { value: "NL", label: "Nagaland" },
-  { value: "OD", label: "Odisha" },
-  { value: "PY", label: "Puducherry" },
-  { value: "PB", label: "Punjab" },
-  { value: "RJ", label: "Rajasthan" },
-  { value: "SK", label: "Sikkim" },
-  { value: "TN", label: "Tamil Nadu" },
-  { value: "TG", label: "Telangana" },
-  { value: "TR", label: "Tripura" },
-  { value: "UP", label: "Uttar Pradesh" },
-  { value: "UK", label: "Uttarakhand" },
-  { value: "WB", label: "West Bengal" },
+const reasonOptions = [
+  { value: "defective", label: "Defective" },
+  { value: "wrong_item", label: "Wrong Item" },
+  { value: "damaged", label: "Damaged" },
+  { value: "other", label: "Other" },
 ];
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function calcAmount(qty: number, rate: number): number {
-  return qty * rate;
+function calcAmount(qty: number, rate: number, discount: number = 0): number {
+  return qty * rate * (1 - discount / 100);
 }
 
 function calcTax(amount: number, taxRate: number): number {
   return (amount * taxRate) / 100;
 }
 
-export default function NewPurchasePage() {
+export default function NewSalesReturnPage() {
   const router = useRouter();
-  const [vendor, setVendor] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(
+  const queryClient = useQueryClient();
+  const [customer, setCustomer] = useState("");
+  const [originalInvoice, setOriginalInvoice] = useState("");
+  const [returnDate, setReturnDate] = useState(
     new Date().toISOString().split("T")[0]
   );
-  const [dueDate, setDueDate] = useState("");
-  const [placeOfSupply, setPlaceOfSupply] = useState("");
-  const [vendorInvoiceNo, setVendorInvoiceNo] = useState("");
+  const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
   const [additionalDiscount, setAdditionalDiscount] = useState(0);
@@ -115,43 +92,55 @@ export default function NewPurchasePage() {
   const [showBarcodeInput, setShowBarcodeInput] = useState(false);
   const [barcodeValue, setBarcodeValue] = useState("");
 
-  // Auto-fill terms & notes from invoice settings
   useEffect(() => {
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
         const d = res.data;
         if (d) {
-          if (d.default_terms_conditions) {
-            setTerms(String(d.default_terms_conditions));
-          }
-          if (d.default_notes) {
-            setNotes(String(d.default_notes));
-          }
+          if (d.default_terms_conditions) setTerms(String(d.default_terms_conditions));
+          if (d.default_notes) setNotes(String(d.default_notes));
         }
       })
       .catch(() => {});
   }, []);
 
-  // Fetch contacts (vendors) from API
+  const [items, setItems] = useState<LineItem[]>([
+    {
+      id: generateId(),
+      productName: "",
+      description: "",
+      hsnCode: "",
+      quantity: 1,
+      rate: 0,
+      discount: 0,
+      taxRate: 18,
+      amount: 0,
+    },
+  ]);
+
   const { data: contacts = [] } = useQuery<Contact[]>({
-    queryKey: ["contacts", "vendor"],
+    queryKey: ["contacts", "customer"],
     queryFn: async () => {
       const res = await api.get<{ data: Contact[] }>("/bill/contacts", {
-        type: "vendor",
+        type: "customer",
         limit: "100",
       });
       return res.data;
     },
   });
 
-  const vendorOptions = contacts.map((c) => ({
-    value: c.id,
-    label: c.name,
-    description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
-  }));
+  const { data: invoices = [] } = useQuery<Invoice[]>({
+    queryKey: ["invoices", customer],
+    queryFn: async () => {
+      const params: Record<string, string> = { limit: "200" };
+      if (customer) params.contact_id = customer;
+      const res = await api.get<{ data: Invoice[] }>("/bill/invoices", params);
+      return res.data;
+    },
+    enabled: true,
+  });
 
-  // Fetch products from API
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ["products"],
     queryFn: async () => {
@@ -161,6 +150,103 @@ export default function NewPurchasePage() {
       return res.data;
     },
   });
+
+  const customerOptions = contacts.map((c) => ({
+    value: c.id,
+    label: c.name,
+    description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
+  }));
+
+  const invoiceOptions = invoices.map((inv) => ({
+    value: inv.id,
+    label: inv.invoice_number,
+    description: inv.total ? `Total: ${formatCurrency(inv.total)}` : undefined,
+  }));
+
+  const createSalesReturn = useMutation({
+    mutationFn: async (status: "draft" | "approved") => {
+      const halfRate = (rate: number) => rate / 2;
+      return api.post("/bill/sales-returns", {
+        contact_id: customer,
+        invoice_id: originalInvoice || undefined,
+        date: returnDate,
+        reason: reason || undefined,
+        notes: notes || undefined,
+        terms: terms || undefined,
+        status,
+        additional_discount: additionalDiscount || undefined,
+        additional_charges: additionalCharges || undefined,
+        additional_charges_label: additionalChargesLabel || undefined,
+        items: items.map((item) => ({
+          product_id: item.productId || undefined,
+          description: item.productName || item.description,
+          hsn_code: item.hsnCode || undefined,
+          quantity: item.quantity,
+          rate: item.rate,
+          discount_pct: item.discount || undefined,
+          cgst_rate: halfRate(item.taxRate),
+          sgst_rate: halfRate(item.taxRate),
+        })),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sales-returns"] });
+      router.push("/sales-returns");
+    },
+  });
+
+  const addItem = () => {
+    setItems([
+      ...items,
+      {
+        id: generateId(),
+        productName: "",
+        description: "",
+        hsnCode: "",
+        quantity: 1,
+        rate: 0,
+        discount: 0,
+        taxRate: 18,
+        amount: 0,
+      },
+    ]);
+  };
+
+  const removeItem = (id: string) => {
+    if (items.length <= 1) return;
+    setItems(items.filter((i) => i.id !== id));
+  };
+
+  const updateItem = (id: string, field: keyof LineItem, value: string | number) => {
+    setItems(
+      items.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item, [field]: value };
+        updated.amount = calcAmount(updated.quantity, updated.rate, updated.discount);
+        return updated;
+      })
+    );
+  };
+
+  const selectProduct = (itemId: string, productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    setItems(
+      items.map((item) => {
+        if (item.id !== itemId) return item;
+        const rate = product.selling_price || 0;
+        return {
+          ...item,
+          productId: product.id,
+          productName: product.name,
+          hsnCode: product.hsn_code || "",
+          rate,
+          taxRate: product.tax_rate || 18,
+          amount: calcAmount(item.quantity, rate, item.discount),
+        };
+      })
+    );
+  };
 
   const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -179,93 +265,21 @@ export default function NewPurchasePage() {
       const newId = generateId();
       const rate = product.selling_price || 0;
       setItems([...items, {
-        id: newId, productName: product.name,
+        id: newId, productId: product.id, productName: product.name,
         description: "", hsnCode: product.hsn_code || "",
-        quantity: 1, rate, taxRate: product.tax_rate || 18,
-        amount: calcAmount(1, rate),
+        quantity: 1, rate, discount: 0, taxRate: product.tax_rate || 18,
+        amount: calcAmount(1, rate, 0),
       }]);
     }
     setBarcodeValue("");
     setShowBarcodeInput(false);
   };
 
-  // Create purchase mutation
-  const createPurchase = useMutation({
-    mutationFn: async (status: "draft" | "approved") => {
-      const halfRate = (rate: number) => rate / 2;
-      return api.post("/bill/purchases", {
-        type: "purchase",
-        contact_id: vendor,
-        date: invoiceDate,
-        due_date: dueDate || undefined,
-        place_of_supply: placeOfSupply || undefined,
-        vendor_invoice_no: vendorInvoiceNo || undefined,
-        notes: notes || undefined,
-        terms: terms || undefined,
-        is_posted: status === "approved",
-        items: items.map((item) => ({
-          description: item.productName || item.description,
-          hsn_code: item.hsnCode || undefined,
-          quantity: item.quantity,
-          rate: item.rate,
-          cgst_rate: halfRate(item.taxRate),
-          sgst_rate: halfRate(item.taxRate),
-        })),
-      });
-    },
-    onSuccess: () => {
-      router.push("/purchases");
-    },
-  });
-
-  const [items, setItems] = useState<LineItem[]>([
-    {
-      id: generateId(),
-      productName: "",
-      description: "",
-      hsnCode: "",
-      quantity: 1,
-      rate: 0,
-      taxRate: 18,
-      amount: 0,
-    },
-  ]);
-
-  const canSubmit = vendor && items.some((i) => i.amount > 0);
-
-  const addItem = () => {
-    setItems([
-      ...items,
-      {
-        id: generateId(),
-        productName: "",
-        description: "",
-        hsnCode: "",
-        quantity: 1,
-        rate: 0,
-        taxRate: 18,
-        amount: 0,
-      },
-    ]);
-  };
-
-  const removeItem = (id: string) => {
-    if (items.length <= 1) return;
-    setItems(items.filter((i) => i.id !== id));
-  };
-
-  const updateItem = (id: string, field: keyof LineItem, value: string | number) => {
-    setItems(
-      items.map((item) => {
-        if (item.id !== id) return item;
-        const updated = { ...item, [field]: value };
-        updated.amount = calcAmount(updated.quantity, updated.rate);
-        return updated;
-      })
-    );
-  };
-
   const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+  const totalDiscount = items.reduce(
+    (sum, item) => sum + item.quantity * item.rate * (item.discount / 100),
+    0
+  );
 
   const taxBreakdown: Record<number, { rate: number; taxable: number; tax: number }> = {};
   items.forEach((item) => {
@@ -276,15 +290,13 @@ export default function NewPurchasePage() {
     taxBreakdown[item.taxRate].tax += calcTax(item.amount, item.taxRate);
   });
 
-  const totalTax = Object.values(taxBreakdown).reduce(
-    (sum, t) => sum + t.tax,
-    0
-  );
+  const totalTax = Object.values(taxBreakdown).reduce((sum, t) => sum + t.tax, 0);
   const grandTotal = subtotal + totalTax - additionalDiscount + additionalCharges;
+
+  const canSubmit = customer && items.some((i) => i.amount > 0);
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
@@ -294,84 +306,71 @@ export default function NewPurchasePage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              New Purchase Invoice
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Record a bill from a vendor
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">New Sales Return</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Create a new sales return</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
             icon={<Save className="h-4 w-4" />}
-            onClick={() => createPurchase.mutate("draft")}
-            loading={createPurchase.isPending}
+            onClick={() => createSalesReturn.mutate("draft")}
+            loading={createSalesReturn.isPending}
             disabled={!canSubmit}
           >
             Save Draft
           </Button>
           <Button
             icon={<Send className="h-4 w-4" />}
-            onClick={() => createPurchase.mutate("approved")}
-            loading={createPurchase.isPending}
+            onClick={() => createSalesReturn.mutate("approved")}
+            loading={createSalesReturn.isPending}
             disabled={!canSubmit}
           >
-            Save & Approve
+            Issue Return
           </Button>
         </div>
       </div>
 
-      {createPurchase.isError && (
+      {createSalesReturn.isError && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
-          {createPurchase.error?.message || "Failed to create purchase"}
+          {createSalesReturn.error?.message || "Failed to create sales return"}
         </div>
       )}
 
-      {/* Vendor & Dates */}
       <Card padding="md">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Select
-            label="Vendor"
-            options={vendorOptions}
-            value={vendor}
-            onChange={setVendor}
+            label="Customer"
+            options={customerOptions}
+            value={customer}
+            onChange={setCustomer}
             searchable
-            placeholder="Select a vendor"
-          />
-          <Input
-            label="Vendor Invoice Number"
-            value={vendorInvoiceNo}
-            onChange={(e) => setVendorInvoiceNo(e.target.value)}
-            placeholder="Vendor's invoice/bill number"
+            placeholder="Select a customer"
           />
           <Select
-            label="Place of Supply"
-            options={INDIAN_STATES}
-            value={placeOfSupply}
-            onChange={setPlaceOfSupply}
+            label="Original Invoice"
+            options={invoiceOptions}
+            value={originalInvoice}
+            onChange={setOriginalInvoice}
             searchable
-            placeholder="Select state"
+            placeholder="Select original invoice"
           />
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Bill Date"
-              type="date"
-              value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
-            />
-            <Input
-              label="Due Date"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-          </div>
+          <Input
+            label="Return Date"
+            type="date"
+            value={returnDate}
+            onChange={(e) => setReturnDate(e.target.value)}
+          />
+          <Select
+            label="Reason"
+            options={reasonOptions}
+            value={reason}
+            onChange={setReason}
+            placeholder="Select reason"
+          />
         </div>
       </Card>
 
-      {/* Line Items */}
       <Card padding="none">
         <div className="p-4 border-b border-gray-200">
           <CardHeader className="!mb-0">
@@ -429,6 +428,9 @@ export default function NewPurchasePage() {
                 <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">
                   Rate
                 </th>
+                <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
+                  Disc %
+                </th>
                 <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">
                   Tax
                 </th>
@@ -442,15 +444,29 @@ export default function NewPurchasePage() {
               {items.map((item) => (
                 <tr key={item.id} className="border-b border-gray-100">
                   <td className="py-2 px-4">
-                    <input
-                      type="text"
-                      value={item.productName}
-                      onChange={(e) =>
-                        updateItem(item.id, "productName", e.target.value)
-                      }
-                      placeholder="Product or service name"
-                      className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
+                    {products.length > 0 ? (
+                      <Select
+                        options={products.map((p) => ({
+                          value: p.id,
+                          label: p.name,
+                          description: p.sku || undefined,
+                        }))}
+                        value={item.productId || ""}
+                        onChange={(val) => selectProduct(item.id, val)}
+                        searchable
+                        placeholder="Select product"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={item.productName}
+                        onChange={(e) =>
+                          updateItem(item.id, "productName", e.target.value)
+                        }
+                        placeholder="Product or service name"
+                        className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    )}
                   </td>
                   <td className="py-2 px-4">
                     <input
@@ -468,11 +484,7 @@ export default function NewPurchasePage() {
                       type="number"
                       value={item.quantity || ""}
                       onChange={(e) =>
-                        updateItem(
-                          item.id,
-                          "quantity",
-                          parseFloat(e.target.value) || 0
-                        )
+                        updateItem(item.id, "quantity", parseFloat(e.target.value) || 0)
                       }
                       min="0"
                       className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -483,13 +495,22 @@ export default function NewPurchasePage() {
                       type="number"
                       value={item.rate || ""}
                       onChange={(e) =>
-                        updateItem(
-                          item.id,
-                          "rate",
-                          parseFloat(e.target.value) || 0
-                        )
+                        updateItem(item.id, "rate", parseFloat(e.target.value) || 0)
                       }
                       placeholder="0.00"
+                      className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </td>
+                  <td className="py-2 px-4">
+                    <input
+                      type="number"
+                      value={item.discount || ""}
+                      onChange={(e) =>
+                        updateItem(item.id, "discount", parseFloat(e.target.value) || 0)
+                      }
+                      placeholder="0"
+                      min="0"
+                      max="100"
                       className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </td>
@@ -523,7 +544,6 @@ export default function NewPurchasePage() {
         </div>
       </Card>
 
-      {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card padding="md">
           <div className="space-y-4">
@@ -543,11 +563,10 @@ export default function NewPurchasePage() {
                 rows={3}
                 value={terms}
                 onChange={(e) => setTerms(e.target.value)}
-                placeholder="Payment terms, validity, etc."
+                placeholder="Return policy, refund terms, etc."
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               />
             </div>
-            {/* Signature Upload */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Signature</label>
               {signaturePreview ? (
@@ -577,9 +596,18 @@ export default function NewPurchasePage() {
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-500">Subtotal</span>
               <span className="font-medium text-gray-900">
-                {formatCurrency(subtotal)}
+                {formatCurrency(subtotal + totalDiscount)}
               </span>
             </div>
+
+            {totalDiscount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Discount</span>
+                <span className="text-danger-600">
+                  - {formatCurrency(totalDiscount)}
+                </span>
+              </div>
+            )}
 
             {Object.values(taxBreakdown).map(
               (tax) =>
@@ -598,7 +626,6 @@ export default function NewPurchasePage() {
                 )
             )}
 
-            {/* Additional Discount */}
             <div className="flex items-center justify-between text-sm gap-4">
               <span className="text-gray-500 whitespace-nowrap">Discount</span>
               <input
@@ -610,7 +637,6 @@ export default function NewPurchasePage() {
               />
             </div>
 
-            {/* Additional Charges */}
             <div className="flex items-center justify-between text-sm gap-4">
               <input
                 type="text"

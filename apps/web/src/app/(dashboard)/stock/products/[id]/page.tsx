@@ -23,6 +23,8 @@ import {
   BarChart3,
   Users,
   Info,
+  Download,
+  Printer,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────
@@ -141,7 +143,7 @@ export default function ProductDetailPage() {
         return [];
       }
     },
-    enabled: activeTab === "parties",
+    enabled: activeTab === "parties" || activeTab === "prices",
   });
 
   // ─── Adjust Stock Mutation ────────────────────────────────────
@@ -187,12 +189,31 @@ export default function ProductDetailPage() {
     });
   };
 
+  const handleDownloadStock = () => {
+    if (!stockLedger || stockLedger.length === 0) return;
+    const headers = ["Date", "Type", "Reference", "Qty In", "Qty Out", "Balance"];
+    const rows = stockLedger.map((e) => [
+      formatDate(e.date), e.type, e.reference || "", toNum(e.qty_in), toNum(e.qty_out), e.balance,
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stock-ledger-${product?.name || "product"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrintStock = () => window.print();
+
   // ─── Tabs ─────────────────────────────────────────────────────
 
   const tabs = [
     { value: "details", label: "Product Details" },
     { value: "stock", label: "Stock Ledger" },
     { value: "parties", label: "Party-wise Report" },
+    { value: "prices", label: "Party-wise Prices" },
   ];
 
   // ─── Loading ──────────────────────────────────────────────────
@@ -433,6 +454,12 @@ export default function ProductDetailPage() {
         {/* Stock Ledger Tab */}
         {activeTab === "stock" && (
           <div>
+            {stockLedger && stockLedger.length > 0 && (
+              <div className="p-4 border-b border-gray-200 flex items-center justify-end gap-2">
+                <Button variant="outline" size="sm" icon={<Download className="h-4 w-4" />} onClick={handleDownloadStock}>Download CSV</Button>
+                <Button variant="outline" size="sm" icon={<Printer className="h-4 w-4" />} onClick={handlePrintStock}>Print</Button>
+              </div>
+            )}
             {ledgerLoading ? (
               <div className="py-12 flex items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
@@ -597,6 +624,57 @@ export default function ProductDetailPage() {
                         </td>
                         <td className="py-3 px-4 text-right font-semibold text-gray-900">
                           {formatCurrency(toNum(party.total_amount))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Party-wise Prices Tab */}
+        {activeTab === "prices" && (
+          <div>
+            {partyLoading ? (
+              <div className="py-12 flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              </div>
+            ) : !partyReport || partyReport.length === 0 ? (
+              <div className="py-16 text-center">
+                <Users className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm">No party transactions found.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Party</th>
+                      <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Type</th>
+                      <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Total Qty</th>
+                      <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Total Amount</th>
+                      <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Avg. Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {partyReport.map((party) => (
+                      <tr key={party.party_id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                        <td className="py-3 px-4">
+                          <Link href={`/contacts/${party.party_id}`} className="font-medium text-primary-800 hover:underline">
+                            {party.party_name}
+                          </Link>
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant={party.party_type === "customer" ? "info" : "warning"}>
+                            {party.party_type === "customer" ? "Customer" : "Vendor"}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-right font-medium">{formatNumber(party.total_qty)}</td>
+                        <td className="py-3 px-4 text-right font-medium">{formatCurrency(toNum(party.total_amount))}</td>
+                        <td className="py-3 px-4 text-right font-semibold text-gray-900">
+                          {party.total_qty > 0 ? formatCurrency(toNum(party.total_amount) / party.total_qty) : "-"}
                         </td>
                       </tr>
                     ))}

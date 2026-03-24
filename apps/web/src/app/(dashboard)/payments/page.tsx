@@ -143,7 +143,12 @@ export default function PaymentsPage() {
       columnHelper.accessor("date", {
         header: "Date",
         cell: (info) => (
-          <span className="text-gray-600">{formatDate(info.getValue())}</span>
+          <Link
+            href={`/payments/${info.row.original.id}`}
+            className="text-primary-800 hover:underline"
+          >
+            {formatDate(info.getValue())}
+          </Link>
         ),
       }),
       columnHelper.display({
@@ -194,10 +199,12 @@ export default function PaymentsPage() {
       }),
       columnHelper.display({
         id: "actions",
-        cell: () => (
-          <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
+        cell: (info) => (
+          <Link href={`/payments/${info.row.original.id}`}>
+            <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          </Link>
         ),
       }),
     ],

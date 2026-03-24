@@ -17,7 +17,7 @@ import { Modal } from "@/components/ui/modal";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { Plus, Warehouse, MoreHorizontal, Loader2 } from "lucide-react";
+import { Plus, Warehouse, MoreHorizontal, Loader2, Edit3 } from "lucide-react";
 
 interface WarehouseItem {
   id: string;
@@ -44,6 +44,7 @@ export default function WarehousesPage() {
   const queryClient = useQueryClient();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newAddress, setNewAddress] = useState("");
   const [newCity, setNewCity] = useState("");
@@ -77,6 +78,37 @@ export default function WarehousesPage() {
       resetModal();
     },
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingId) return;
+      return api.patch(`/stock/warehouses/${editingId}`, {
+        name: newName,
+        address: {
+          line1: newAddress || undefined,
+          city: newCity || undefined,
+          state: newState || undefined,
+          pincode: newPincode || undefined,
+        },
+        is_default: newIsDefault,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["warehouses"] });
+      resetModal();
+    },
+  });
+
+  const openEdit = (w: WarehouseItem) => {
+    setEditingId(w.id);
+    setNewName(w.name);
+    setNewAddress(w.address?.line1 || "");
+    setNewCity(w.address?.city || "");
+    setNewState(w.address?.state || "");
+    setNewPincode(w.address?.pincode || "");
+    setNewIsDefault(w.is_default);
+    setShowModal(true);
+  };
 
   const columns = useMemo(
     () => [
@@ -146,9 +178,13 @@ export default function WarehousesPage() {
       }),
       columnHelper.display({
         id: "actions",
-        cell: () => (
-          <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-            <MoreHorizontal className="h-4 w-4" />
+        cell: (info) => (
+          <button
+            onClick={() => openEdit(info.row.original)}
+            className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+            title="Edit warehouse"
+          >
+            <Edit3 className="h-4 w-4" />
           </button>
         ),
       }),
@@ -166,6 +202,7 @@ export default function WarehousesPage() {
   });
 
   const resetModal = () => {
+    setEditingId(null);
     setNewName("");
     setNewAddress("");
     setNewCity("");
@@ -229,12 +266,12 @@ export default function WarehousesPage() {
         )}
       </Card>
 
-      {/* Add Warehouse Modal */}
+      {/* Add/Edit Warehouse Modal */}
       <Modal
         open={showModal}
         onClose={resetModal}
-        title="Add Warehouse"
-        description="Create a new storage location"
+        title={editingId ? "Edit Warehouse" : "Add Warehouse"}
+        description={editingId ? "Update warehouse details" : "Create a new storage location"}
       >
         <div className="space-y-4">
           <Input
@@ -286,11 +323,11 @@ export default function WarehousesPage() {
               Cancel
             </Button>
             <Button
-              onClick={() => createMutation.mutate()}
-              loading={createMutation.isPending}
+              onClick={() => editingId ? updateMutation.mutate() : createMutation.mutate()}
+              loading={editingId ? updateMutation.isPending : createMutation.isPending}
               disabled={!newName}
             >
-              Create Warehouse
+              {editingId ? "Update Warehouse" : "Create Warehouse"}
             </Button>
           </div>
         </div>

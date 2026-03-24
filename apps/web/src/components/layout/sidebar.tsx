@@ -64,6 +64,7 @@ const navItems: NavItem[] = [
       { label: "Create Invoice", href: "/invoices/new" },
       { label: "Purchase Bills", href: "/purchases" },
       { label: "Credit Notes", href: "/credit-notes" },
+      { label: "Sales Returns", href: "/sales-returns" },
       { label: "Debit Notes", href: "/debit-notes" },
       { label: "Proforma Invoice", href: "/proforma-invoices" },
       { label: "Delivery Challan", href: "/delivery-challans" },

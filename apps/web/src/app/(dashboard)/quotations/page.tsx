@@ -67,9 +67,13 @@ export default function QuotationsPage() {
       columnHelper.accessor("quotation_number", {
         header: "Quotation #",
         cell: (info) => (
-          <span className="font-medium text-primary-800">
+          <Link
+            href={`/quotations/${info.row.original.id}`}
+            className="font-medium text-primary-800 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
             {info.getValue()}
-          </span>
+          </Link>
         ),
       }),
       columnHelper.display({
@@ -164,20 +168,22 @@ export default function QuotationsPage() {
             leftIcon={<Search className="h-4 w-4" />}
             className="max-w-sm"
           />
-          <Input
-            label="From"
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-40"
-          />
-          <Input
-            label="To"
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-40"
-          />
+          <div className="flex items-end gap-3">
+            <Input
+              label="From"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-40"
+            />
+            <Input
+              label="To"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-40"
+            />
+          </div>
         </div>
 
         {isLoading ? (
