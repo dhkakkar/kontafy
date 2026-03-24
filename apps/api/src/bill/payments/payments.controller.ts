@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -67,6 +69,25 @@ export class PaymentsController {
     @Body() body: CreatePaymentDto,
   ) {
     return this.paymentsService.create(orgId, body);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update payment details' })
+  async update(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @Body() body: Record<string, any>,
+  ) {
+    return this.paymentsService.update(orgId, id, body);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a payment and reverse allocations' })
+  async remove(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+  ) {
+    return this.paymentsService.remove(orgId, id);
   }
 
   @Post(':id/allocate')

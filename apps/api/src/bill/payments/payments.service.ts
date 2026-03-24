@@ -110,6 +110,92 @@ export class PaymentsService {
   }
 
   /**
+   * Update payment details.
+   */
+  async update(orgId: string, id: string, data: Record<string, any>) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { id, org_id: orgId },
+    });
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    const allowedFields = ['amount', 'date', 'method', 'reference', 'notes', 'bank_account_id'];
+    const cleanData: Record<string, any> = {};
+    for (const key of allowedFields) {
+      if (key in data) {
+        if (key === 'date') {
+          cleanData[key] = new Date(data[key]);
+        } else {
+          cleanData[key] = data[key];
+        }
+      }
+    }
+
+    return this.prisma.payment.update({
+      where: { id },
+      data: cleanData,
+      include: {
+        contact: true,
+        allocations: {
+          include: {
+            invoice: {
+              select: { id: true, invoice_number: true, total: true, balance_due: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Delete a payment and reverse any invoice allocations.
+   */
+  async remove(orgId: string, id: string) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { id, org_id: orgId },
+      include: { allocations: true },
+    });
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Reverse allocations on invoices
+      for (const alloc of payment.allocations) {
+        const invoice = await tx.invoice.findUnique({
+          where: { id: alloc.invoice_id },
+        });
+        if (invoice) {
+          const newAmountPaid = Math.max(0, (invoice.amount_paid?.toNumber() || 0) - alloc.amount.toNumber());
+          const newBalanceDue = (invoice.total?.toNumber() || 0) - newAmountPaid;
+          let newStatus = invoice.status;
+          if (newAmountPaid <= 0) {
+            newStatus = 'sent';
+          } else if (newBalanceDue > 0) {
+            newStatus = 'partially_paid';
+          }
+          await tx.invoice.update({
+            where: { id: alloc.invoice_id },
+            data: {
+              amount_paid: newAmountPaid,
+              balance_due: Math.max(0, newBalanceDue),
+              status: newStatus,
+              updated_at: new Date(),
+            },
+          });
+        }
+      }
+
+      // Delete allocations then payment
+      await tx.paymentAllocation.deleteMany({ where: { payment_id: id } });
+      await tx.payment.delete({ where: { id } });
+    });
+
+    return { deleted: true };
+  }
+
+  /**
    * Record a new payment and optionally allocate to a single invoice.
    */
   async create(orgId: string, data: CreatePaymentDto) {

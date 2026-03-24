@@ -266,7 +266,7 @@ export default function ProductsPage() {
             Failed to load products. Please try again.
           </div>
         ) : (
-          <DataTable table={table} />
+          <DataTable table={table} onRowClick={(row) => router.push(`/stock/products/${row.id}`)} />
         )}
       </Card>
 

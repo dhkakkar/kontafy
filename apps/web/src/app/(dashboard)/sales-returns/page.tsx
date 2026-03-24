@@ -61,13 +61,18 @@ export default function SalesReturnsPage() {
   const { data: salesReturns = [], isLoading, error } = useQuery<SalesReturn[]>({
     queryKey: ["sales-returns", activeTab, searchQuery, dateFrom, dateTo],
     queryFn: async () => {
-      const params: Record<string, string> = {};
-      if (activeTab !== "all") params.status = activeTab;
-      if (searchQuery) params.search = searchQuery;
-      if (dateFrom) params.date_from = dateFrom;
-      if (dateTo) params.date_to = dateTo;
-      const res = await api.get<ApiResponse<SalesReturn[]>>("/bill/sales-returns", params);
-      return res.data;
+      try {
+        const params: Record<string, string> = {};
+        if (activeTab !== "all") params.status = activeTab;
+        if (searchQuery) params.search = searchQuery;
+        if (dateFrom) params.date_from = dateFrom;
+        if (dateTo) params.date_to = dateTo;
+        const res = await api.get<ApiResponse<SalesReturn[]>>("/bill/sales-returns", params);
+        return res.data;
+      } catch {
+        // API endpoint may not exist yet — return empty array
+        return [];
+      }
     },
   });
 

@@ -24,6 +24,7 @@ import {
   Trash2,
   ArrowRight,
   Download,
+  Printer,
   Clock,
   Edit3,
 } from "lucide-react";
@@ -113,6 +114,40 @@ export default function QuotationDetailPage() {
 
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          icon={<Download className="h-4 w-4" />}
+          onClick={() => {
+            if (!quotation) return;
+            const headers = ["Item", "HSN", "Qty", "Rate", "Tax", "Total"];
+            const rows = (quotation.items || []).map((item: any) => {
+              const taxAmt = quotation.is_igst
+                ? toNum(item.igst_amount) + toNum(item.cess_amount)
+                : toNum(item.cgst_amount) + toNum(item.sgst_amount) + toNum(item.cess_amount);
+              return [item.description, item.hsn_code || "", toNum(item.quantity), toNum(item.rate), taxAmt, toNum(item.total)];
+            });
+            rows.push(["", "", "", "", "Total", toNum(quotation.total)]);
+            const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+            const blob = new Blob([csv], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${quotation.quotation_number}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          Download
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          icon={<Printer className="h-4 w-4" />}
+          onClick={() => window.print()}
+        >
+          Print
+        </Button>
         <Button
           variant="outline"
           size="sm"
