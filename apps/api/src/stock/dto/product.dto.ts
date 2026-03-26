@@ -12,6 +12,7 @@ export const createProductSchema = z.object({
   tax_rate: z.number().min(0).max(100).optional(),
   track_inventory: z.boolean().default(true),
   reorder_level: z.number().min(0).optional(),
+  is_active: z.boolean().optional(),
   image_url: z.string().url().optional(),
 });
 

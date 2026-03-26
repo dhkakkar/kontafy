@@ -134,7 +134,6 @@ export default function EditProductPage() {
         unit: form.unit,
         purchase_price: form.purchase_price ? Number(form.purchase_price) : undefined,
         selling_price: form.selling_price ? Number(form.selling_price) : undefined,
-        price_includes_gst: form.price_includes_gst,
         tax_rate: form.tax_rate ? Number(form.tax_rate) : undefined,
         track_inventory: form.track_inventory,
         reorder_level: form.reorder_level ? Number(form.reorder_level) : undefined,
