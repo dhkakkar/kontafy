@@ -20,28 +20,53 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+// ─── Types matching actual API response ─────────────────────────
+
 interface BSAccount {
-  account_name: string;
-  account_code: string;
+  account_id: string;
+  code: string | null;
+  name: string;
   amount: number;
 }
 
-interface BSSection {
-  label: string;
+interface BSSubSection {
   accounts: BSAccount[];
   total: number;
 }
 
+interface BSAssetsSection {
+  current_assets: BSSubSection;
+  fixed_assets: BSSubSection;
+  other_assets: BSSubSection;
+  total: number;
+}
+
+interface BSLiabilitiesSection {
+  current_liabilities: BSSubSection;
+  long_term_liabilities: BSSubSection;
+  total: number;
+}
+
+interface BSEquitySection {
+  accounts: BSAccount[];
+  retained_earnings: number;
+  total: number;
+}
+
 interface BSReport {
-  assets: BSSection;
-  liabilities: BSSection;
-  equity: BSSection;
   as_of: string;
+  assets: BSAssetsSection;
+  liabilities: BSLiabilitiesSection;
+  equity: BSEquitySection;
+  total_liabilities_and_equity: number;
+  is_balanced: boolean;
 }
 
 interface ApiResponse<T> {
   data: T;
 }
+
+// ─── Helpers ────────────────────────────────────────────────────
 
 function formatDate(dateStr: string) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-IN", {
@@ -50,6 +75,96 @@ function formatDate(dateStr: string) {
     year: "numeric",
   });
 }
+
+/** Flatten a sub-section into a labeled group for rendering */
+interface FlatGroup {
+  label: string;
+  key: string;
+  accounts: BSAccount[];
+  total: number;
+}
+
+function flattenAssets(a: BSAssetsSection): FlatGroup[] {
+  const groups: FlatGroup[] = [];
+  if (a.current_assets?.accounts?.length > 0) {
+    groups.push({
+      label: "Current Assets",
+      key: "current_assets",
+      accounts: a.current_assets.accounts,
+      total: a.current_assets.total,
+    });
+  }
+  if (a.fixed_assets?.accounts?.length > 0) {
+    groups.push({
+      label: "Fixed Assets",
+      key: "fixed_assets",
+      accounts: a.fixed_assets.accounts,
+      total: a.fixed_assets.total,
+    });
+  }
+  if (a.other_assets?.accounts?.length > 0) {
+    groups.push({
+      label: "Other Assets",
+      key: "other_assets",
+      accounts: a.other_assets.accounts,
+      total: a.other_assets.total,
+    });
+  }
+  // If no sub-groups had data but total is non-zero, show as single group
+  if (groups.length === 0) {
+    const allAccounts = [
+      ...(a.current_assets?.accounts || []),
+      ...(a.fixed_assets?.accounts || []),
+      ...(a.other_assets?.accounts || []),
+    ];
+    if (allAccounts.length > 0 || a.total !== 0) {
+      groups.push({
+        label: "Assets",
+        key: "assets",
+        accounts: allAccounts,
+        total: a.total,
+      });
+    }
+  }
+  return groups;
+}
+
+function flattenLiabilities(l: BSLiabilitiesSection): FlatGroup[] {
+  const groups: FlatGroup[] = [];
+  if (l.current_liabilities?.accounts?.length > 0) {
+    groups.push({
+      label: "Current Liabilities",
+      key: "current_liabilities",
+      accounts: l.current_liabilities.accounts,
+      total: l.current_liabilities.total,
+    });
+  }
+  if (l.long_term_liabilities?.accounts?.length > 0) {
+    groups.push({
+      label: "Long-Term Liabilities",
+      key: "long_term_liabilities",
+      accounts: l.long_term_liabilities.accounts,
+      total: l.long_term_liabilities.total,
+    });
+  }
+  if (groups.length === 0) {
+    const allAccounts = [
+      ...(l.current_liabilities?.accounts || []),
+      ...(l.long_term_liabilities?.accounts || []),
+    ];
+    if (allAccounts.length > 0 || l.total !== 0) {
+      groups.push({
+        label: "Liabilities",
+        key: "liabilities",
+        accounts: allAccounts,
+        total: l.total,
+      });
+    }
+  }
+  return groups;
+}
+
+// ─── Component ──────────────────────────────────────────────────
 
 export default function BalanceSheetPage() {
   const router = useRouter();
@@ -92,13 +207,15 @@ export default function BalanceSheetPage() {
     setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Equation check
+  // Totals
   const assetsTotal = report?.assets?.total ?? 0;
   const liabilitiesTotal = report?.liabilities?.total ?? 0;
   const equityTotal = report?.equity?.total ?? 0;
   const isBalanced =
     report &&
     Math.abs(assetsTotal - (liabilitiesTotal + equityTotal)) < 0.01;
+
+  // ─── CSV Export ─────────────────────────────────────────────
 
   const handleExport = () => {
     if (!report) return;
@@ -107,27 +224,38 @@ export default function BalanceSheetPage() {
         ? ["Account", `Amount (${formatDate(asOfDate)})`, `Amount (${formatDate(compareDate)})`]
         : ["Account", "Amount"],
     ];
-    const addSection = (s: BSSection, cs?: BSSection) => {
-      rows.push([s.label, "", ...(isComparing ? [""] : [])]);
-      (s.accounts || []).forEach((a) => {
-        const compareAmt = cs?.accounts?.find(
-          (ca) => ca.account_code === a.account_code
-        );
+    const addGroup = (label: string, accounts: BSAccount[], total: number) => {
+      rows.push([label, "", ...(isComparing ? [""] : [])]);
+      accounts.forEach((a) => {
         rows.push([
-          `  ${a.account_name}`,
+          `  ${a.name}`,
           String(a.amount),
-          ...(isComparing ? [String(compareAmt?.amount ?? 0)] : []),
+          ...(isComparing ? [""] : []),
         ]);
       });
-      rows.push([
-        `Total ${s.label}`,
-        String(s.total),
-        ...(isComparing ? [String(cs?.total ?? 0)] : []),
-      ]);
+      rows.push([`Total ${label}`, String(total), ...(isComparing ? [""] : [])]);
     };
-    addSection(report.assets, compareReport?.assets);
-    addSection(report.liabilities, compareReport?.liabilities);
-    addSection(report.equity, compareReport?.equity);
+
+    flattenAssets(report.assets).forEach((g) =>
+      addGroup(g.label, g.accounts, g.total)
+    );
+    rows.push(["Total Assets", String(assetsTotal), ...(isComparing ? [""] : [])]);
+
+    flattenLiabilities(report.liabilities).forEach((g) =>
+      addGroup(g.label, g.accounts, g.total)
+    );
+    rows.push(["Total Liabilities", String(liabilitiesTotal), ...(isComparing ? [""] : [])]);
+
+    rows.push(["Equity", "", ...(isComparing ? [""] : [])]);
+    (report.equity.accounts || []).forEach((a) => {
+      rows.push([`  ${a.name}`, String(a.amount), ...(isComparing ? [""] : [])]);
+    });
+    if (report.equity.retained_earnings !== 0) {
+      rows.push(["  Retained Earnings", String(report.equity.retained_earnings), ...(isComparing ? [""] : [])]);
+    }
+    rows.push(["Total Equity", String(equityTotal), ...(isComparing ? [""] : [])]);
+    rows.push(["Total Liabilities + Equity", String(liabilitiesTotal + equityTotal), ...(isComparing ? [""] : [])]);
+
     const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -137,6 +265,8 @@ export default function BalanceSheetPage() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // ─── Print ──────────────────────────────────────────────────
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -157,7 +287,6 @@ export default function BalanceSheetPage() {
             .section-header td { font-weight: 700; background: #f7f7f7; padding: 10px 12px; border-bottom: 1px solid #ddd; }
             .section-total td { font-weight: 700; border-top: 2px solid #333; border-bottom: 2px solid #333; padding: 10px 12px; }
             .account-row td { padding-left: 32px; }
-            .equation { margin-top: 24px; padding: 12px 16px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 14px; }
             h1 { font-size: 20px; margin-bottom: 4px; }
             .subtitle { color: #666; font-size: 13px; margin-bottom: 20px; }
             @media print { body { padding: 0; } }
@@ -174,30 +303,29 @@ export default function BalanceSheetPage() {
     printWindow.document.close();
   };
 
-  const renderSectionRows = (
-    section: BSSection,
-    compareSection?: BSSection,
-    sectionKey?: string
+  // ─── Render sub-section group ───────────────────────────────
+
+  const renderGroup = (
+    group: FlatGroup,
+    compareGroup?: FlatGroup
   ) => {
-    const key = sectionKey || section.label;
-    const isCollapsed = collapsedSections[key];
-    const accounts = section.accounts || [];
+    const isCollapsed = collapsedSections[group.key];
+    const accounts = group.accounts || [];
 
     return (
-      <>
-        {/* Section header */}
+      <React.Fragment key={group.key}>
         <tr
           className="bg-gray-50/80 cursor-pointer select-none group"
-          onClick={() => toggleSection(key)}
+          onClick={() => toggleSection(group.key)}
         >
-          <td className="py-3 px-4 font-bold text-gray-900" colSpan={isComparing ? 3 : 2}>
+          <td className="py-3 px-4 pl-8 font-semibold text-gray-800" colSpan={isComparing ? 3 : 2}>
             <div className="flex items-center gap-2">
               {isCollapsed ? (
                 <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
               ) : (
                 <ChevronDown className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
               )}
-              {section.label}
+              {group.label}
               <span className="text-xs font-normal text-gray-400 ml-1">
                 ({accounts.length} account{accounts.length !== 1 ? "s" : ""})
               </span>
@@ -205,22 +333,23 @@ export default function BalanceSheetPage() {
           </td>
         </tr>
 
-        {/* Account rows */}
         {!isCollapsed &&
           accounts.map((a) => {
-            const compareAmt = compareSection?.accounts?.find(
-              (ca) => ca.account_code === a.account_code
+            const compareAmt = compareGroup?.accounts?.find(
+              (ca) => ca.account_id === a.account_id
             );
             return (
               <tr
-                key={a.account_code}
+                key={a.account_id}
                 className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors"
               >
-                <td className="py-2.5 px-4 pl-12 text-gray-700">
-                  <span className="text-xs text-gray-400 mr-2 font-mono">
-                    {a.account_code}
-                  </span>
-                  {a.account_name}
+                <td className="py-2.5 px-4 pl-14 text-gray-700">
+                  {a.code && (
+                    <span className="text-xs text-gray-400 mr-2 font-mono">
+                      {a.code}
+                    </span>
+                  )}
+                  {a.name}
                 </td>
                 <td className="py-2.5 px-4 text-right font-medium text-gray-900 tabular-nums">
                   {formatCurrency(a.amount)}
@@ -234,56 +363,200 @@ export default function BalanceSheetPage() {
             );
           })}
 
-        {/* Accounts with no match in compare period (only in compare) */}
+        {!isCollapsed && (
+          <tr className="border-t border-gray-200">
+            <td className="py-2 px-4 pl-14 font-semibold text-gray-700 text-xs uppercase">
+              Total {group.label}
+            </td>
+            <td className="py-2 px-4 text-right font-semibold text-gray-900 tabular-nums">
+              {formatCurrency(group.total)}
+            </td>
+            {isComparing && (
+              <td className="py-2 px-4 text-right font-semibold text-gray-500 tabular-nums">
+                {formatCurrency(compareGroup?.total ?? 0)}
+              </td>
+            )}
+          </tr>
+        )}
+      </React.Fragment>
+    );
+  };
+
+  // ─── Render major section header + total ────────────────────
+
+  const renderMajorSection = (
+    label: string,
+    sectionKey: string,
+    groups: FlatGroup[],
+    compareGroups: FlatGroup[],
+    sectionTotal: number,
+    compareSectionTotal: number
+  ) => {
+    const isCollapsed = collapsedSections[sectionKey];
+    const totalAccounts = groups.reduce((s, g) => s + g.accounts.length, 0);
+
+    return (
+      <React.Fragment key={sectionKey}>
+        {/* Major section header */}
+        <tr
+          className="bg-blue-50/60 cursor-pointer select-none group border-t border-blue-100"
+          onClick={() => toggleSection(sectionKey)}
+        >
+          <td className="py-3 px-4 font-bold text-gray-900" colSpan={isComparing ? 3 : 2}>
+            <div className="flex items-center gap-2">
+              {isCollapsed ? (
+                <ChevronRight className="h-4 w-4 text-blue-500 group-hover:text-blue-700" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-blue-500 group-hover:text-blue-700" />
+              )}
+              {label}
+              <span className="text-xs font-normal text-gray-400 ml-1">
+                ({totalAccounts} account{totalAccounts !== 1 ? "s" : ""})
+              </span>
+            </div>
+          </td>
+        </tr>
+
+        {/* Sub-groups */}
         {!isCollapsed &&
-          isComparing &&
-          compareSection &&
-          (compareSection.accounts || [])
-            .filter(
-              (ca) => !accounts.find((a) => a.account_code === ca.account_code)
-            )
-            .map((ca) => (
-              <tr
-                key={ca.account_code}
-                className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors"
-              >
-                <td className="py-2.5 px-4 pl-12 text-gray-400">
-                  <span className="text-xs text-gray-300 mr-2 font-mono">
-                    {ca.account_code}
-                  </span>
-                  {ca.account_name}
-                </td>
-                <td className="py-2.5 px-4 text-right font-medium text-gray-300 tabular-nums">
-                  {formatCurrency(0)}
-                </td>
-                <td className="py-2.5 px-4 text-right font-medium text-gray-500 tabular-nums">
-                  {formatCurrency(ca.amount)}
-                </td>
-              </tr>
-            ))}
+          groups.map((g) => {
+            const cg = compareGroups.find((c) => c.key === g.key);
+            return renderGroup(g, cg);
+          })}
 
         {/* Section total */}
         <tr className="border-t-2 border-gray-300 bg-gray-50/50">
-          <td className="py-3 px-4 pl-12 font-bold text-gray-900">
-            Total {section.label}
+          <td className="py-3 px-4 pl-8 font-bold text-gray-900">
+            Total {label}
           </td>
           <td className="py-3 px-4 text-right font-bold text-gray-900 tabular-nums">
-            {formatCurrency(section.total)}
+            {formatCurrency(sectionTotal)}
           </td>
           {isComparing && (
             <td className="py-3 px-4 text-right font-bold text-gray-500 tabular-nums">
-              {formatCurrency(compareSection?.total ?? 0)}
+              {formatCurrency(compareSectionTotal)}
             </td>
           )}
         </tr>
 
-        {/* Spacer row */}
+        {/* Spacer */}
         <tr>
           <td colSpan={isComparing ? 3 : 2} className="py-1" />
         </tr>
-      </>
+      </React.Fragment>
     );
   };
+
+  // ─── Equity section (special: has retained_earnings) ────────
+
+  const renderEquitySection = () => {
+    if (!report) return null;
+    const sectionKey = "equity";
+    const isCollapsed = collapsedSections[sectionKey];
+    const equityAccounts = report.equity.accounts || [];
+    const retainedEarnings = report.equity.retained_earnings ?? 0;
+    const totalAccountCount = equityAccounts.length + (retainedEarnings !== 0 ? 1 : 0);
+
+    const compareEquity = compareReport?.equity;
+
+    return (
+      <React.Fragment>
+        {/* Equity header */}
+        <tr
+          className="bg-blue-50/60 cursor-pointer select-none group border-t border-blue-100"
+          onClick={() => toggleSection(sectionKey)}
+        >
+          <td className="py-3 px-4 font-bold text-gray-900" colSpan={isComparing ? 3 : 2}>
+            <div className="flex items-center gap-2">
+              {isCollapsed ? (
+                <ChevronRight className="h-4 w-4 text-blue-500 group-hover:text-blue-700" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-blue-500 group-hover:text-blue-700" />
+              )}
+              Equity
+              <span className="text-xs font-normal text-gray-400 ml-1">
+                ({totalAccountCount} item{totalAccountCount !== 1 ? "s" : ""})
+              </span>
+            </div>
+          </td>
+        </tr>
+
+        {/* Equity accounts */}
+        {!isCollapsed &&
+          equityAccounts.map((a) => {
+            const compareAmt = compareEquity?.accounts?.find(
+              (ca) => ca.account_id === a.account_id
+            );
+            return (
+              <tr
+                key={a.account_id}
+                className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors"
+              >
+                <td className="py-2.5 px-4 pl-14 text-gray-700">
+                  {a.code && (
+                    <span className="text-xs text-gray-400 mr-2 font-mono">
+                      {a.code}
+                    </span>
+                  )}
+                  {a.name}
+                </td>
+                <td className="py-2.5 px-4 text-right font-medium text-gray-900 tabular-nums">
+                  {formatCurrency(a.amount)}
+                </td>
+                {isComparing && (
+                  <td className="py-2.5 px-4 text-right font-medium text-gray-500 tabular-nums">
+                    {formatCurrency(compareAmt?.amount ?? 0)}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+
+        {/* Retained Earnings */}
+        {!isCollapsed && retainedEarnings !== 0 && (
+          <tr className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
+            <td className="py-2.5 px-4 pl-14 text-gray-700 italic">
+              Retained Earnings (Net Income)
+            </td>
+            <td className="py-2.5 px-4 text-right font-medium text-gray-900 tabular-nums">
+              {formatCurrency(retainedEarnings)}
+            </td>
+            {isComparing && (
+              <td className="py-2.5 px-4 text-right font-medium text-gray-500 tabular-nums">
+                {formatCurrency(compareEquity?.retained_earnings ?? 0)}
+              </td>
+            )}
+          </tr>
+        )}
+
+        {/* Equity total */}
+        <tr className="border-t-2 border-gray-300 bg-gray-50/50">
+          <td className="py-3 px-4 pl-8 font-bold text-gray-900">
+            Total Equity
+          </td>
+          <td className="py-3 px-4 text-right font-bold text-gray-900 tabular-nums">
+            {formatCurrency(equityTotal)}
+          </td>
+          {isComparing && (
+            <td className="py-3 px-4 text-right font-bold text-gray-500 tabular-nums">
+              {formatCurrency(compareEquity?.total ?? 0)}
+            </td>
+          )}
+        </tr>
+
+        <tr>
+          <td colSpan={isComparing ? 3 : 2} className="py-1" />
+        </tr>
+      </React.Fragment>
+    );
+  };
+
+  // ─── Main render ────────────────────────────────────────────
+
+  const assetGroups = report ? flattenAssets(report.assets) : [];
+  const liabilityGroups = report ? flattenLiabilities(report.liabilities) : [];
+  const compareAssetGroups = compareReport ? flattenAssets(compareReport.assets) : [];
+  const compareLiabilityGroups = compareReport ? flattenLiabilities(compareReport.liabilities) : [];
 
   return (
     <div className="space-y-6">
@@ -292,7 +565,8 @@ export default function BalanceSheetPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Balance Sheet</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Statement of financial position as of {report ? formatDate(asOfDate) : "selected date"}
+            Statement of financial position as of{" "}
+            {report ? formatDate(asOfDate) : "selected date"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -377,7 +651,11 @@ export default function BalanceSheetPage() {
             ) : (
               <Badge variant="danger">
                 <AlertTriangle className="h-3.5 w-3.5 mr-1 inline" />
-                Unbalanced (Diff: {formatCurrency(Math.abs(assetsTotal - (liabilitiesTotal + equityTotal)))})
+                Unbalanced (Diff:{" "}
+                {formatCurrency(
+                  Math.abs(assetsTotal - (liabilitiesTotal + equityTotal))
+                )}
+                )
               </Badge>
             )}
           </div>
@@ -410,21 +688,28 @@ export default function BalanceSheetPage() {
                 </tr>
               </thead>
               <tbody>
-                {renderSectionRows(
-                  report.assets,
-                  compareReport?.assets,
-                  "assets"
+                {/* Assets */}
+                {renderMajorSection(
+                  "Assets",
+                  "assets_major",
+                  assetGroups,
+                  compareAssetGroups,
+                  assetsTotal,
+                  compareReport?.assets?.total ?? 0
                 )}
-                {renderSectionRows(
-                  report.liabilities,
-                  compareReport?.liabilities,
-                  "liabilities"
+
+                {/* Liabilities */}
+                {renderMajorSection(
+                  "Liabilities",
+                  "liabilities_major",
+                  liabilityGroups,
+                  compareLiabilityGroups,
+                  liabilitiesTotal,
+                  compareReport?.liabilities?.total ?? 0
                 )}
-                {renderSectionRows(
-                  report.equity,
-                  compareReport?.equity,
-                  "equity"
-                )}
+
+                {/* Equity */}
+                {renderEquitySection()}
 
                 {/* Grand totals */}
                 <tr className="border-t-2 border-gray-900 bg-gray-100">
