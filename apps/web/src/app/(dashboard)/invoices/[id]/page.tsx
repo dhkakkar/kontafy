@@ -166,6 +166,7 @@ export default function InvoiceDetailPage() {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSendMenu, setShowSendMenu] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // ─── Queries ──────────────────────────────────────────────────
 
@@ -298,7 +299,7 @@ export default function InvoiceDetailPage() {
 
       {/* ─── Actions Bar ─────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
-        {isDraft && (
+        {!isPaid && !isCancelled && (
           <Link href={`/invoices/new?edit=${invoiceId}`}>
             <Button
               variant="outline"
@@ -323,10 +324,26 @@ export default function InvoiceDetailPage() {
             {showSendMenu && (
               <div className="absolute top-full left-0 mt-1 bg-white rounded-lg border border-gray-200 shadow-lg py-1 z-20 min-w-[160px]">
                 <button
-                  className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50"
-                  onClick={() => {
+                  className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50 disabled:opacity-50"
+                  disabled={sendingEmail}
+                  onClick={async () => {
                     setShowSendMenu(false);
-                    // TODO: Integrate email sending
+                    const email = invoice?.contact?.email;
+                    const toEmail = email || prompt("Enter customer email address:");
+                    if (!toEmail) return;
+                    try {
+                      setSendingEmail(true);
+                      await api.post("/email/send-invoice", {
+                        invoiceId,
+                        toEmail,
+                      });
+                      queryClient.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+                      alert("Invoice email sent successfully!");
+                    } catch (err) {
+                      alert((err as Error).message || "Failed to send email");
+                    } finally {
+                      setSendingEmail(false);
+                    }
                   }}
                 >
                   <Mail className="h-4 w-4 text-gray-500" />
@@ -334,9 +351,20 @@ export default function InvoiceDetailPage() {
                 </button>
                 <button
                   className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50"
-                  onClick={() => {
+                  onClick={async () => {
                     setShowSendMenu(false);
-                    // TODO: Integrate WhatsApp sending
+                    const phone = prompt("Enter WhatsApp number (with country code, e.g. 919876543210):");
+                    if (!phone) return;
+                    try {
+                      await api.post("/whatsapp/send-invoice", {
+                        invoiceId,
+                        phoneNumber: phone,
+                      });
+                      queryClient.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+                      alert("Invoice queued for WhatsApp delivery!");
+                    } catch (err) {
+                      alert((err as Error).message || "Failed to send via WhatsApp");
+                    }
                   }}
                 >
                   <MessageCircle className="h-4 w-4 text-gray-500" />

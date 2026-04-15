@@ -67,4 +67,36 @@ export class DashboardController {
   ) {
     return this.dashboardService.getTopCustomers(orgId, limit);
   }
+
+  @Get('aging')
+  @ApiOperation({ summary: 'Receivable/Payable aging breakdown by day buckets' })
+  @ApiQuery({ name: 'type', required: true, description: 'receivable or payable' })
+  async getAging(
+    @OrgId() orgId: string,
+    @Query('type') type: string,
+  ) {
+    return this.dashboardService.getAgingBreakdown(orgId, type as 'receivable' | 'payable');
+  }
+
+  @Get('aging/invoices')
+  @ApiOperation({ summary: 'Invoices for a specific aging bucket' })
+  @ApiQuery({ name: 'type', required: true })
+  @ApiQuery({ name: 'bucket', required: true, description: 'e.g. 1-15, 16-30, 31-45, 45+' })
+  async getAgingInvoices(
+    @OrgId() orgId: string,
+    @Query('type') type: string,
+    @Query('bucket') bucket: string,
+  ) {
+    return this.dashboardService.getAgingInvoices(orgId, type as 'receivable' | 'payable', bucket);
+  }
+
+  @Get('revenue-chart-period')
+  @ApiOperation({ summary: 'Revenue vs expenses for a specific period' })
+  @ApiQuery({ name: 'period', required: true, description: 'fiscal_year, prev_fiscal_year, last_12_months' })
+  async getRevenueChartByPeriod(
+    @OrgId() orgId: string,
+    @Query('period') period: string,
+  ) {
+    return this.dashboardService.getRevenueChartByPeriod(orgId, period);
+  }
 }

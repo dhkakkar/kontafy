@@ -62,14 +62,24 @@ interface ApiResponse<T> {
 
 // ─── Hooks ────────────────────────────────────────────────────
 
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+  meta?: { page?: number; limit?: number; total?: number; totalPages?: number };
+}
+
 export function useRecurringInvoices(params?: { page?: number; status?: string }) {
   return useQuery<ApiResponse<RecurringInvoice[]>>({
     queryKey: ["recurring-invoices", params],
-    queryFn: () => {
+    queryFn: async () => {
       const query: Record<string, string> = {};
       if (params?.page) query.page = String(params.page);
       if (params?.status) query.status = params.status;
-      return api.get<ApiResponse<RecurringInvoice[]>>("/recurring-invoices", query);
+      const res = await api.get<ApiEnvelope<RecurringInvoice[]>>("/recurring-invoices", query);
+      return {
+        data: res.data,
+        meta: res.meta as ApiResponse<RecurringInvoice[]>["meta"],
+      };
     },
   });
 }
@@ -77,7 +87,10 @@ export function useRecurringInvoices(params?: { page?: number; status?: string }
 export function useRecurringInvoice(id: string) {
   return useQuery<RecurringInvoice>({
     queryKey: ["recurring-invoice", id],
-    queryFn: () => api.get<RecurringInvoice>(`/recurring-invoices/${id}`),
+    queryFn: async () => {
+      const res = await api.get<ApiEnvelope<RecurringInvoice>>(`/recurring-invoices/${id}`);
+      return res.data;
+    },
     enabled: !!id,
   });
 }
@@ -85,10 +98,17 @@ export function useRecurringInvoice(id: string) {
 export function useRecurringInvoiceHistory(id: string, params?: { page?: number }) {
   return useQuery<ApiResponse<GeneratedInvoice[]>>({
     queryKey: ["recurring-invoice", id, "history", params],
-    queryFn: () => {
+    queryFn: async () => {
       const query: Record<string, string> = {};
       if (params?.page) query.page = String(params.page);
-      return api.get<ApiResponse<GeneratedInvoice[]>>(`/recurring-invoices/${id}/history`, query);
+      const res = await api.get<ApiEnvelope<GeneratedInvoice[]>>(
+        `/recurring-invoices/${id}/history`,
+        query,
+      );
+      return {
+        data: res.data,
+        meta: res.meta as ApiResponse<GeneratedInvoice[]>["meta"],
+      };
     },
     enabled: !!id,
   });

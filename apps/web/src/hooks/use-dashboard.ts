@@ -142,3 +142,65 @@ export function useTopCustomers(limit: number = 5) {
     },
   });
 }
+
+// ─── Aging ─────────────────────────────────────────────────────
+
+export interface AgingBucket {
+  label: string;
+  key: string;
+  amount: number;
+  count: number;
+}
+
+export interface AgingInvoice {
+  id: string;
+  invoiceNumber: string;
+  customer: string;
+  amount: number;
+  balanceDue: number;
+  dueDate: string;
+  daysOverdue: number;
+  status: string;
+}
+
+export function useAgingBreakdown(type: "receivable" | "payable") {
+  return useQuery<AgingBucket[]>({
+    queryKey: ["dashboard", "aging", type],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<AgingBucket[]>>(
+        "/dashboard/aging",
+        { type },
+      );
+      return res.data;
+    },
+  });
+}
+
+export function useAgingInvoices(type: "receivable" | "payable", bucket: string) {
+  return useQuery<AgingInvoice[]>({
+    queryKey: ["dashboard", "aging-invoices", type, bucket],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<AgingInvoice[]>>(
+        "/dashboard/aging/invoices",
+        { type, bucket },
+      );
+      return res.data;
+    },
+    enabled: !!bucket,
+  });
+}
+
+// ─── Revenue Chart by Period ──────────────────────────────────
+
+export function useRevenueChartByPeriod(period: string) {
+  return useQuery<RevenueChartPoint[]>({
+    queryKey: ["dashboard", "revenue-chart-period", period],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<RevenueChartPoint[]>>(
+        "/dashboard/revenue-chart-period",
+        { period },
+      );
+      return res.data;
+    },
+  });
+}

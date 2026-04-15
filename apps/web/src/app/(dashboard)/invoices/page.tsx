@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -19,8 +19,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Plus, Search, Download, MoreHorizontal, MessageSquare, Loader2 } from "lucide-react";
+import { Plus, Search, Download, Upload, MessageSquare, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { ActionMenu } from "@/components/ui/action-menu";
 
 interface Invoice {
   id: string;
@@ -54,9 +55,20 @@ const columnHelper = createColumnHelper<Invoice>();
 
 export default function InvoicesPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
+
+  const handleDelete = async (id: string, number: string) => {
+    if (!confirm(`Delete invoice ${number}? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/bill/invoices/${id}`);
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    } catch (err) {
+      alert((err as Error).message || "Failed to delete invoice");
+    }
+  };
 
   const { data: invoices = [], isLoading, error } = useQuery<Invoice[]>({
     queryKey: ["invoices", activeTab, searchQuery],
@@ -150,13 +162,36 @@ export default function InvoicesPage() {
             >
               <MessageSquare className="h-4 w-4" />
             </button>
-            <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
+            <ActionMenu
+              items={[
+                {
+                  label: "View",
+                  icon: <Eye className="h-4 w-4" />,
+                  onClick: () => router.push(`/invoices/${info.row.original.id}`),
+                },
+                {
+                  label: "Edit",
+                  icon: <Pencil className="h-4 w-4" />,
+                  onClick: () =>
+                    router.push(`/invoices/${info.row.original.id}/edit`),
+                },
+                {
+                  label: "Delete",
+                  icon: <Trash2 className="h-4 w-4" />,
+                  danger: true,
+                  onClick: () =>
+                    handleDelete(
+                      info.row.original.id,
+                      info.row.original.invoice_number,
+                    ),
+                },
+              ]}
+            />
           </div>
         ),
       }),
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -180,6 +215,15 @@ export default function InvoicesPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/settings/import?type=contacts">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Upload className="h-4 w-4" />}
+            >
+              Import
+            </Button>
+          </Link>
           <Button
             variant="outline"
             size="sm"

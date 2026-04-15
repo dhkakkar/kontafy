@@ -24,7 +24,7 @@ import { Plus, Search, Download, Loader2, FileText } from "lucide-react";
 
 interface DebitNote {
   id: string;
-  debit_note_number: string;
+  invoice_number: string;
   contact_name?: string;
   contact?: { name: string };
   date: string;
@@ -82,7 +82,7 @@ export default function DebitNotesPage() {
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("debit_note_number", {
+      columnHelper.accessor("invoice_number", {
         header: "Debit Note #",
         cell: (info) => (
           <span className="font-medium text-primary-800">

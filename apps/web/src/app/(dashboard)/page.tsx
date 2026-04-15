@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,11 @@ import {
   useRevenueChart,
   useRecentTransactions,
   useOverdueInvoices,
+  useAgingBreakdown,
+  useAgingInvoices,
+  useRevenueChartByPeriod,
 } from "@/hooks/use-dashboard";
+import { Modal } from "@/components/ui/modal";
 import { useStoredInsights } from "@/hooks/use-ai";
 import {
   TrendingUp,
@@ -32,6 +36,7 @@ import {
   Lightbulb,
   ShieldAlert,
   ArrowRight,
+  ChevronDown,
 } from "lucide-react";
 
 // ─── Loading Skeleton ──────────────────────────────────────────
@@ -82,6 +87,40 @@ export default function DashboardPage() {
   const { data: transactions, isLoading: txnLoading } = useRecentTransactions(5);
   const { data: overdueInvoices, isLoading: overdueLoading } = useOverdueInvoices();
   const { data: aiInsights, isLoading: aiLoading } = useStoredInsights(4);
+
+  // Aging state
+  const [agingType, setAgingType] = useState<"receivable" | "payable" | null>(null);
+  const [selectedBucket, setSelectedBucket] = useState("");
+  const [showAgingModal, setShowAgingModal] = useState(false);
+  const [receivableDropdownOpen, setReceivableDropdownOpen] = useState(false);
+  const [payableDropdownOpen, setPayableDropdownOpen] = useState(false);
+
+  const { data: receivableAging } = useAgingBreakdown("receivable");
+  const { data: payableAging } = useAgingBreakdown("payable");
+  const { data: agingInvoices } = useAgingInvoices(agingType ?? "receivable", selectedBucket);
+
+  // Revenue chart period state
+  const [chartPeriod, setChartPeriod] = useState("last_6_months");
+  const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false);
+  const { data: periodChartData, isLoading: periodChartLoading } = useRevenueChartByPeriod(chartPeriod);
+
+  const activeChartData = chartPeriod === "last_6_months" ? chartData : periodChartData;
+  const activeChartLoading = chartPeriod === "last_6_months" ? chartLoading : periodChartLoading;
+
+  const periodLabels: Record<string, string> = {
+    last_6_months: "Last 6 Months",
+    fiscal_year: "This Fiscal Year",
+    prev_fiscal_year: "Previous Fiscal Year",
+    last_12_months: "Last 12 Months",
+  };
+
+  const handleBucketClick = (type: "receivable" | "payable", bucketKey: string) => {
+    setAgingType(type);
+    setSelectedBucket(bucketKey);
+    setShowAgingModal(true);
+    setReceivableDropdownOpen(false);
+    setPayableDropdownOpen(false);
+  };
 
   const currentMonth = new Date().toLocaleString("en-IN", {
     month: "long",
@@ -187,8 +226,34 @@ export default function DashboardPage() {
                     )}
                   </div>
                 </div>
-                <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-success-50">
-                  <ArrowDownLeft className="h-5 w-5 text-success-700" />
+                <div className="flex flex-col items-end gap-2">
+                  <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-success-50">
+                    <ArrowDownLeft className="h-5 w-5 text-success-700" />
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => setReceivableDropdownOpen(!receivableDropdownOpen)}
+                      className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 font-medium"
+                    >
+                      Aging <ChevronDown className="h-3 w-3" />
+                    </button>
+                    {receivableDropdownOpen && receivableAging && (
+                      <div className="absolute right-0 top-6 z-20 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1">
+                        {receivableAging.map((bucket) => (
+                          <button
+                            key={bucket.key}
+                            onClick={() => handleBucketClick("receivable", bucket.key)}
+                            className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center justify-between"
+                          >
+                            <span className="text-xs text-gray-700">{bucket.label}</span>
+                            <span className="text-xs font-medium text-gray-900">
+                              {formatCurrency(bucket.amount)} ({bucket.count})
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </Card>
@@ -215,8 +280,34 @@ export default function DashboardPage() {
                     )}
                   </div>
                 </div>
-                <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-warning-50">
-                  <ArrowUpRight className="h-5 w-5 text-warning-700" />
+                <div className="flex flex-col items-end gap-2">
+                  <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-warning-50">
+                    <ArrowUpRight className="h-5 w-5 text-warning-700" />
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => setPayableDropdownOpen(!payableDropdownOpen)}
+                      className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 font-medium"
+                    >
+                      Aging <ChevronDown className="h-3 w-3" />
+                    </button>
+                    {payableDropdownOpen && payableAging && (
+                      <div className="absolute right-0 top-6 z-20 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1">
+                        {payableAging.map((bucket) => (
+                          <button
+                            key={bucket.key}
+                            onClick={() => handleBucketClick("payable", bucket.key)}
+                            className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center justify-between"
+                          >
+                            <span className="text-xs text-gray-700">{bucket.label}</span>
+                            <span className="text-xs font-medium text-gray-900">
+                              {formatCurrency(bucket.amount)} ({bucket.count})
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </Card>
@@ -269,7 +360,35 @@ export default function DashboardPage() {
         {/* Revenue Chart */}
         <Card padding="md" className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Revenue vs Expenses</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle>Revenue vs Expenses</CardTitle>
+              <div className="relative">
+                <button
+                  onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                >
+                  {periodLabels[chartPeriod]} <ChevronDown className="h-3 w-3" />
+                </button>
+                {periodDropdownOpen && (
+                  <div className="absolute left-0 top-8 z-20 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1">
+                    {Object.entries(periodLabels).map(([key, label]) => (
+                      <button
+                        key={key}
+                        onClick={() => {
+                          setChartPeriod(key);
+                          setPeriodDropdownOpen(false);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-50 ${
+                          chartPeriod === key ? "text-primary-600 font-medium bg-primary-50" : "text-gray-700"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-primary-800" />
@@ -281,10 +400,10 @@ export default function DashboardPage() {
               </div>
             </div>
           </CardHeader>
-          {chartLoading ? (
+          {activeChartLoading ? (
             <ChartSkeleton />
           ) : (
-            <RevenueChart data={chartData ?? []} />
+            <RevenueChart data={activeChartData ?? []} />
           )}
         </Card>
 
@@ -594,6 +713,61 @@ export default function DashboardPage() {
           </div>
         )}
       </Card>
+
+      {/* Aging Drill-Down Modal */}
+      <Modal
+        open={showAgingModal}
+        onClose={() => {
+          setShowAgingModal(false);
+          setSelectedBucket("");
+          setAgingType(null);
+        }}
+        title={`${agingType === "receivable" ? "Receivable" : "Payable"} Aging — ${
+          selectedBucket === "1_15" ? "1–15 days" :
+          selectedBucket === "16_30" ? "16–30 days" :
+          selectedBucket === "31_45" ? "31–45 days" :
+          "Above 45 days"
+        }`}
+      >
+        <div className="max-h-[60vh] overflow-y-auto">
+          {agingInvoices && agingInvoices.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">Invoice</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-500">Customer</th>
+                  <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">Balance Due</th>
+                  <th className="text-right py-2 px-3 text-xs font-medium text-gray-500">Days Overdue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agingInvoices.map((inv) => (
+                  <tr key={inv.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-2 px-3">
+                      <Link href={`/invoices/${inv.id}`} className="text-primary-600 hover:underline font-medium">
+                        {inv.invoiceNumber}
+                      </Link>
+                    </td>
+                    <td className="py-2 px-3 text-gray-700">{inv.customer}</td>
+                    <td className="py-2 px-3 text-right font-medium text-gray-900">
+                      {formatCurrency(inv.balanceDue)}
+                    </td>
+                    <td className="py-2 px-3 text-right">
+                      <Badge variant={inv.daysOverdue > 30 ? "danger" : "warning"} dot>
+                        {inv.daysOverdue}d
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="text-center py-8 text-sm text-gray-400">
+              No invoices in this aging bucket
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

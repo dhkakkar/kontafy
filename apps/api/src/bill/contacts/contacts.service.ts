@@ -33,7 +33,14 @@ export class ContactsService {
 
     const where: any = { org_id: orgId };
 
-    if (type) where.type = type;
+    if (type) {
+      // Contacts marked as "both" should appear in both customer and vendor tabs
+      if (type === 'customer' || type === 'vendor') {
+        where.type = { in: [type, 'both'] };
+      } else {
+        where.type = type;
+      }
+    }
     if (activeOnly) where.is_active = true;
 
     if (search) {

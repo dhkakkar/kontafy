@@ -381,6 +381,165 @@ export class DashboardService {
     });
   }
 
+  // ─── getAgingBreakdown ───────────────────────────────────────
+
+  async getAgingBreakdown(orgId: string, type: 'receivable' | 'payable') {
+    const now = new Date();
+    const invoiceType = type === 'receivable' ? 'sale' : 'purchase';
+
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        org_id: orgId,
+        type: invoiceType,
+        status: { in: ['sent', 'partial'] },
+        due_date: { not: null },
+      },
+      select: { id: true, due_date: true, balance_due: true },
+    });
+
+    const buckets = [
+      { label: '1-15 Days', min: 1, max: 15, amount: 0, count: 0 },
+      { label: '16-30 Days', min: 16, max: 30, amount: 0, count: 0 },
+      { label: '31-45 Days', min: 31, max: 45, amount: 0, count: 0 },
+      { label: 'Above 45 Days', min: 46, max: Infinity, amount: 0, count: 0 },
+    ];
+
+    for (const inv of invoices) {
+      if (!inv.due_date) continue;
+      const dueDate = new Date(inv.due_date);
+      const diffDays = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays < 1) continue; // not overdue
+
+      const balanceDue = this.toNumber(inv.balance_due);
+      for (const bucket of buckets) {
+        if (diffDays >= bucket.min && diffDays <= bucket.max) {
+          bucket.amount += balanceDue;
+          bucket.count++;
+          break;
+        }
+      }
+    }
+
+    return buckets.map(b => ({
+      label: b.label,
+      key: b.min === 46 ? '45+' : `${b.min}-${b.max}`,
+      amount: Math.round(b.amount * 100) / 100,
+      count: b.count,
+    }));
+  }
+
+  async getAgingInvoices(orgId: string, type: 'receivable' | 'payable', bucket: string) {
+    const now = new Date();
+    const invoiceType = type === 'receivable' ? 'sale' : 'purchase';
+
+    // Parse bucket
+    let minDays = 0;
+    let maxDays = Infinity;
+    if (bucket === '45+') {
+      minDays = 46;
+    } else {
+      const parts = bucket.split('-').map(Number);
+      minDays = parts[0] || 0;
+      maxDays = parts[1] || Infinity;
+    }
+
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        org_id: orgId,
+        type: invoiceType,
+        status: { in: ['sent', 'partial'] },
+        due_date: { not: null },
+      },
+      include: {
+        contact: { select: { id: true, name: true, company_name: true } },
+      },
+      orderBy: { due_date: 'asc' },
+    });
+
+    return invoices
+      .map((inv) => {
+        const dueDate = inv.due_date as Date;
+        const diffDays = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+        return { ...inv, daysOverdue: diffDays };
+      })
+      .filter((inv) => inv.daysOverdue >= minDays && inv.daysOverdue <= maxDays)
+      .map((inv) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoice_number,
+        customer: inv.contact?.company_name || inv.contact?.name || 'Unknown',
+        amount: this.toNumber(inv.total),
+        balanceDue: this.toNumber(inv.balance_due),
+        dueDate: inv.due_date,
+        daysOverdue: inv.daysOverdue,
+        status: inv.status,
+      }));
+  }
+
+  // ─── getRevenueChartByPeriod ────────────────────────────────
+
+  async getRevenueChartByPeriod(orgId: string, period: string) {
+    const now = new Date();
+    const currentMonth = now.getMonth(); // 0-11
+    const currentYear = now.getFullYear();
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (period === 'fiscal_year') {
+      const fyStart = currentMonth >= 3 ? currentYear : currentYear - 1;
+      startDate = new Date(fyStart, 3, 1); // April 1
+      endDate = new Date(fyStart + 1, 2, 31, 23, 59, 59, 999); // March 31
+    } else if (period === 'prev_fiscal_year') {
+      const fyStart = currentMonth >= 3 ? currentYear - 1 : currentYear - 2;
+      startDate = new Date(fyStart, 3, 1);
+      endDate = new Date(fyStart + 1, 2, 31, 23, 59, 59, 999);
+    } else {
+      // last_12_months (default)
+      startDate = new Date(currentYear, currentMonth - 11, 1);
+      endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+    }
+
+    const data: Array<{ month: string; revenue: number; expenses: number }> = [];
+    const cursor = new Date(startDate);
+
+    while (cursor <= endDate) {
+      const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+      const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59, 999);
+      const monthLabel = monthStart.toLocaleString('en-IN', { month: 'short' });
+
+      const [revenueResult, expenseResult] = await Promise.all([
+        this.prisma.invoice.aggregate({
+          where: {
+            org_id: orgId,
+            type: 'sale',
+            status: { in: ['sent', 'paid', 'partial'] },
+            date: { gte: monthStart, lte: monthEnd },
+          },
+          _sum: { total: true },
+        }),
+        this.prisma.invoice.aggregate({
+          where: {
+            org_id: orgId,
+            type: 'purchase',
+            status: { not: 'cancelled' },
+            date: { gte: monthStart, lte: monthEnd },
+          },
+          _sum: { total: true },
+        }),
+      ]);
+
+      data.push({
+        month: monthLabel,
+        revenue: this.toNumber(revenueResult._sum.total),
+        expenses: this.toNumber(expenseResult._sum.total),
+      });
+
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    return data;
+  }
+
   // ─── getTopCustomers ──────────────────────────────────────────
 
   async getTopCustomers(orgId: string, limit: number = 5) {

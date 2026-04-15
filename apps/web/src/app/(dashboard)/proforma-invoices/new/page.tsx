@@ -284,10 +284,10 @@ export default function NewProformaInvoicePage() {
   );
   const grandTotal = subtotal + totalTax - additionalDiscount + additionalCharges;
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, sendEmail = false) => {
     if (e) e.preventDefault();
     try {
-      await createMutation.mutateAsync({
+      const result = await createMutation.mutateAsync({
         contact_id: customer,
         date: proformaDate,
         validity_date: validityDate || undefined,
@@ -305,6 +305,23 @@ export default function NewProformaInvoicePage() {
           sgst_rate: item.taxRate / 2,
         })),
       });
+
+      // Send email if Save & Send was clicked
+      if (sendEmail && (result as any)?.id) {
+        const selectedCustomer = customers.find((c) => c.id === customer);
+        const email = (selectedCustomer as any)?.email;
+        if (email) {
+          try {
+            await api.post("/email/send-invoice", {
+              invoiceId: (result as any).id,
+              toEmail: email,
+            });
+          } catch {
+            // Email send failed silently - invoice was still created
+          }
+        }
+      }
+
       router.push("/proforma-invoices");
     } catch {
       // Error handled by mutation
@@ -329,10 +346,10 @@ export default function NewProformaInvoicePage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" icon={<Save className="h-4 w-4" />} onClick={() => handleSubmit()}>
+          <Button variant="outline" icon={<Save className="h-4 w-4" />} onClick={() => handleSubmit(undefined, false)}>
             Save Draft
           </Button>
-          <Button icon={<Send className="h-4 w-4" />} onClick={() => handleSubmit()} loading={createMutation.isPending}>
+          <Button icon={<Send className="h-4 w-4" />} onClick={() => handleSubmit(undefined, true)} loading={createMutation.isPending}>
             Save & Send
           </Button>
         </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { Suspense, useState, useRef, useCallback, useEffect } from "react";
-import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -11,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
@@ -21,7 +21,9 @@ import {
   Mail,
   Building2,
   MapPin,
-  MoreHorizontal,
+  Eye,
+  Pencil,
+  Trash2,
   Loader2,
   Upload,
   X,
@@ -628,9 +630,9 @@ function ContactsPage() {
         ) : (
           <div className="divide-y divide-gray-100">
             {filteredContacts.map((contact) => (
-              <Link
+              <div
                 key={contact.id}
-                href={`/contacts/${contact.id}`}
+                onClick={() => router.push(`/contacts/${contact.id}`)}
                 className="block p-4 hover:bg-gray-50 transition-colors cursor-pointer flex items-center gap-4"
               >
                 <div className="h-11 w-11 rounded-full bg-primary-50 flex items-center justify-center shrink-0">
@@ -709,10 +711,45 @@ function ContactsPage() {
                   )}
                 </div>
 
-                <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors shrink-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </button>
-              </Link>
+                <ActionMenu
+                  items={[
+                    {
+                      label: "View",
+                      icon: <Eye className="h-4 w-4" />,
+                      onClick: () => router.push(`/contacts/${contact.id}`),
+                    },
+                    {
+                      label: "Edit",
+                      icon: <Pencil className="h-4 w-4" />,
+                      onClick: () =>
+                        router.push(`/contacts?edit=${contact.id}`),
+                    },
+                    {
+                      label: "Delete",
+                      icon: <Trash2 className="h-4 w-4" />,
+                      danger: true,
+                      onClick: async () => {
+                        if (
+                          !confirm(
+                            `Delete contact "${contact.name}"? This cannot be undone.`,
+                          )
+                        )
+                          return;
+                        try {
+                          await api.delete(`/bill/contacts/${contact.id}`);
+                          queryClient.invalidateQueries({
+                            queryKey: ["contacts"],
+                          });
+                        } catch (err) {
+                          alert(
+                            (err as Error).message || "Failed to delete contact",
+                          );
+                        }
+                      },
+                    },
+                  ]}
+                />
+              </div>
             ))}
           </div>
         )}

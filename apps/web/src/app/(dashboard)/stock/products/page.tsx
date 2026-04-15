@@ -20,7 +20,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { Plus, Search, Download, MoreHorizontal, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Download, Upload, MoreHorizontal, Loader2, Pencil, Trash2 } from "lucide-react";
 
 interface Product {
   id: string;
@@ -229,6 +229,15 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/settings/import?type=products">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Upload className="h-4 w-4" />}
+            >
+              Import
+            </Button>
+          </Link>
           <Button
             variant="outline"
             size="sm"

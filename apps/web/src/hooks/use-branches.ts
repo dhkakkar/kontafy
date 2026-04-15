@@ -39,17 +39,27 @@ interface ApiResponse<T> {
   meta?: { page: number; limit: number; total: number; totalPages: number };
 }
 
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+  meta?: { page?: number; limit?: number; total?: number; totalPages?: number };
+}
+
 // ─── Hooks ────────────────────────────────────────────────────
 
 export function useBranches(params?: { page?: number; search?: string; is_active?: string }) {
   return useQuery<ApiResponse<Branch[]>>({
     queryKey: ["branches", params],
-    queryFn: () => {
+    queryFn: async () => {
       const query: Record<string, string> = {};
       if (params?.page) query.page = String(params.page);
       if (params?.search) query.search = params.search;
       if (params?.is_active) query.is_active = params.is_active;
-      return api.get<ApiResponse<Branch[]>>("/branches", query);
+      const res = await api.get<ApiEnvelope<Branch[]>>("/branches", query);
+      return {
+        data: res.data,
+        meta: res.meta as ApiResponse<Branch[]>["meta"],
+      };
     },
   });
 }
@@ -57,7 +67,10 @@ export function useBranches(params?: { page?: number; search?: string; is_active
 export function useBranch(id: string) {
   return useQuery<Branch>({
     queryKey: ["branch", id],
-    queryFn: () => api.get<Branch>(`/branches/${id}`),
+    queryFn: async () => {
+      const res = await api.get<ApiEnvelope<Branch>>(`/branches/${id}`);
+      return res.data;
+    },
     enabled: !!id,
   });
 }
@@ -65,11 +78,15 @@ export function useBranch(id: string) {
 export function useBranchSummary(id: string, params?: { from?: string; to?: string }) {
   return useQuery<BranchSummary>({
     queryKey: ["branch", id, "summary", params],
-    queryFn: () => {
+    queryFn: async () => {
       const query: Record<string, string> = {};
       if (params?.from) query.from = params.from;
       if (params?.to) query.to = params.to;
-      return api.get<BranchSummary>(`/branches/${id}/summary`, query);
+      const res = await api.get<ApiEnvelope<BranchSummary>>(
+        `/branches/${id}/summary`,
+        query,
+      );
+      return res.data;
     },
     enabled: !!id,
   });
@@ -78,11 +95,18 @@ export function useBranchSummary(id: string, params?: { from?: string; to?: stri
 export function useBranchStock(id: string, params?: { page?: number; search?: string }) {
   return useQuery<ApiResponse<BranchStockItem[]>>({
     queryKey: ["branch", id, "stock", params],
-    queryFn: () => {
+    queryFn: async () => {
       const query: Record<string, string> = {};
       if (params?.page) query.page = String(params.page);
       if (params?.search) query.search = params.search;
-      return api.get<ApiResponse<BranchStockItem[]>>(`/branches/${id}/stock`, query);
+      const res = await api.get<ApiEnvelope<BranchStockItem[]>>(
+        `/branches/${id}/stock`,
+        query,
+      );
+      return {
+        data: res.data,
+        meta: res.meta as ApiResponse<BranchStockItem[]>["meta"],
+      };
     },
     enabled: !!id,
   });

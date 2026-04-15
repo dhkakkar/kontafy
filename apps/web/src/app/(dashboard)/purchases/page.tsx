@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -19,7 +20,8 @@ import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { Plus, Search, Download, MoreHorizontal, Loader2 } from "lucide-react";
+import { Plus, Search, Download, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
+import { ActionMenu } from "@/components/ui/action-menu";
 
 interface Purchase {
   id: string;
@@ -51,41 +53,46 @@ const statusBadgeMap: Record<
 const columnHelper = createColumnHelper<Purchase>();
 
 export default function PurchasesPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
 
-  const { data: purchases = [], isLoading, error } = useQuery<Purchase[]>({
-    queryKey: ["purchases", activeTab, searchQuery],
+  const { data: allPurchases = [], isLoading, error } = useQuery<Purchase[]>({
+    queryKey: ["purchases", searchQuery],
     queryFn: async () => {
-      const params: Record<string, string> = {};
-      if (activeTab !== "all") {
-        if (activeTab === "sent") {
-          params.status = "sent,partially_paid";
-        } else {
-          params.status = activeTab;
-        }
-      }
+      const params: Record<string, string> = { limit: "500" };
       if (searchQuery) params.search = searchQuery;
       const res = await api.get<ApiResponse<Purchase[]>>("/bill/purchases", params);
       return res.data;
     },
   });
 
-  const totalOutstanding = purchases
+  const purchases = useMemo(() => {
+    if (activeTab === "all") return allPurchases;
+    if (activeTab === "sent") {
+      return allPurchases.filter(
+        (p) => p.status === "sent" || p.status === "partially_paid"
+      );
+    }
+    return allPurchases.filter((p) => p.status === activeTab);
+  }, [allPurchases, activeTab]);
+
+  const totalOutstanding = allPurchases
     .filter((p) => ["sent", "overdue", "partially_paid"].includes(p.status))
-    .reduce((sum, p) => sum + p.total, 0);
+    .reduce((sum, p) => sum + Number(p.total), 0);
 
   const tabs = [
-    { value: "all", label: "All", count: purchases.length },
-    { value: "draft", label: "Draft", count: purchases.filter((p) => p.status === "draft").length },
+    { value: "all", label: "All", count: allPurchases.length },
+    { value: "draft", label: "Draft", count: allPurchases.filter((p) => p.status === "draft").length },
     {
       value: "sent",
       label: "Pending",
-      count: purchases.filter((p) => p.status === "sent" || p.status === "partially_paid").length,
+      count: allPurchases.filter((p) => p.status === "sent" || p.status === "partially_paid").length,
     },
-    { value: "overdue", label: "Overdue", count: purchases.filter((p) => p.status === "overdue").length },
-    { value: "paid", label: "Paid", count: purchases.filter((p) => p.status === "paid").length },
+    { value: "overdue", label: "Overdue", count: allPurchases.filter((p) => p.status === "overdue").length },
+    { value: "paid", label: "Paid", count: allPurchases.filter((p) => p.status === "paid").length },
   ];
 
   const columns = useMemo(
@@ -140,13 +147,49 @@ export default function PurchasesPage() {
       }),
       columnHelper.display({
         id: "actions",
-        cell: () => (
-          <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
+        cell: (info) => (
+          <ActionMenu
+            items={[
+              {
+                label: "View",
+                icon: <Eye className="h-4 w-4" />,
+                onClick: () =>
+                  router.push(`/purchases/${info.row.original.id}`),
+              },
+              {
+                label: "Edit",
+                icon: <Pencil className="h-4 w-4" />,
+                onClick: () =>
+                  router.push(`/purchases/${info.row.original.id}/edit`),
+              },
+              {
+                label: "Delete",
+                icon: <Trash2 className="h-4 w-4" />,
+                danger: true,
+                onClick: async () => {
+                  const row = info.row.original;
+                  if (
+                    !confirm(`Delete purchase ${row.invoice_number}?`)
+                  )
+                    return;
+                  try {
+                    await api.delete(`/bill/purchases/${row.id}`);
+                    queryClient.invalidateQueries({
+                      queryKey: ["purchases"],
+                    });
+                  } catch (err) {
+                    alert(
+                      (err as Error).message || "Failed to delete purchase",
+                    );
+                  }
+                },
+              },
+            ]}
+          />
         ),
       }),
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -233,7 +276,10 @@ export default function PurchasesPage() {
             Failed to load purchase invoices. Please try again.
           </div>
         ) : (
-          <DataTable table={table} />
+          <DataTable
+            table={table}
+            onRowClick={(row) => router.push(`/purchases/${row.id}`)}
+          />
         )}
       </Card>
     </div>

@@ -25,11 +25,14 @@ import {
   Search,
   Download,
   Loader2,
-  MoreHorizontal,
   IndianRupee,
   Calendar,
   TrendingUp,
+  CheckCircle2,
+  XCircle,
+  Trash2,
 } from "lucide-react";
+import { ActionMenu } from "@/components/ui/action-menu";
 
 interface Expense {
   id: string;
@@ -140,6 +143,21 @@ export default function ExpensesPage() {
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       setShowCreateModal(false);
       setForm({ ...initialFormState });
+    },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: Expense["status"] }) =>
+      api.patch(`/bill/expenses/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/bill/expenses/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
     },
   });
 
@@ -263,13 +281,50 @@ export default function ExpensesPage() {
       }),
       columnHelper.display({
         id: "actions",
-        cell: () => (
-          <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
-        ),
+        cell: (info) => {
+          const row = info.row.original;
+          const items = [];
+          if (row.status === "pending") {
+            items.push({
+              label: "Approve",
+              icon: <CheckCircle2 className="h-4 w-4" />,
+              onClick: () =>
+                updateStatusMutation.mutate({ id: row.id, status: "approved" }),
+            });
+            items.push({
+              label: "Reject",
+              icon: <XCircle className="h-4 w-4" />,
+              onClick: () =>
+                updateStatusMutation.mutate({ id: row.id, status: "rejected" }),
+            });
+          }
+          if (row.status === "approved") {
+            items.push({
+              label: "Mark Paid",
+              icon: <CheckCircle2 className="h-4 w-4" />,
+              onClick: () =>
+                updateStatusMutation.mutate({ id: row.id, status: "paid" }),
+            });
+          }
+          items.push({
+            label: "Delete",
+            icon: <Trash2 className="h-4 w-4" />,
+            danger: true,
+            onClick: () => {
+              if (
+                !confirm(
+                  `Delete this expense of ${formatCurrency(row.amount)}?`,
+                )
+              )
+                return;
+              deleteMutation.mutate(row.id);
+            },
+          });
+          return <ActionMenu items={items} />;
+        },
       }),
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 

@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -20,7 +20,8 @@ import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatDate } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { Plus, Search, Download, Loader2, Truck } from "lucide-react";
+import { Plus, Search, Download, Upload, Loader2, Truck, Eye, Pencil, CheckCircle2 } from "lucide-react";
+import { ActionMenu } from "@/components/ui/action-menu";
 
 interface DeliveryChallan {
   id: string;
@@ -48,9 +49,18 @@ const columnHelper = createColumnHelper<DeliveryChallan>();
 
 export default function DeliveryChallansPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.patch(`/bill/delivery-challans/${id}/status`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["delivery-challans"] });
+    },
+  });
 
   const params: Record<string, string> = {};
   if (activeTab !== "all") params.status = activeTab;
@@ -113,7 +123,48 @@ export default function DeliveryChallansPage() {
           );
         },
       }),
+      columnHelper.display({
+        id: "actions",
+        cell: (info) => {
+          const challan = info.row.original;
+          const statusActions: Array<{ label: string; icon: React.ReactNode; onClick: () => void }> = [];
+
+          if (challan.status === "draft") {
+            statusActions.push({
+              label: "Mark as Sent",
+              icon: <CheckCircle2 className="h-4 w-4" />,
+              onClick: () => updateStatusMutation.mutate({ id: challan.id, status: "sent" }),
+            });
+          }
+          if (challan.status === "sent") {
+            statusActions.push({
+              label: "Mark as Delivered",
+              icon: <CheckCircle2 className="h-4 w-4" />,
+              onClick: () => updateStatusMutation.mutate({ id: challan.id, status: "delivered" }),
+            });
+          }
+
+          return (
+            <ActionMenu
+              items={[
+                {
+                  label: "View",
+                  icon: <Eye className="h-4 w-4" />,
+                  onClick: () => router.push(`/delivery-challans/${challan.id}`),
+                },
+                {
+                  label: "Edit",
+                  icon: <Pencil className="h-4 w-4" />,
+                  onClick: () => router.push(`/delivery-challans/new?edit=${challan.id}`),
+                },
+                ...statusActions,
+              ]}
+            />
+          );
+        },
+      }),
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -139,6 +190,15 @@ export default function DeliveryChallansPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/settings/import?type=contacts">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Upload className="h-4 w-4" />}
+            >
+              Import
+            </Button>
+          </Link>
           <Button
             variant="outline"
             size="sm"

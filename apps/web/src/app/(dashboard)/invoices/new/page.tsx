@@ -181,26 +181,33 @@ export default function NewInvoicePage() {
   const createInvoice = useMutation({
     mutationFn: async (status: "draft" | "sent") => {
       const halfRate = (rate: number) => rate / 2;
-      return api.post("/bill/invoices", {
-        type: "invoice",
+      const payload: Record<string, unknown> = {
+        type: "sale",
         contact_id: customer,
         date: invoiceDate,
         due_date: dueDate || undefined,
         place_of_supply: placeOfSupply || undefined,
         notes: notes || undefined,
         terms: terms || undefined,
-        is_posted: status === "sent",
-        items: items.map((item) => ({
-          product_id: item.productId || undefined,
-          description: item.productName || item.description,
-          hsn_code: item.hsnCode || undefined,
-          quantity: item.quantity,
-          rate: item.rate,
-          discount_pct: item.discount || undefined,
-          cgst_rate: halfRate(item.taxRate),
-          sgst_rate: halfRate(item.taxRate),
-        })),
-      });
+        items: items
+          .filter((item) => item.productName || item.description || item.productId)
+          .map((item) => ({
+            product_id: item.productId || undefined,
+            description: item.productName || item.description || "Item",
+            hsn_code: item.hsnCode || undefined,
+            quantity: item.quantity,
+            rate: item.rate,
+            discount_pct: item.discount || undefined,
+            cgst_rate: halfRate(item.taxRate),
+            sgst_rate: halfRate(item.taxRate),
+          })),
+      };
+      const result = await api.post<{ data: { id: string } }>("/bill/invoices", payload);
+      // If "sent", update status after creation
+      if (status === "sent" && result?.data?.id) {
+        await api.patch(`/bill/invoices/${result.data.id}/status`, { status: "sent" });
+      }
+      return result;
     },
     onSuccess: () => {
       router.push("/invoices");

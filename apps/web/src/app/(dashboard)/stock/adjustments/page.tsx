@@ -22,6 +22,7 @@ interface StockMovement {
   quantity: number;
   reason?: string | null;
   date: string;
+  status?: "pending" | "adjusted" | null;
 }
 
 interface Product {
@@ -127,6 +128,7 @@ export default function StockAdjustmentPage() {
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Warehouse</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Type</th>
                   <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Reason</th>
                 </tr>
               </thead>
@@ -142,12 +144,17 @@ export default function StockAdjustmentPage() {
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-right font-medium">{formatNumber(m.quantity)}</td>
+                    <td className="py-3 px-4">
+                      <Badge variant={m.status === "adjusted" ? "success" : "warning"} dot>
+                        {m.status === "adjusted" ? "Adjusted" : "Pending"}
+                      </Badge>
+                    </td>
                     <td className="py-3 px-4 text-gray-600">{m.reason || "-"}</td>
                   </tr>
                 ))}
                 {movements.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-gray-500">No stock adjustments found</td>
+                    <td colSpan={7} className="py-12 text-center text-gray-500">No stock adjustments found</td>
                   </tr>
                 )}
               </tbody>

@@ -20,11 +20,11 @@ import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { Plus, Search, Download, Loader2, FileText } from "lucide-react";
+import { Plus, Search, Download, Upload, Loader2, FileText } from "lucide-react";
 
 interface ProformaInvoice {
   id: string;
-  proforma_number: string;
+  quotation_number: string;
   contact_name?: string;
   contact?: { name: string };
   date: string;
@@ -53,29 +53,32 @@ export default function ProformaInvoicesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
 
-  const params: Record<string, string> = {};
-  if (activeTab !== "all") params.status = activeTab;
-  if (searchQuery) params.search = searchQuery;
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["proforma-invoices", activeTab, searchQuery],
-    queryFn: () =>
-      api.get<{ data: ProformaInvoice[] }>("/bill/proforma-invoices", params),
+  const { data: allQuotations = [], isLoading } = useQuery<ProformaInvoice[]>({
+    queryKey: ["proforma-invoices", searchQuery],
+    queryFn: async () => {
+      const qp: Record<string, string> = { limit: "500" };
+      if (searchQuery) qp.search = searchQuery;
+      const res = await api.get<{ data: ProformaInvoice[] }>("/quotations", qp);
+      return res.data;
+    },
   });
 
-  const proformaInvoices = data?.data || [];
+  const proformaInvoices = useMemo(() => {
+    if (activeTab === "all") return allQuotations;
+    return allQuotations.filter((p) => p.status === activeTab);
+  }, [allQuotations, activeTab]);
 
   const tabs = [
-    { value: "all", label: "All", count: proformaInvoices.length },
-    { value: "draft", label: "Draft", count: proformaInvoices.filter((p) => p.status === "draft").length },
-    { value: "sent", label: "Sent", count: proformaInvoices.filter((p) => p.status === "sent").length },
-    { value: "accepted", label: "Accepted", count: proformaInvoices.filter((p) => p.status === "accepted").length },
-    { value: "expired", label: "Expired", count: proformaInvoices.filter((p) => p.status === "expired").length },
+    { value: "all", label: "All", count: allQuotations.length },
+    { value: "draft", label: "Draft", count: allQuotations.filter((p) => p.status === "draft").length },
+    { value: "sent", label: "Sent", count: allQuotations.filter((p) => p.status === "sent").length },
+    { value: "accepted", label: "Accepted", count: allQuotations.filter((p) => p.status === "accepted").length },
+    { value: "expired", label: "Expired", count: allQuotations.filter((p) => p.status === "expired").length },
   ];
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("proforma_number", {
+      columnHelper.accessor("quotation_number", {
         header: "Proforma #",
         cell: (info) => (
           <span className="font-medium text-primary-800">
@@ -149,6 +152,15 @@ export default function ProformaInvoicesPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/settings/import?type=contacts">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Upload className="h-4 w-4" />}
+            >
+              Import
+            </Button>
+          </Link>
           <Button
             variant="outline"
             size="sm"

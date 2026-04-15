@@ -24,7 +24,7 @@ import { api } from "@/lib/api";
 
 interface CreditNote {
   id: string;
-  credit_note_number: string;
+  invoice_number: string;
   contact_name?: string;
   contact?: { name: string };
   date: string;
@@ -84,7 +84,7 @@ export default function CreditNotesPage() {
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("credit_note_number", {
+      columnHelper.accessor("invoice_number", {
         header: "Credit Note #",
         cell: (info) => (
           <span className="font-medium text-primary-800">

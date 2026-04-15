@@ -19,6 +19,8 @@ import { ExpensesController } from './expenses/expenses.controller';
 import { ExpensesService } from './expenses/expenses.service';
 import { SalesReturnsController } from './sales-returns/sales-returns.controller';
 import { SalesReturnsService } from './sales-returns/sales-returns.service';
+import { DeliveryChallansController } from './delivery-challans/delivery-challans.controller';
+import { DeliveryChallansService } from './delivery-challans/delivery-challans.service';
 import { PdfModule } from './pdf/pdf.module';
 
 @Module({
@@ -34,6 +36,7 @@ import { PdfModule } from './pdf/pdf.module';
     PurchaseOrdersController,
     ExpensesController,
     SalesReturnsController,
+    DeliveryChallansController,
   ],
   providers: [
     InvoicesService,
@@ -46,6 +49,7 @@ import { PdfModule } from './pdf/pdf.module';
     PurchaseOrdersService,
     ExpensesService,
     SalesReturnsService,
+    DeliveryChallansService,
   ],
   exports: [
     InvoicesService,
@@ -58,6 +62,7 @@ import { PdfModule } from './pdf/pdf.module';
     PurchaseOrdersService,
     ExpensesService,
     SalesReturnsService,
+    DeliveryChallansService,
     PdfModule,
   ],
 })

@@ -26,13 +26,15 @@ import {
   Plus,
   Search,
   Download,
-  MoreHorizontal,
+  Eye,
+  Trash2,
   CreditCard,
   ArrowDownLeft,
   ArrowUpRight,
   BarChart3,
   Loader2,
 } from "lucide-react";
+import { ActionMenu } from "@/components/ui/action-menu";
 
 interface Payment {
   id: string;
@@ -61,6 +63,7 @@ const methodLabels: Record<string, string> = {
 const columnHelper = createColumnHelper<Payment>();
 
 export default function PaymentsPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -200,14 +203,36 @@ export default function PaymentsPage() {
       columnHelper.display({
         id: "actions",
         cell: (info) => (
-          <Link href={`/payments/${info.row.original.id}`}>
-            <button className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-          </Link>
+          <ActionMenu
+            items={[
+              {
+                label: "View",
+                icon: <Eye className="h-4 w-4" />,
+                onClick: () =>
+                  router.push(`/payments/${info.row.original.id}`),
+              },
+              {
+                label: "Delete",
+                icon: <Trash2 className="h-4 w-4" />,
+                danger: true,
+                onClick: async () => {
+                  const row = info.row.original;
+                  if (!confirm(`Delete this payment of ${formatCurrency(row.amount)}?`))
+                    return;
+                  try {
+                    await api.delete(`/bill/payments/${row.id}`);
+                    queryClient.invalidateQueries({ queryKey: ["payments"] });
+                  } catch (err) {
+                    alert((err as Error).message || "Failed to delete payment");
+                  }
+                },
+              },
+            ]}
+          />
         ),
       }),
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 

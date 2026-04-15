@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Truck, Loader2 } from "lucide-react";
-import { useGenerateEwayBill } from "@/hooks/use-einvoice";
+import { useGenerateEwayBill, useEwayBillList } from "@/hooks/use-einvoice";
 
 export default function GenerateEwayBillPage() {
   return (
@@ -22,6 +22,15 @@ function GenerateEwayBillContent() {
   const preselectedInvoiceId = searchParams.get("invoiceId") || "";
 
   const generateMutation = useGenerateEwayBill();
+  const { data: ewayList, isLoading: loadingInvoices } = useEwayBillList({
+    page: 1,
+    limit: 100,
+    status: "pending",
+  });
+
+  const eligibleInvoices = (ewayList?.data || []).filter(
+    (i) => !i.eway_bill_no,
+  );
 
   const [form, setForm] = useState({
     invoiceId: preselectedInvoiceId,
@@ -103,14 +112,29 @@ function GenerateEwayBillContent() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Invoice ID
+                Invoice
               </label>
-              <Input
+              <select
                 value={form.invoiceId}
                 onChange={(e) => updateField("invoiceId", e.target.value)}
-                placeholder="Enter invoice ID"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 required
-              />
+                disabled={loadingInvoices}
+              >
+                <option value="">
+                  {loadingInvoices
+                    ? "Loading invoices..."
+                    : eligibleInvoices.length === 0
+                    ? "No invoices pending e-way bill"
+                    : "Select an invoice"}
+                </option>
+                {eligibleInvoices.map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.invoice_number} — {inv.contact_name || "N/A"} —{" "}
+                    ₹{Number(inv.total).toLocaleString("en-IN")}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

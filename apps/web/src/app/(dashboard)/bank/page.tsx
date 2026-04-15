@@ -310,6 +310,7 @@ export default function BankDashboardPage() {
             options={[
               { value: "current", label: "Current Account" },
               { value: "savings", label: "Savings Account" },
+              { value: "credit_card", label: "Credit Card" },
               { value: "cash", label: "Cash" },
               { value: "overdraft", label: "Overdraft" },
             ]}

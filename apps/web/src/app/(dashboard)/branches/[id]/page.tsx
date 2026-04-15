@@ -24,6 +24,7 @@ import {
   DollarSign,
   Package,
   FileText,
+  Pencil,
 } from "lucide-react";
 
 export default function BranchDetailPage() {
@@ -98,6 +99,11 @@ export default function BranchDetailPage() {
           </div>
           <p className="text-sm text-gray-500 mt-0.5 font-mono">{branch.code}</p>
         </div>
+        <Link href={`/branches/${branchId}/edit`}>
+          <Button variant="outline" size="sm" icon={<Pencil className="h-4 w-4" />}>
+            Edit
+          </Button>
+        </Link>
       </div>
 
       {/* P&L Summary Cards */}
