@@ -9,6 +9,7 @@ export interface CurrentUserPayload {
   aud: string;
   exp: number;
   iat: number;
+  isSuperadmin?: boolean;
 }
 
 /**

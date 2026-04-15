@@ -36,6 +36,15 @@ export class RoleGuard implements CanActivate {
       throw new ForbiddenException('User not authenticated');
     }
 
+    // Superadmins bypass all org role checks
+    const superadmin = await this.prisma.superadmin.findUnique({
+      where: { user_id: user.sub },
+    });
+    if (superadmin) {
+      request.isSuperadmin = true;
+      return true;
+    }
+
     // Get org_id from header or user payload
     const orgId = request.headers['x-org-id'] || user.org_id;
     if (!orgId) {

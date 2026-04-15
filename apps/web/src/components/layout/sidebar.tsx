@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
+import { useAuthStore } from "@/stores/auth.store";
 import {
   LayoutDashboard,
   BookOpen,
@@ -223,6 +224,7 @@ const navItems: NavItem[] = [
 export function Sidebar() {
   const pathname = usePathname();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
+  const { isSuperadmin } = useAuthStore();
   const [expandedGroups, setExpandedGroups] = React.useState<string[]>([
     "Books",
   ]);
@@ -344,6 +346,24 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Superadmin link */}
+      {isSuperadmin && (
+        <div className="px-3 pb-2">
+          <Link
+            href="/superadmin"
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              pathname.startsWith("/superadmin")
+                ? "bg-amber-500/20 text-amber-300"
+                : "text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300"
+            )}
+          >
+            <Shield className="h-5 w-5" />
+            {!sidebarCollapsed && <span>Superadmin</span>}
+          </Link>
+        </div>
+      )}
 
       {/* Collapse toggle */}
       <div className="p-3 border-t border-primary-700/50">

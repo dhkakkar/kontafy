@@ -68,6 +68,11 @@ export class AuthService {
       include: { organization: { select: { id: true, name: true } } },
     });
 
+    // Check superadmin status
+    const superadmin = await this.prisma.superadmin.findUnique({
+      where: { user_id: data.user!.id },
+    });
+
     return {
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
@@ -77,6 +82,7 @@ export class AuthService {
         phone: data.user!.phone,
         email: data.user!.email,
       },
+      is_superadmin: !!superadmin,
       organizations: memberships.map((m) => ({
         id: m.organization.id,
         name: m.organization.name,
@@ -128,6 +134,11 @@ export class AuthService {
       include: { organization: { select: { id: true, name: true } } },
     });
 
+    // Check superadmin status
+    const superadmin = await this.prisma.superadmin.findUnique({
+      where: { user_id: data.user.id },
+    });
+
     return {
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
@@ -137,6 +148,7 @@ export class AuthService {
         email: data.user.email,
         phone: data.user.phone,
       },
+      is_superadmin: !!superadmin,
       organizations: memberships.map((m) => ({
         id: m.organization.id,
         name: m.organization.name,
@@ -184,8 +196,14 @@ export class AuthService {
       },
     });
 
+    // Check superadmin status
+    const superadmin = await this.prisma.superadmin.findUnique({
+      where: { user_id: userId },
+    });
+
     return {
       id: userId,
+      is_superadmin: !!superadmin,
       organizations: memberships.map((m) => ({
         id: m.organization.id,
         name: m.organization.name,

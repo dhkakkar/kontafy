@@ -21,9 +21,11 @@ interface AuthState {
   user: User | null;
   organization: Organization | null;
   isAuthenticated: boolean;
+  isSuperadmin: boolean;
   setUser: (user: User | null) => void;
   setOrganization: (org: Organization | null) => void;
-  login: (user: User, org: Organization) => void;
+  setSuperadmin: (isSuperadmin: boolean) => void;
+  login: (user: User, org: Organization, isSuperadmin?: boolean) => void;
   logout: () => void;
 }
 
@@ -33,12 +35,14 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       organization: null,
       isAuthenticated: false,
+      isSuperadmin: false,
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       setOrganization: (organization) => set({ organization }),
-      login: (user, organization) =>
-        set({ user, organization, isAuthenticated: true }),
+      setSuperadmin: (isSuperadmin) => set({ isSuperadmin }),
+      login: (user, organization, isSuperadmin = false) =>
+        set({ user, organization, isAuthenticated: true, isSuperadmin }),
       logout: () =>
-        set({ user: null, organization: null, isAuthenticated: false }),
+        set({ user: null, organization: null, isAuthenticated: false, isSuperadmin: false }),
     }),
     {
       name: "kontafy-auth",
