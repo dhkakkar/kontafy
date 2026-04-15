@@ -22,6 +22,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { Plus, Search, Download, Upload, MessageSquare, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { ActionMenu } from "@/components/ui/action-menu";
+import { useExportReport } from "@/hooks/use-reports";
 
 interface Invoice {
   id: string;
@@ -59,6 +60,28 @@ export default function InvoicesPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
+  const exportMutation = useExportReport();
+
+  const handleExport = async () => {
+    try {
+      const blob = await exportMutation.mutateAsync({
+        reportType: "sales-register",
+        format: "excel",
+        filters: {
+          ...(activeTab !== "all" && { status: activeTab }),
+          ...(searchQuery && { search: searchQuery }),
+        },
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoices-${new Date().toISOString().split("T")[0]}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert((err as Error).message || "Export failed");
+    }
+  };
 
   const handleDelete = async (id: string, number: string) => {
     if (!confirm(`Delete invoice ${number}? This cannot be undone.`)) return;
@@ -228,6 +251,8 @@ export default function InvoicesPage() {
             variant="outline"
             size="sm"
             icon={<Download className="h-4 w-4" />}
+            onClick={handleExport}
+            loading={exportMutation.isPending}
           >
             Export
           </Button>

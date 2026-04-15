@@ -205,7 +205,7 @@ export default function DashboardPage() {
             </Card>
 
             {/* Receivables */}
-            <Card hover className="relative overflow-hidden">
+            <Card hover className="relative overflow-visible">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-gray-500 font-medium">Receivables</p>
@@ -259,7 +259,7 @@ export default function DashboardPage() {
             </Card>
 
             {/* Payables */}
-            <Card hover className="relative overflow-hidden">
+            <Card hover className="relative overflow-visible">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-gray-500 font-medium">Payables</p>

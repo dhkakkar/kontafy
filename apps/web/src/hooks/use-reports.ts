@@ -535,21 +535,41 @@ export function useTdsSummary(params: {
 export function useExportReport() {
   return useMutation<Blob, Error, { reportType: string; format: string; filters?: Record<string, string> }>({
     mutationFn: async ({ reportType, format, filters }) => {
+      // Get auth headers the same way ApiClient does
+      let authToken = "";
+      let orgId = "";
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const { data } = await supabase.auth.getSession();
+        authToken = data.session?.access_token || "";
+      } catch {}
+      try {
+        const stored = localStorage.getItem("kontafy-auth");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          orgId = parsed?.state?.organization?.id || "";
+        }
+      } catch {}
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      if (orgId) headers["X-Org-Id"] = orgId;
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/reports/export`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-          },
+          headers,
           body: JSON.stringify({ reportType, format, filters }),
         },
       );
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: "Export failed" }));
-        throw new Error(error.message);
+        throw new Error(error.message || "Export failed");
       }
 
       return response.blob();
