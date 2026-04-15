@@ -202,7 +202,7 @@ export class AccountsService {
   }
 
   /**
-   * Get accounts as a hierarchical tree structure.
+   * Get accounts as a hierarchical tree structure with computed balances.
    */
   async getTree(orgId: string) {
     const accounts = await this.prisma.account.findMany({
@@ -210,12 +210,38 @@ export class AccountsService {
       orderBy: { code: 'asc' },
     });
 
+    // Aggregate debit/credit totals per account from posted journal entries
+    const balances = await this.prisma.journalLine.groupBy({
+      by: ['account_id'],
+      where: {
+        entry: { org_id: orgId, is_posted: true },
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    const balanceMap = new Map<string, { debit: number; credit: number }>();
+    for (const b of balances) {
+      balanceMap.set(b.account_id, {
+        debit: Number(b._sum.debit || 0),
+        credit: Number(b._sum.credit || 0),
+      });
+    }
+
     // Build tree from flat list
     const map = new Map<string, any>();
     const roots: any[] = [];
 
     for (const account of accounts) {
-      map.set(account.id, { ...account, children: [] });
+      const txn = balanceMap.get(account.id) || { debit: 0, credit: 0 };
+      const opening = Number(account.opening_balance || 0);
+
+      // Asset & Expense: debit-normal; Liability, Equity, Income: credit-normal
+      const isDebitNormal = ['asset', 'expense'].includes(account.type);
+      const balance = isDebitNormal
+        ? opening + txn.debit - txn.credit
+        : opening + txn.credit - txn.debit;
+
+      map.set(account.id, { ...account, balance, children: [] });
     }
 
     for (const account of accounts) {
@@ -225,6 +251,21 @@ export class AccountsService {
       } else {
         roots.push(node);
       }
+    }
+
+    // Roll up children balances to parent accounts
+    const rollUp = (node: any): number => {
+      if (node.children.length === 0) return node.balance;
+      let childTotal = 0;
+      for (const child of node.children) {
+        childTotal += rollUp(child);
+      }
+      node.balance = childTotal;
+      return node.balance;
+    };
+
+    for (const root of roots) {
+      rollUp(root);
     }
 
     return roots;
