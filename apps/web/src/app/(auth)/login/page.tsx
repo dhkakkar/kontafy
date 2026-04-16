@@ -37,42 +37,60 @@ export default function LoginPage() {
         return;
       }
 
-      // Fetch user's organizations
-      const res = await api.get<{
-        data: Array<{
-          id: string;
-          name: string;
-          gstin?: string;
-          logo_url?: string;
-          fiscal_year_start: number;
-          role: string;
-        }>;
-      }>("/organizations");
-      const orgs = res.data;
+      // Fetch user profile (includes is_superadmin) and organizations
+      const [profileRes, orgsRes] = await Promise.all([
+        api.get<{ data: { is_superadmin?: boolean } }>("/auth/me"),
+        api.get<{
+          data: Array<{
+            id: string;
+            name: string;
+            gstin?: string;
+            logo_url?: string;
+            fiscal_year_start: number;
+            role: string;
+          }>;
+        }>("/organizations"),
+      ]);
+      const profile = profileRes.data;
+      const orgs = orgsRes.data;
+      const isSuperadmin = !!profile?.is_superadmin;
 
       const user = authData.user;
       const meta = user?.user_metadata || {};
 
+      const userPayload = {
+        id: user.id,
+        email: user.email!,
+        fullName: meta.full_name || user.email!,
+        avatarUrl: meta.avatar_url,
+      };
+
       if (orgs.length > 0) {
-        // Set the first org as active
         login(
-          {
-            id: user.id,
-            email: user.email!,
-            fullName: meta.full_name || user.email!,
-            avatarUrl: meta.avatar_url,
-          },
+          userPayload,
           {
             id: orgs[0].id,
             name: orgs[0].name,
             gstin: orgs[0].gstin,
             logoUrl: orgs[0].logo_url,
             financialYearStart: orgs[0].fiscal_year_start,
-          }
+          },
+          isSuperadmin
+        );
+      } else {
+        // Superadmin with no org — still log them in
+        login(
+          userPayload,
+          { id: "", name: "", financialYearStart: 4 },
+          isSuperadmin
         );
       }
 
-      router.push("/");
+      if (isSuperadmin && orgs.length === 0) {
+        router.push("/superadmin");
+      } else {
+        router.push("/");
+      }
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
