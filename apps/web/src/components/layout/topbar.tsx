@@ -30,15 +30,26 @@ interface OrgItem {
 
 export function Topbar() {
   const { sidebarCollapsed } = useUIStore();
-  const { user, organization, logout, setOrganization } = useAuthStore();
+  const { user, organization, isSuperadmin, logout, setOrganization } = useAuthStore();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showOrgMenu, setShowOrgMenu] = useState(false);
+  const [orgSearch, setOrgSearch] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
   const orgMenuRef = useRef<HTMLDivElement>(null);
 
+  // Normal users: their own orgs. Superadmins: ALL orgs on the platform.
   const { data: organizations = [] } = useQuery<OrgItem[]>({
-    queryKey: ["organizations"],
+    queryKey: isSuperadmin ? ["superadmin", "all-orgs", orgSearch] : ["organizations"],
     queryFn: async () => {
+      if (isSuperadmin) {
+        const params: Record<string, string> = { page: "1", limit: "200" };
+        if (orgSearch) params.search = orgSearch;
+        const res = await api.get<{ data: { data: OrgItem[] } }>(
+          "/superadmin/organizations",
+          params
+        );
+        return res.data?.data || [];
+      }
       const res = await api.get<{ data: OrgItem[] }>("/organizations");
       return res.data;
     },
@@ -53,6 +64,7 @@ export function Topbar() {
       financialYearStart: organization?.financialYearStart || 4,
     });
     setShowOrgMenu(false);
+    setOrgSearch("");
     window.location.reload();
   };
 
@@ -93,26 +105,50 @@ export function Topbar() {
         {/* Divider */}
         <div className="h-8 w-px bg-gray-200" />
 
-        {/* Org Switcher */}
-        {organizations.length > 1 && (
+        {/* Org Switcher — always visible for superadmins, otherwise only when user has multiple orgs */}
+        {(isSuperadmin || organizations.length > 1) && (
           <div className="relative" ref={orgMenuRef}>
             <button
               onClick={() => setShowOrgMenu(!showOrgMenu)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-50 border border-gray-200 transition-colors"
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-50 border transition-colors",
+                isSuperadmin ? "border-amber-300 bg-amber-50/50" : "border-gray-200"
+              )}
             >
-              <Building2 className="h-4 w-4 text-gray-500" />
+              <Building2 className={cn("h-4 w-4", isSuperadmin ? "text-amber-600" : "text-gray-500")} />
               <span className="text-sm font-medium text-gray-700 max-w-[140px] truncate">
-                {organization?.name || "Select Org"}
+                {organization?.id ? organization.name : "Select Org"}
               </span>
               <ChevronDown className={cn("h-3.5 w-3.5 text-gray-400 transition-transform", showOrgMenu && "rotate-180")} />
             </button>
 
             {showOrgMenu && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl border border-gray-200 shadow-lg py-1 z-50">
-                <div className="px-4 py-2 border-b border-gray-100">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Switch Organization</p>
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl border border-gray-200 shadow-lg py-1 z-50">
+                <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {isSuperadmin ? "All Organizations" : "Switch Organization"}
+                  </p>
+                  {isSuperadmin && (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                      SUPERADMIN
+                    </span>
+                  )}
                 </div>
-                <div className="py-1 max-h-64 overflow-y-auto">
+                {isSuperadmin && (
+                  <div className="px-3 py-2 border-b border-gray-100">
+                    <input
+                      type="text"
+                      value={orgSearch}
+                      onChange={(e) => setOrgSearch(e.target.value)}
+                      placeholder="Search organizations..."
+                      className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:border-primary-400"
+                    />
+                  </div>
+                )}
+                <div className="py-1 max-h-80 overflow-y-auto">
+                  {organizations.length === 0 && (
+                    <p className="px-4 py-3 text-sm text-gray-400 text-center">No organizations</p>
+                  )}
                   {organizations.map((org) => (
                     <button
                       key={org.id}
