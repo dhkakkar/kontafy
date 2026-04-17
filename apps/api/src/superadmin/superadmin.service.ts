@@ -159,7 +159,19 @@ export class SuperadminService {
   /**
    * Create an organization and assign an owner.
    */
-  async createOrganization(data: { name: string; owner_user_id: string }) {
+  async createOrganization(data: {
+    name: string;
+    owner_user_id: string;
+    legal_name?: string;
+    gstin?: string;
+    pan?: string;
+    email?: string;
+    phone?: string;
+    business_type?: string;
+    industry?: string;
+    plan?: string;
+    fiscal_year_start?: number;
+  }) {
     // Verify owner user exists in Supabase
     const { data: userData, error } =
       await this.supabase.auth.admin.getUserById(data.owner_user_id);
@@ -171,7 +183,15 @@ export class SuperadminService {
     const org = await this.prisma.organization.create({
       data: {
         name: data.name,
-        email: userData.user.email || undefined,
+        legal_name: data.legal_name || undefined,
+        gstin: data.gstin || undefined,
+        pan: data.pan || undefined,
+        email: data.email || userData.user.email || undefined,
+        phone: data.phone || undefined,
+        business_type: data.business_type || undefined,
+        industry: data.industry || undefined,
+        plan: data.plan || 'starter',
+        fiscal_year_start: data.fiscal_year_start ?? 4,
       },
     });
 

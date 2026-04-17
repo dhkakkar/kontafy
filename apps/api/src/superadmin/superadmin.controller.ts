@@ -51,7 +51,20 @@ export class SuperadminController {
   @Post('organizations')
   @ApiOperation({ summary: 'Create organization with specified owner' })
   async createOrganization(
-    @Body() body: { name: string; owner_user_id: string },
+    @Body()
+    body: {
+      name: string;
+      owner_user_id: string;
+      legal_name?: string;
+      gstin?: string;
+      pan?: string;
+      email?: string;
+      phone?: string;
+      business_type?: string;
+      industry?: string;
+      plan?: string;
+      fiscal_year_start?: number;
+    },
   ) {
     return this.service.createOrganization(body);
   }

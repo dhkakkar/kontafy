@@ -3,18 +3,56 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth.store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, Building2, Plus } from "lucide-react";
+import { Search, Trash2, Building2, Plus, X } from "lucide-react";
+
+const PLANS = ["starter", "pro", "business", "enterprise"];
+const FY_MONTHS = [
+  { value: 1, label: "January" },
+  { value: 4, label: "April" },
+  { value: 7, label: "July" },
+  { value: 10, label: "October" },
+];
+
+interface NewOrgState {
+  name: string;
+  owner_user_id: string;
+  legal_name: string;
+  gstin: string;
+  pan: string;
+  email: string;
+  phone: string;
+  business_type: string;
+  industry: string;
+  plan: string;
+  fiscal_year_start: number;
+}
+
+const EMPTY_ORG: NewOrgState = {
+  name: "",
+  owner_user_id: "",
+  legal_name: "",
+  gstin: "",
+  pan: "",
+  email: "",
+  phone: "",
+  business_type: "",
+  industry: "",
+  plan: "starter",
+  fiscal_year_start: 4,
+};
 
 export default function SuperadminOrganizationsPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
-  const [newOrg, setNewOrg] = useState({ name: "", owner_user_id: "" });
+  const [newOrg, setNewOrg] = useState<NewOrgState>(EMPTY_ORG);
 
   const { data, isLoading } = useQuery({
     queryKey: ["superadmin", "organizations", page, search],
@@ -39,11 +77,26 @@ export default function SuperadminOrganizationsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => api.post("/superadmin/organizations", newOrg),
+    mutationFn: () => {
+      // Strip empty optional fields so backend defaults apply cleanly
+      const payload: Record<string, unknown> = {
+        name: newOrg.name,
+        owner_user_id: newOrg.owner_user_id,
+        plan: newOrg.plan,
+        fiscal_year_start: newOrg.fiscal_year_start,
+      };
+      (
+        ["legal_name", "gstin", "pan", "email", "phone", "business_type", "industry"] as const
+      ).forEach((k) => {
+        const v = newOrg[k]?.trim();
+        if (v) payload[k] = v;
+      });
+      return api.post("/superadmin/organizations", payload);
+    },
     onSuccess: () => {
-      alert("Organization created");
+      alert("Organization created successfully");
       setShowCreate(false);
-      setNewOrg({ name: "", owner_user_id: "" });
+      setNewOrg(EMPTY_ORG);
       queryClient.invalidateQueries({ queryKey: ["superadmin", "organizations"] });
     },
     onError: (e: any) => alert(e?.message || "Create failed"),
@@ -64,28 +117,166 @@ export default function SuperadminOrganizationsPage() {
       {/* Create org form */}
       {showCreate && (
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-3">Create New Organization</h2>
-          <div className="flex gap-3 max-w-2xl">
-            <Input
-              placeholder="Organization name"
-              value={newOrg.name}
-              onChange={(e) => setNewOrg({ ...newOrg, name: e.target.value })}
-            />
-            <Input
-              placeholder="Owner User ID (UUID)"
-              value={newOrg.owner_user_id}
-              onChange={(e) => setNewOrg({ ...newOrg, owner_user_id: e.target.value })}
-            />
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Create New Organization</h2>
+            <button
+              onClick={() => { setShowCreate(false); setNewOrg(EMPTY_ORG); }}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Required */}
+            <div className="md:col-span-2">
+              <label className="text-xs font-medium text-gray-700 mb-1 block">
+                Organization Name <span className="text-red-500">*</span>
+              </label>
+              <Input
+                placeholder="e.g. Acme Pvt. Ltd."
+                value={newOrg.name}
+                onChange={(e) => setNewOrg({ ...newOrg, name: e.target.value })}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-xs font-medium text-gray-700 mb-1 block">
+                Owner User ID (UUID) <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Paste user UUID from Users tab..."
+                  value={newOrg.owner_user_id}
+                  onChange={(e) => setNewOrg({ ...newOrg, owner_user_id: e.target.value })}
+                  className="flex-1"
+                />
+                {user?.id && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNewOrg({ ...newOrg, owner_user_id: user.id })}
+                    type="button"
+                  >
+                    Use My ID
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                This user will be the org owner. Find IDs in the Users tab.
+              </p>
+            </div>
+
+            {/* Optional details */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">Legal Name</label>
+              <Input
+                placeholder="Registered legal name"
+                value={newOrg.legal_name}
+                onChange={(e) => setNewOrg({ ...newOrg, legal_name: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">Plan</label>
+              <select
+                value={newOrg.plan}
+                onChange={(e) => setNewOrg({ ...newOrg, plan: e.target.value })}
+                className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-primary-400"
+              >
+                {PLANS.map((p) => (
+                  <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">GSTIN</label>
+              <Input
+                placeholder="22AAAAA0000A1Z5"
+                value={newOrg.gstin}
+                onChange={(e) => setNewOrg({ ...newOrg, gstin: e.target.value.toUpperCase() })}
+                maxLength={15}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">PAN</label>
+              <Input
+                placeholder="AAAAA0000A"
+                value={newOrg.pan}
+                onChange={(e) => setNewOrg({ ...newOrg, pan: e.target.value.toUpperCase() })}
+                maxLength={10}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">Email</label>
+              <Input
+                type="email"
+                placeholder="contact@company.com"
+                value={newOrg.email}
+                onChange={(e) => setNewOrg({ ...newOrg, email: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">Phone</label>
+              <Input
+                placeholder="+91 98765 43210"
+                value={newOrg.phone}
+                onChange={(e) => setNewOrg({ ...newOrg, phone: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">Business Type</label>
+              <Input
+                placeholder="e.g. Private Limited, LLP, Sole Proprietor"
+                value={newOrg.business_type}
+                onChange={(e) => setNewOrg({ ...newOrg, business_type: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">Industry</label>
+              <Input
+                placeholder="e.g. Manufacturing, Services, IT"
+                value={newOrg.industry}
+                onChange={(e) => setNewOrg({ ...newOrg, industry: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1 block">Fiscal Year Start</label>
+              <select
+                value={newOrg.fiscal_year_start}
+                onChange={(e) => setNewOrg({ ...newOrg, fiscal_year_start: parseInt(e.target.value) })}
+                className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-primary-400"
+              >
+                {FY_MONTHS.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
+            <Button
+              variant="outline"
+              onClick={() => { setShowCreate(false); setNewOrg(EMPTY_ORG); }}
+            >
+              Cancel
+            </Button>
             <Button
               variant="primary"
               onClick={() => createMutation.mutate()}
               loading={createMutation.isPending}
-              disabled={!newOrg.name || !newOrg.owner_user_id}
+              disabled={!newOrg.name.trim() || !newOrg.owner_user_id.trim()}
             >
-              Create
+              <Plus className="h-4 w-4 mr-1" /> Create Organization
             </Button>
           </div>
-          <p className="text-xs text-gray-400 mt-2">The specified user will become the org owner.</p>
         </Card>
       )}
 
