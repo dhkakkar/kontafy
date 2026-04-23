@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, Building2, Plus, X } from "lucide-react";
+import { Search, Trash2, Building2, Plus, X, Power, PowerOff } from "lucide-react";
 
 const PLANS = ["starter", "pro", "business", "enterprise"];
 const FY_MONTHS = [
@@ -74,6 +74,16 @@ export default function SuperadminOrganizationsPage() {
       queryClient.invalidateQueries({ queryKey: ["superadmin", "organizations"] });
     },
     onError: (e: any) => alert(e?.message || "Delete failed"),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, is_active, reason }: { id: string; is_active: boolean; reason?: string }) =>
+      api.patch(`/superadmin/organizations/${id}/status`, { is_active, reason }),
+    onSuccess: (_d, vars) => {
+      alert(vars.is_active ? "Organization activated" : "Organization deactivated");
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "organizations"] });
+    },
+    onError: (e: any) => alert(e?.message || "Status update failed"),
   });
 
   const createMutation = useMutation({
@@ -297,6 +307,7 @@ export default function SuperadminOrganizationsPage() {
               <tr className="border-b bg-gray-50">
                 <th className="text-left p-3 font-medium text-gray-600">Organization</th>
                 <th className="text-left p-3 font-medium text-gray-600">Plan</th>
+                <th className="text-left p-3 font-medium text-gray-600">Status</th>
                 <th className="text-left p-3 font-medium text-gray-600">Members</th>
                 <th className="text-left p-3 font-medium text-gray-600">Invoices</th>
                 <th className="text-left p-3 font-medium text-gray-600">Contacts</th>
@@ -305,7 +316,9 @@ export default function SuperadminOrganizationsPage() {
               </tr>
             </thead>
             <tbody>
-              {organizations.map((org: any) => (
+              {organizations.map((org: any) => {
+                const isActive = org.is_active !== false; // default true if missing
+                return (
                 <tr key={org.id} className="border-b hover:bg-gray-50">
                   <td className="p-3">
                     <div className="flex items-center gap-2">
@@ -317,21 +330,53 @@ export default function SuperadminOrganizationsPage() {
                     </div>
                   </td>
                   <td className="p-3"><Badge variant="outline">{org.plan}</Badge></td>
+                  <td className="p-3">
+                    {isActive ? (
+                      <Badge variant="success" dot>Active</Badge>
+                    ) : (
+                      <Badge variant="danger" dot>Inactive</Badge>
+                    )}
+                  </td>
                   <td className="p-3">{org._count?.members || 0}</td>
                   <td className="p-3">{org._count?.invoices || 0}</td>
                   <td className="p-3">{org._count?.contacts || 0}</td>
                   <td className="p-3 text-gray-500">{new Date(org.created_at).toLocaleDateString("en-IN")}</td>
                   <td className="p-3 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => {
-                      if (confirm(`Delete "${org.name}"? This cannot be undone.`)) deleteMutation.mutate(org.id);
-                    }}>
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title={isActive ? "Deactivate" : "Activate"}
+                        onClick={() => {
+                          if (isActive) {
+                            const reason = prompt(`Deactivate "${org.name}"?\nMembers will lose access until reactivated.\n\nOptional reason:`);
+                            if (reason === null) return;
+                            statusMutation.mutate({ id: org.id, is_active: false, reason: reason || undefined });
+                          } else {
+                            if (confirm(`Reactivate "${org.name}"? Members will regain access.`)) {
+                              statusMutation.mutate({ id: org.id, is_active: true });
+                            }
+                          }
+                        }}
+                      >
+                        {isActive ? (
+                          <PowerOff className="h-4 w-4 text-amber-600" />
+                        ) : (
+                          <Power className="h-4 w-4 text-green-600" />
+                        )}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        if (confirm(`Delete "${org.name}"? This cannot be undone.`)) deleteMutation.mutate(org.id);
+                      }}>
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {organizations.length === 0 && !isLoading && (
-                <tr><td colSpan={7} className="p-8 text-center text-gray-400">No organizations found</td></tr>
+                <tr><td colSpan={8} className="p-8 text-center text-gray-400">No organizations found</td></tr>
               )}
             </tbody>
           </table>

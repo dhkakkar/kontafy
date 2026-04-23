@@ -56,6 +56,12 @@ export interface CurrentSubscriptionResponse {
   cancelAtPeriodEnd: boolean;
   razorpaySubscriptionId: string | null;
   features: Record<string, any>;
+  // Org-level access state (used by frontend AccessGate / ExpiryBanner)
+  orgActive: boolean;
+  deactivationReason: string | null;
+  // Days until plan_expires_at; null if no expiry or free plan; negative if already expired
+  daysUntilExpiry: number | null;
+  isExpired: boolean;
 }
 
 export interface UsageResponse {

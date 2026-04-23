@@ -226,6 +226,29 @@ export class SuperadminService {
   }
 
   /**
+   * Activate or deactivate an organization.
+   * Deactivated orgs can't be accessed by their members (except superadmins).
+   */
+  async setOrganizationStatus(
+    id: string,
+    data: { is_active: boolean; reason?: string },
+  ) {
+    const org = await this.prisma.organization.findUnique({ where: { id } });
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    return this.prisma.organization.update({
+      where: { id },
+      data: {
+        is_active: data.is_active,
+        deactivated_at: data.is_active ? null : new Date(),
+        deactivation_reason: data.is_active ? null : data.reason || null,
+      },
+    });
+  }
+
+  /**
    * Delete an organization and all its data.
    */
   async deleteOrganization(id: string) {

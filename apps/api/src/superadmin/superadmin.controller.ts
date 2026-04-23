@@ -84,6 +84,15 @@ export class SuperadminController {
     return this.service.updateOrganization(id, body);
   }
 
+  @Patch('organizations/:id/status')
+  @ApiOperation({ summary: 'Activate or deactivate organization' })
+  async setOrganizationStatus(
+    @Param('id') id: string,
+    @Body() body: { is_active: boolean; reason?: string },
+  ) {
+    return this.service.setOrganizationStatus(id, body);
+  }
+
   @Delete('organizations/:id')
   @ApiOperation({ summary: 'Delete organization' })
   async deleteOrganization(@Param('id') id: string) {

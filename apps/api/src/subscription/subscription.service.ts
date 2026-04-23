@@ -68,6 +68,8 @@ export class SubscriptionService {
         plan: true,
         plan_expires_at: true,
         settings: true,
+        is_active: true,
+        deactivation_reason: true,
       },
     });
 
@@ -80,6 +82,16 @@ export class SubscriptionService {
     const settings = (org.settings as Record<string, any>) || {};
     const subscription = settings.subscription || {};
 
+    // Compute days-until-expiry (null for free plan or when no expiry is set).
+    let daysUntilExpiry: number | null = null;
+    let isExpired = false;
+    if (planId !== 'free' && org.plan_expires_at) {
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const diffMs = org.plan_expires_at.getTime() - Date.now();
+      daysUntilExpiry = Math.ceil(diffMs / msPerDay);
+      isExpired = diffMs <= 0;
+    }
+
     return {
       planId: planDef.id,
       planName: planDef.name,
@@ -90,6 +102,10 @@ export class SubscriptionService {
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd || false,
       razorpaySubscriptionId: subscription.razorpaySubscriptionId || null,
       features: planDef.features,
+      orgActive: org.is_active,
+      deactivationReason: org.deactivation_reason,
+      daysUntilExpiry,
+      isExpired,
     };
   }
 

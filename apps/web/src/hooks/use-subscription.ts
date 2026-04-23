@@ -43,6 +43,10 @@ export interface CurrentSubscription {
   cancelAtPeriodEnd: boolean;
   razorpaySubscriptionId: string | null;
   features: PlanFeatures;
+  orgActive: boolean;
+  deactivationReason: string | null;
+  daysUntilExpiry: number | null;
+  isExpired: boolean;
 }
 
 export interface UsageMetric {
