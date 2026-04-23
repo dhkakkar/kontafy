@@ -30,6 +30,7 @@ import {
   ShoppingCart,
   FileCheck,
   PieChart,
+  LogOut,
 } from "lucide-react";
 
 interface NavItem {
@@ -39,7 +40,7 @@ interface NavItem {
   children?: { label: string; href: string }[];
 }
 
-const navItems: NavItem[] = [
+const businessNavItems: NavItem[] = [
   {
     label: "Dashboard",
     href: "/",
@@ -221,10 +222,41 @@ const navItems: NavItem[] = [
   },
 ];
 
+const adminNavItems: NavItem[] = [
+  {
+    label: "Dashboard",
+    href: "/superadmin",
+    icon: <LayoutDashboard className="h-5 w-5" />,
+  },
+  {
+    label: "Organizations",
+    href: "/superadmin/organizations",
+    icon: <Building2 className="h-5 w-5" />,
+  },
+  {
+    label: "Users",
+    href: "/superadmin/users",
+    icon: <Users className="h-5 w-5" />,
+  },
+  {
+    label: "Admins",
+    href: "/superadmin/admins",
+    icon: <Shield className="h-5 w-5" />,
+  },
+  {
+    label: "Audit Log",
+    href: "/superadmin/audit-log",
+    icon: <ClipboardList className="h-5 w-5" />,
+  },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
-  const { isSuperadmin } = useAuthStore();
+  const { isSuperadmin, organization } = useAuthStore();
+  const inAdminMode = pathname.startsWith("/superadmin");
+  const navItems = inAdminMode ? adminNavItems : businessNavItems;
+  const hasOrg = !!organization?.id;
   const [expandedGroups, setExpandedGroups] = React.useState<string[]>([
     "Books",
   ]);
@@ -269,7 +301,14 @@ export function Sidebar() {
             <path d="M18 10v4.5l3.5-4.5h2.2l-3.8 4.8L24 20h-2.3l-3.7-4.7V20h-1.8V10H18Z" fill="white" />
           </svg>
           {!sidebarCollapsed && (
-            <span className="text-lg font-bold tracking-tight text-white">Kontafy</span>
+            <div className="flex flex-col leading-tight">
+              <span className="text-lg font-bold tracking-tight text-white">Kontafy</span>
+              {inAdminMode && (
+                <span className="text-[10px] uppercase tracking-wider text-amber-400 font-semibold">
+                  Admin Console
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -347,20 +386,32 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Superadmin link */}
-      {isSuperadmin && (
+      {/* Admin / business mode toggle */}
+      {isSuperadmin && !inAdminMode && (
         <div className="px-3 pb-2">
           <Link
             href="/superadmin"
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-              pathname.startsWith("/superadmin")
-                ? "bg-amber-500/20 text-amber-300"
-                : "text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300"
+              "text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300"
             )}
           >
             <Shield className="h-5 w-5" />
             {!sidebarCollapsed && <span>Superadmin</span>}
+          </Link>
+        </div>
+      )}
+      {isSuperadmin && inAdminMode && hasOrg && (
+        <div className="px-3 pb-2">
+          <Link
+            href="/"
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              "text-primary-200 hover:bg-white/10 hover:text-white"
+            )}
+          >
+            <LogOut className="h-5 w-5" />
+            {!sidebarCollapsed && <span>Exit Admin</span>}
           </Link>
         </div>
       )}
