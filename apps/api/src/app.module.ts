@@ -24,6 +24,7 @@ import { BranchModule } from './branch/branch.module';
 import { BudgetModule } from './budget/budget.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { SuperadminModule } from './superadmin/superadmin.module';
+import { SupportModule } from './support/support.module';
 import { HealthController } from './health/health.controller';
 import { AuthGuard } from './common/guards/auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
@@ -60,6 +61,7 @@ import { AuditModule } from './audit/audit.module';
     BudgetModule,
     SubscriptionModule,
     SuperadminModule,
+    SupportModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -14,13 +14,17 @@ import { SuperadminGuard } from '../common/guards/superadmin.guard';
 import { SuperadminOnly } from '../common/decorators/superadmin.decorator';
 import { CurrentUser, CurrentUserPayload } from '../common/decorators/current-user.decorator';
 import { SuperadminService } from './superadmin.service';
+import { SupportService } from '../support/support.service';
 
 @ApiTags('Superadmin')
 @Controller('superadmin')
 @UseGuards(SuperadminGuard)
 @SuperadminOnly()
 export class SuperadminController {
-  constructor(private readonly service: SuperadminService) {}
+  constructor(
+    private readonly service: SuperadminService,
+    private readonly supportService: SupportService,
+  ) {}
 
   // ── Dashboard ──────────────────────────────────────────────
 
@@ -156,5 +160,61 @@ export class SuperadminController {
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });
+  }
+
+  // ── Support Tickets ────────────────────────────────────────
+
+  @Get('tickets')
+  @ApiOperation({ summary: 'List all support tickets across the platform' })
+  async listTickets(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('priority') priority?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.supportService.listAllTickets({
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+      status,
+      priority,
+      search,
+    });
+  }
+
+  @Get('tickets/:id')
+  @ApiOperation({ summary: 'Get ticket detail with full message thread' })
+  async getTicket(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.supportService.getTicketDetail(id, {
+      userId: user.sub,
+      isSuperadmin: true,
+    });
+  }
+
+  @Patch('tickets/:id')
+  @ApiOperation({ summary: 'Update ticket status / priority / assignee' })
+  async updateTicket(
+    @Param('id') id: string,
+    @Body()
+    body: { status?: string; priority?: string; assigned_to?: string | null },
+  ) {
+    return this.supportService.updateTicket(id, body);
+  }
+
+  @Post('tickets/:id/messages')
+  @ApiOperation({ summary: 'Reply on a ticket as staff' })
+  async replyAsStaff(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: { body: string },
+  ) {
+    return this.supportService.addMessage(
+      id,
+      { userId: user.sub, isSuperadmin: true },
+      body.body,
+    );
   }
 }

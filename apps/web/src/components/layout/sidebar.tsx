@@ -31,6 +31,7 @@ import {
   FileCheck,
   PieChart,
   LogOut,
+  LifeBuoy,
 } from "lucide-react";
 
 interface NavItem {
@@ -220,6 +221,11 @@ const businessNavItems: NavItem[] = [
       { label: "Audit Log", href: "/settings/audit-log" },
     ],
   },
+  {
+    label: "Help Center",
+    href: "/help",
+    icon: <LifeBuoy className="h-5 w-5" />,
+  },
 ];
 
 const adminNavItems: NavItem[] = [
@@ -242,6 +248,11 @@ const adminNavItems: NavItem[] = [
     label: "Admins",
     href: "/superadmin/admins",
     icon: <Shield className="h-5 w-5" />,
+  },
+  {
+    label: "Support Tickets",
+    href: "/superadmin/tickets",
+    icon: <LifeBuoy className="h-5 w-5" />,
   },
   {
     label: "Audit Log",
@@ -271,6 +282,7 @@ export function Sidebar() {
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
+    if (href === "/superadmin") return pathname === "/superadmin";
     return pathname.startsWith(href);
   };
 

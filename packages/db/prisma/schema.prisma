@@ -72,6 +72,7 @@ model Organization {
   purchase_orders       PurchaseOrder[]
   recurring_invoices    RecurringInvoice[]
   expenses              Expense[]
+  support_tickets       SupportTicket[]
 
   @@map("organizations")
 }
@@ -98,6 +99,46 @@ model Superadmin {
   created_at DateTime @default(now()) @db.Timestamptz
 
   @@map("superadmins")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Support / Help Center
+// ═══════════════════════════════════════════════════════════════
+
+model SupportTicket {
+  id           String    @id @default(uuid()) @db.Uuid
+  org_id       String    @db.Uuid
+  created_by   String    @db.Uuid
+  subject      String
+  description  String
+  category     String    @default("general") // general, billing, technical, feature_request, other
+  priority     String    @default("normal")  // low, normal, high, urgent
+  status       String    @default("open")    // open, in_progress, resolved, closed
+  assigned_to  String?   @db.Uuid            // superadmin user id
+  resolved_at  DateTime? @db.Timestamptz
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  updated_at   DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  organization Organization     @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  messages     SupportMessage[]
+
+  @@index([org_id, status])
+  @@index([status, created_at])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  ticket_id      String   @db.Uuid
+  author_id      String   @db.Uuid
+  body           String
+  is_staff_reply Boolean  @default(false)
+  created_at     DateTime @default(now()) @db.Timestamptz
+
+  ticket SupportTicket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([ticket_id, created_at])
+  @@map("support_messages")
 }
 
 // ═══════════════════════════════════════════════════════════════
