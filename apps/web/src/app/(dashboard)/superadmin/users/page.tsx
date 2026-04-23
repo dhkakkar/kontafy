@@ -22,9 +22,8 @@ export default function SuperadminUsersPage() {
     },
   });
 
-  const result = data?.data || data;
-  const users = result?.data || [];
-  const meta = result?.meta || {};
+  const users = data?.data || [];
+  const meta = data?.meta || {};
 
   return (
     <div className="space-y-6">

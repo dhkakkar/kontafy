@@ -54,10 +54,9 @@ export default function SuperadminTicketsPage() {
     },
   });
 
-  const result = data?.data || data;
-  const tickets = result?.data || [];
-  const meta = result?.meta || {};
-  const stats = result?.stats || {};
+  const tickets = data?.data || [];
+  const meta = data?.meta || {};
+  const stats = (data as any)?.stats || {};
 
   return (
     <div className="space-y-6">

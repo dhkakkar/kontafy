@@ -38,16 +38,20 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, ApiResponseSha
           return response;
         }
 
-        // If response has data + meta (paginated), extract them
+        // If response has data + meta (paginated), extract them. Any other
+        // top-level fields (e.g. `stats`) are preserved alongside so callers
+        // don't lose information.
         if (response && typeof response === 'object' && 'data' in response && 'meta' in response) {
+          const { data, meta, ...rest } = response as Record<string, unknown>;
           return {
             success: true,
-            data: response.data,
+            data,
             meta: {
-              ...response.meta,
+              ...(meta as Record<string, unknown>),
               timestamp: new Date().toISOString(),
             },
-          };
+            ...rest,
+          } as ApiResponseShape<T>;
         }
 
         // Default: wrap in standard shape

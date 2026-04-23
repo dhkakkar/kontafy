@@ -15,9 +15,8 @@ export default function SuperadminAuditLogPage() {
     queryFn: () => api.get<any>("/superadmin/audit-log", { page: String(page), limit: "50" }),
   });
 
-  const result = data?.data || data;
-  const logs = result?.data || [];
-  const meta = result?.meta || {};
+  const logs = data?.data || [];
+  const meta = data?.meta || {};
 
   return (
     <div className="space-y-6">

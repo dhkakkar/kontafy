@@ -44,11 +44,11 @@ export function Topbar() {
       if (isSuperadmin) {
         const params: Record<string, string> = { page: "1", limit: "200" };
         if (orgSearch) params.search = orgSearch;
-        const res = await api.get<{ data: { data: OrgItem[] } }>(
+        const res = await api.get<{ data: OrgItem[] }>(
           "/superadmin/organizations",
           params
         );
-        return res.data?.data || [];
+        return res.data || [];
       }
       const res = await api.get<{ data: OrgItem[] }>("/organizations");
       return res.data;

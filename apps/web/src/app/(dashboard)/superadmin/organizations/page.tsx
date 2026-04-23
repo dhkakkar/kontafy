@@ -63,9 +63,8 @@ export default function SuperadminOrganizationsPage() {
     },
   });
 
-  const result = data?.data || data;
-  const organizations = result?.data || [];
-  const meta = result?.meta || {};
+  const organizations = data?.data || [];
+  const meta = data?.meta || {};
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/superadmin/organizations/${id}`),

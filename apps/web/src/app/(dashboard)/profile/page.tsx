@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/stores/auth.store";
 import { api } from "@/lib/api";
+import { createClient } from "@/lib/supabase/client";
 import {
   Save,
   Upload,
@@ -55,6 +56,80 @@ export default function ProfilePage() {
     confirm_password: "",
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+
+  const handleAvatarChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    // Reset the input so picking the same file again re-fires onChange
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (!file) return;
+
+    setAvatarError("");
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please choose an image file.");
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setAvatarError("File too large. Max 1MB.");
+      return;
+    }
+    if (!user?.id) {
+      setAvatarError("Not signed in.");
+      return;
+    }
+
+    setAvatarUploading(true);
+    try {
+      const supabase = createClient();
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, {
+          upsert: true,
+          contentType: file.type,
+          cacheControl: "3600",
+        });
+
+      if (uploadErr) {
+        setAvatarError(
+          uploadErr.message.toLowerCase().includes("bucket")
+            ? 'Avatar storage not configured. Create a public bucket named "avatars" in Supabase.'
+            : `Upload failed: ${uploadErr.message}`,
+        );
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(path);
+      const avatarUrl = urlData.publicUrl;
+
+      const result = await api.patch<{
+        data?: { avatar_url?: string };
+        avatar_url?: string;
+      }>("/profile", { avatar_url: avatarUrl });
+      // Response is wrapped by backend interceptor: { data: { avatar_url } }
+      const finalUrl =
+        result?.data?.avatar_url || result?.avatar_url || avatarUrl;
+
+      setUser({
+        ...user,
+        avatarUrl: finalUrl,
+      });
+    } catch (err: any) {
+      setAvatarError(err?.message || "Failed to update avatar");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   const updateField = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setSuccess(false);
@@ -70,24 +145,30 @@ export default function ProfilePage() {
     setSaving(true);
     setSuccess(false);
     try {
-      const result = await api.patch<{
+      type ProfilePayload = {
         id: string;
         email: string | null;
         phone: string | null;
         name: string | null;
         avatar_url: string | null;
-      }>("/profile", {
+      };
+      const response = await api.patch<{
+        data?: ProfilePayload;
+      } & Partial<ProfilePayload>>("/profile", {
         name: form.fullName,
         email: form.email,
         phone: form.phone || undefined,
       });
 
+      // Response is wrapped by backend interceptor: { success, data, meta }
+      const updated = response.data || response;
+
       if (user) {
         setUser({
           ...user,
-          fullName: result.name || user.fullName,
-          email: result.email || user.email,
-          phone: result.phone || undefined,
+          fullName: updated?.name || user.fullName,
+          email: updated?.email || user.email,
+          phone: updated?.phone || undefined,
         });
       }
       setSuccess(true);
@@ -163,7 +244,7 @@ export default function ProfilePage() {
 
           {/* Avatar */}
           <div className="flex items-center gap-6 mb-6">
-            <div className="h-20 w-20 rounded-full bg-primary-50 flex items-center justify-center border-2 border-primary-100">
+            <div className="h-20 w-20 rounded-full bg-primary-50 flex items-center justify-center border-2 border-primary-100 overflow-hidden">
               {user?.avatarUrl ? (
                 <img
                   src={user.avatarUrl}
@@ -177,16 +258,28 @@ export default function ProfilePage() {
               )}
             </div>
             <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
               <Button
                 variant="outline"
                 size="sm"
                 icon={<Upload className="h-4 w-4" />}
+                onClick={() => fileInputRef.current?.click()}
+                loading={avatarUploading}
               >
                 Change Avatar
               </Button>
               <p className="text-xs text-gray-500 mt-1.5">
                 PNG, JPG up to 1MB. Square images work best.
               </p>
+              {avatarError && (
+                <p className="text-xs text-danger-600 mt-1">{avatarError}</p>
+              )}
             </div>
           </div>
 

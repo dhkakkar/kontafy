@@ -45,18 +45,23 @@ export default function SuperadminDashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {statCards.map((stat) => {
           const content = (
-            <Card key={stat.label} className="p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${stat.color}`}>{stat.icon}</div>
-                <div>
-                  <p className="text-xs text-gray-500">{stat.label}</p>
-                  <p className="text-lg font-bold text-gray-900">{isLoading ? "..." : stat.value}</p>
+            <Card key={stat.label} className="p-4 hover:shadow-md transition-shadow overflow-hidden">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`p-2 rounded-lg shrink-0 ${stat.color}`}>{stat.icon}</div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-gray-500 truncate">{stat.label}</p>
+                  <p
+                    className="text-lg font-bold text-gray-900 truncate"
+                    title={String(stat.value)}
+                  >
+                    {isLoading ? "..." : stat.value}
+                  </p>
                 </div>
               </div>
             </Card>
           );
           return stat.href ? (
-            <Link key={stat.label} href={stat.href}>{content}</Link>
+            <Link key={stat.label} href={stat.href} className="min-w-0">{content}</Link>
           ) : (
             <React.Fragment key={stat.label}>{content}</React.Fragment>
           );
