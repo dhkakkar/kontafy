@@ -461,15 +461,19 @@ export class InvoicesService {
    * Auto-generate invoice number.
    *
    * For sales invoices, if the org has configured an `invoice_prefix` in
-   * Settings → Invoice Config, use it together with `next_invoice_number`
-   * and bump the counter (matches the preview shown on the settings page,
-   * e.g. "SYSCODE-0001"). Otherwise fall back to the fiscal-year default
-   * format like "INV/25-26/0001".
+   * Settings → Invoice Config, the number is produced as
+   * `{cleanPrefix}/{NN}/{FY}` (e.g. "SYSCODE/01/2026-27"):
+   *   - cleanPrefix: the configured prefix with a trailing `-`, `/` or `_`
+   *     stripped (so "SYSCODE-" becomes "SYSCODE")
+   *   - NN: `next_invoice_number`, padded to 2 digits
+   *   - FY: the current fiscal year derived from the org's
+   *     `fiscal_year_start` month (default April), like "2026-27"
+   * Otherwise fall back to the short default format like "INV/25-26/0001".
    */
   private async generateInvoiceNumber(orgId: string, type: string): Promise<string> {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      select: { settings: true },
+      select: { settings: true, fiscal_year_start: true },
     });
 
     const settings = (org?.settings as Record<string, any>) || {};
@@ -484,14 +488,25 @@ export class InvoicesService {
         ? (settings.next_invoice_number as number)
         : null;
 
+    // Fiscal year based on the org's configured start month (April by default).
+    const fyStartMonth = org?.fiscal_year_start || 4;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const fyStartYear =
+      currentMonth >= fyStartMonth ? currentYear : currentYear - 1;
+    const fyEndYear = fyStartYear + 1;
+
     if (type === 'sale' && configuredPrefix) {
       const number = configuredNext ?? 1;
-      const padded = String(number).padStart(4, '0');
+      const padded = String(number).padStart(2, '0');
+      const cleanPrefix = configuredPrefix.replace(/[-\/_\s]+$/, '');
+      const fyLong = `${fyStartYear}-${String(fyEndYear).slice(2)}`;
 
       // Bump the counter so the next invoice gets a fresh number. Keeping
       // this simple (non-transactional) is fine for the current scale;
       // concurrent creates would just race to claim the same number, which
-      // the unique index on (org_id, number) would surface as an error.
+      // the unique index on (org_id, invoice_number) would surface as an error.
       await this.prisma.organization.update({
         where: { id: orgId },
         data: {
@@ -502,7 +517,7 @@ export class InvoicesService {
         },
       });
 
-      return `${configuredPrefix}${padded}`;
+      return `${cleanPrefix}/${padded}/${fyLong}`;
     }
 
     // Fallback: fiscal-year default
@@ -515,15 +530,9 @@ export class InvoicesService {
             ? 'CN'
             : 'DN';
 
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    const fyStart = month >= 4 ? year : year - 1;
-    const fyEnd = fyStart + 1;
-    const fyString = `${String(fyStart).slice(2)}-${String(fyEnd).slice(2)}`;
-
-    const fyStartDate = new Date(`${fyStart}-04-01`);
-    const fyEndDate = new Date(`${fyEnd}-03-31`);
+    const fyShort = `${String(fyStartYear).slice(2)}-${String(fyEndYear).slice(2)}`;
+    const fyStartDate = new Date(fyStartYear, fyStartMonth - 1, 1);
+    const fyEndDate = new Date(fyEndYear, fyStartMonth - 1, 0, 23, 59, 59);
 
     const count = await this.prisma.invoice.count({
       where: {
@@ -534,6 +543,6 @@ export class InvoicesService {
     });
 
     const sequence = String(count + 1).padStart(4, '0');
-    return `${defaultPrefix}/${fyString}/${sequence}`;
+    return `${defaultPrefix}/${fyShort}/${sequence}`;
   }
 }

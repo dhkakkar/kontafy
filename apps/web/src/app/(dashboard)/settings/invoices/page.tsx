@@ -135,9 +135,31 @@ export default function InvoiceConfigPage() {
           <p className="text-xs text-gray-500">
             Preview:{" "}
             <span className="font-mono font-medium text-gray-700">
-              {form.invoice_prefix}
-              {String(form.next_invoice_number).padStart(4, "0")}
+              {(() => {
+                const cleanPrefix = (form.invoice_prefix || "").replace(
+                  /[-/_\s]+$/,
+                  "",
+                );
+                const padded = String(form.next_invoice_number || "1").padStart(
+                  2,
+                  "0",
+                );
+                const now = new Date();
+                const fyStartMonth = 4; // India default; detail page uses org setting
+                const fyStart =
+                  now.getMonth() + 1 >= fyStartMonth
+                    ? now.getFullYear()
+                    : now.getFullYear() - 1;
+                const fyEnd = fyStart + 1;
+                const fy = `${fyStart}-${String(fyEnd).slice(2)}`;
+                return `${cleanPrefix}/${padded}/${fy}`;
+              })()}
             </span>
+          </p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            Format: <span className="font-mono">PREFIX/NN/YYYY-YY</span>. A
+            trailing <code>-</code> or <code>/</code> on the prefix is
+            stripped automatically.
           </p>
         </div>
       </Card>
