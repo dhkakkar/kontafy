@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrganizationService } from '../organization/organization.service';
 
 @Injectable()
 export class SuperadminService {
@@ -16,6 +17,7 @@ export class SuperadminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly orgService: OrganizationService,
   ) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL', ''),
@@ -255,6 +257,19 @@ export class SuperadminService {
       },
     });
 
+    // Seed the default Indian chart of accounts so the new org can post
+    // journals, render ledger/reports, and run tax/GST flows out of the box.
+    // The regular /organizations POST does this; the superadmin path used
+    // to skip it, leaving new orgs with zero accounts.
+    try {
+      await this.orgService.seedDefaultAccounts(org.id);
+    } catch (err) {
+      this.logger.error(
+        `Failed to seed default accounts for org ${org.id}`,
+        err,
+      );
+    }
+
     return org;
   }
 
@@ -308,6 +323,19 @@ export class SuperadminService {
       where: { id },
       data,
     });
+  }
+
+  /**
+   * Seed the default chart of accounts for an existing org that was
+   * created before default-account bootstrap was wired in. No-op if the
+   * org already has accounts.
+   */
+  async seedOrgAccounts(orgId: string) {
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+    return this.orgService.seedDefaultAccounts(orgId);
   }
 
   /**

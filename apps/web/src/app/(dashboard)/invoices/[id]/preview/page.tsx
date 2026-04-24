@@ -150,18 +150,22 @@ function InvoicePreviewPage() {
 
   const downloadPdf = async () => {
     try {
-      const result = await api.get<{ url: string }>(
-        `/bill/invoices/${invoiceId}/pdf`
-      );
-      if (result.url) {
-        window.open(result.url, "_blank");
+      const result = await api.get<{
+        data?: { url?: string };
+        url?: string;
+      }>(`/bill/invoices/${invoiceId}/pdf`);
+      const url = result?.data?.url || result?.url;
+      if (url) {
+        window.open(url, "_blank");
+        return;
       }
     } catch {
-      window.open(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/bill/invoices/${invoiceId}/pdf/download`,
-        "_blank"
-      );
+      // fall through to direct download endpoint
     }
+    window.open(
+      `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/bill/invoices/${invoiceId}/pdf/download`,
+      "_blank",
+    );
   };
 
   if (isLoading) {
@@ -197,13 +201,33 @@ function InvoicePreviewPage() {
       {/* Print Styles */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          body { background: white !important; }
+          @page { size: A4; margin: 10mm; }
+          html, body {
+            background: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
           .no-print { display: none !important; }
+          /* Hide the surrounding dashboard chrome */
+          aside,
+          header,
+          nav[aria-label="Breadcrumb"] { display: none !important; }
+          /* Reset the main content shell so the invoice page is the only
+             thing on the printed page */
+          main {
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+          }
+          main > div {
+            padding: 0 !important;
+          }
           .print-page {
             box-shadow: none !important;
             margin: 0 !important;
             border-radius: 0 !important;
             max-width: none !important;
+            width: 100% !important;
           }
         }
       ` }} />

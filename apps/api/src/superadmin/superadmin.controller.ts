@@ -100,6 +100,14 @@ export class SuperadminController {
     return this.service.setOrganizationStatus(id, body);
   }
 
+  @Post('organizations/:id/seed-accounts')
+  @ApiOperation({
+    summary: 'Seed default chart of accounts for an existing org (idempotent)',
+  })
+  async seedOrgAccounts(@Param('id') id: string) {
+    return this.service.seedOrgAccounts(id);
+  }
+
   @Delete('organizations/:id')
   @ApiOperation({ summary: 'Delete organization' })
   async deleteOrganization(@Param('id') id: string) {

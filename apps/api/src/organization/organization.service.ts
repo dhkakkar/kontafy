@@ -250,6 +250,27 @@ export class OrganizationService {
   }
 
   /**
+   * Seed the default Indian chart of accounts for an organization that
+   * doesn't have any accounts yet. Safe to call multiple times — it's a
+   * no-op when the org already has accounts. Runs as a single transaction.
+   */
+  async seedDefaultAccounts(orgId: string): Promise<{ created: number }> {
+    const existing = await this.prisma.account.count({
+      where: { org_id: orgId },
+    });
+    if (existing > 0) {
+      return { created: 0 };
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await this.createDefaultAccounts(tx, orgId);
+    });
+    const created = await this.prisma.account.count({
+      where: { org_id: orgId },
+    });
+    return { created };
+  }
+
+  /**
    * Create the default Indian chart of accounts for a new organization.
    */
   private async createDefaultAccounts(tx: any, orgId: string) {
