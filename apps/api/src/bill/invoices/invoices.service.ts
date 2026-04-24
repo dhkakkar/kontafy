@@ -7,6 +7,19 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeLineItemGst, isInterStateSupply } from '../../common/utils/gst.util';
 
+// Map Indian state abbreviations (as used in place_of_supply) to GSTIN
+// state codes (first two digits of a GSTIN). Used to decide intra-state
+// vs inter-state supply automatically when the frontend doesn't send
+// is_igst explicitly. Values cover all 38 codes published by GST.
+const STATE_ABBR_TO_GSTIN_CODE: Record<string, string> = {
+  JK: '01', HP: '02', PB: '03', CH: '04', UK: '05', HR: '06', DL: '07',
+  RJ: '08', UP: '09', BR: '10', SK: '11', AR: '12', NL: '13', MN: '14',
+  MZ: '15', TR: '16', ML: '17', AS: '18', WB: '19', JH: '20', OD: '21',
+  CT: '22', MP: '23', GJ: '24', DN: '26', MH: '27', AP: '37', KA: '29',
+  GA: '30', LD: '31', KL: '32', TN: '33', PY: '34', AN: '35', TG: '36',
+  LA: '38',
+};
+
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
@@ -177,8 +190,16 @@ export class InvoicesService {
       throw new BadRequestException('Invoice must have at least one item');
     }
 
-    // Determine inter-state supply
-    const isIgst = data.is_igst || false;
+    // Determine inter-state supply. If the frontend explicitly set is_igst,
+    // respect it. Otherwise derive it by comparing the org's state (first
+    // two digits of its GSTIN) against the buyer's place_of_supply state
+    // abbreviation (e.g. HR, MH). Mismatch → IGST (inter-state).
+    let isIgst: boolean;
+    if (typeof data.is_igst === 'boolean') {
+      isIgst = data.is_igst;
+    } else {
+      isIgst = await this.computeIsIgst(orgId, data.place_of_supply);
+    }
 
     // Generate invoice number
     const invoiceNumber = await this.generateInvoiceNumber(orgId, data.type);
@@ -189,9 +210,15 @@ export class InvoicesService {
     let totalTax = 0;
 
     const computedItems = data.items.map((item) => {
-      const gstRate = isIgst
-        ? (item.igst_rate || 0)
-        : ((item.cgst_rate || 0) + (item.sgst_rate || 0));
+      // Take the total GST rate the client sent regardless of which bucket
+      // it used (cgst+sgst OR igst). Splitting into the right bucket based
+      // on isIgst is computeLineItemGst's job — don't pre-filter here,
+      // otherwise a Haryana→Maharashtra invoice arriving as cgst+sgst from
+      // the form would end up with zero tax when we auto-detect IGST.
+      const gstRate =
+        (item.cgst_rate || 0) +
+        (item.sgst_rate || 0) +
+        (item.igst_rate || 0);
       const cessRate = item.cess_rate || 0;
 
       const computed = computeLineItemGst(
@@ -323,6 +350,19 @@ export class InvoicesService {
       else (rest as any).due_date = null;
     }
 
+    // Resolve intra-state vs inter-state based on (possibly new)
+    // place_of_supply. If the caller explicitly set is_igst, respect that;
+    // otherwise auto-compute from the org's GSTIN state vs the supply state.
+    const placeOfSupply =
+      (rest as any).place_of_supply ?? invoice.place_of_supply ?? undefined;
+    let isIgst: boolean;
+    if (typeof (rest as any).is_igst === 'boolean') {
+      isIgst = (rest as any).is_igst;
+    } else {
+      isIgst = await this.computeIsIgst(orgId, placeOfSupply || undefined);
+    }
+    (rest as any).is_igst = isIgst;
+
     return this.prisma.$transaction(async (tx) => {
       if (Array.isArray(items)) {
         await tx.invoiceItem.deleteMany({ where: { invoice_id: id } });
@@ -332,9 +372,19 @@ export class InvoicesService {
               const qty = Number(it.quantity) || 0;
               const rate = Number(it.rate) || 0;
               const discountPct = Number(it.discount_pct) || 0;
-              const cgst = Number(it.cgst_rate) || 0;
-              const sgst = Number(it.sgst_rate) || 0;
-              const igst = Number(it.igst_rate) || 0;
+
+              // Normalize total GST rate from whatever the client sent
+              // (either as cgst+sgst OR as igst). Then split it based on the
+              // computed isIgst flag so the invoice's tax buckets match the
+              // actual inter/intra-state supply classification.
+              const totalGstRate =
+                (Number(it.cgst_rate) || 0) +
+                (Number(it.sgst_rate) || 0) +
+                (Number(it.igst_rate) || 0);
+              const cgst = isIgst ? 0 : totalGstRate / 2;
+              const sgst = isIgst ? 0 : totalGstRate / 2;
+              const igst = isIgst ? totalGstRate : 0;
+
               const taxable =
                 Math.round(qty * rate * (1 - discountPct / 100) * 100) / 100;
               const cgstAmt = Math.round((taxable * cgst) / 100 * 100) / 100;
@@ -566,6 +616,29 @@ export class InvoicesService {
     });
 
     return invoice;
+  }
+
+  /**
+   * Return true if an invoice is an inter-state supply (IGST), false if it's
+   * intra-state (CGST+SGST). Compares the seller's state (derived from the
+   * org's GSTIN first two chars) with the buyer's place of supply (state
+   * abbreviation like "HR", "MH"). Missing data defaults to intra-state so
+   * legacy org setups don't silently flip tax buckets.
+   */
+  private async computeIsIgst(
+    orgId: string,
+    placeOfSupplyAbbr?: string,
+  ): Promise<boolean> {
+    if (!placeOfSupplyAbbr) return false;
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { gstin: true },
+    });
+    if (!org?.gstin || org.gstin.length < 2) return false;
+    const sellerCode = org.gstin.slice(0, 2);
+    const buyerCode = STATE_ABBR_TO_GSTIN_CODE[placeOfSupplyAbbr.toUpperCase()];
+    if (!buyerCode) return false;
+    return sellerCode !== buyerCode;
   }
 
   /**
