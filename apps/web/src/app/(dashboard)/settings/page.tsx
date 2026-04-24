@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,6 +99,59 @@ export default function OrganizationSettingsPage() {
     fiscal_year_start: String(organization?.financialYearStart || 4),
   });
 
+  const [logoUrl, setLogoUrl] = useState<string | null>(
+    (organization as any)?.logoUrl || null,
+  );
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState("");
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (logoInputRef.current) logoInputRef.current.value = "";
+    if (!file) return;
+
+    setLogoError("");
+
+    if (!file.type.startsWith("image/")) {
+      setLogoError("Please choose an image file.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError("File too large. Max 2MB.");
+      return;
+    }
+
+    setLogoUploading(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
+
+      const response = await api.post<{
+        data?: { logo_url?: string };
+        logo_url?: string;
+      }>("/settings/organization/logo", { data_url: dataUrl });
+
+      const finalUrl =
+        response?.data?.logo_url || response?.logo_url || null;
+      if (!finalUrl) {
+        setLogoError("Upload succeeded but no URL was returned.");
+        return;
+      }
+      setLogoUrl(finalUrl);
+    } catch (err: any) {
+      setLogoError(err?.message || "Failed to upload logo");
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
   // Load existing settings from API on mount
   useEffect(() => {
     (async () => {
@@ -122,6 +175,7 @@ export default function OrganizationSettingsPage() {
           website: org.website || "",
           fiscal_year_start: String(org.fiscal_year_start || org.financialYearStart || 4),
         }));
+        if (org.logo_url) setLogoUrl(org.logo_url);
       } catch {
         // Fall back to auth store values
       } finally {
@@ -232,22 +286,43 @@ export default function OrganizationSettingsPage() {
 
         {/* Logo Upload */}
         <div className="flex items-center gap-6 mb-6">
-          <div className="h-20 w-20 rounded-2xl bg-primary-50 flex items-center justify-center border-2 border-dashed border-primary-200">
-            <span className="text-2xl font-bold text-primary-800">
-              {form.name ? form.name[0].toUpperCase() : "K"}
-            </span>
+          <div className="h-20 w-20 rounded-2xl bg-primary-50 flex items-center justify-center border-2 border-dashed border-primary-200 overflow-hidden">
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt="Logo"
+                className="h-20 w-20 object-contain rounded-2xl"
+              />
+            ) : (
+              <span className="text-2xl font-bold text-primary-800">
+                {form.name ? form.name[0].toUpperCase() : "K"}
+              </span>
+            )}
           </div>
           <div>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              className="hidden"
+              onChange={handleLogoChange}
+            />
             <Button
               variant="outline"
               size="sm"
               icon={<Upload className="h-4 w-4" />}
+              onClick={() => logoInputRef.current?.click()}
+              loading={logoUploading}
             >
               Upload Logo
             </Button>
             <p className="text-xs text-gray-500 mt-1.5">
-              PNG, JPG up to 2MB. Recommended: 200x200px
+              PNG, JPG, WEBP, or SVG up to 2MB. Recommended: 200x200px
             </p>
+            {logoError && (
+              <p className="text-xs text-danger-600 mt-1">{logoError}</p>
+            )}
           </div>
         </div>
 

@@ -458,8 +458,13 @@ export class InvoicesService {
   }
 
   /**
-   * Auto-generate invoice number based on org settings and fiscal year.
-   * Format: KTF/25-26/0001
+   * Auto-generate invoice number.
+   *
+   * For sales invoices, if the org has configured an `invoice_prefix` in
+   * Settings → Invoice Config, use it together with `next_invoice_number`
+   * and bump the counter (matches the preview shown on the settings page,
+   * e.g. "SYSCODE-0001"). Otherwise fall back to the fiscal-year default
+   * format like "INV/25-26/0001".
    */
   private async generateInvoiceNumber(orgId: string, type: string): Promise<string> {
     const org = await this.prisma.organization.findUnique({
@@ -467,9 +472,49 @@ export class InvoicesService {
       select: { settings: true },
     });
 
-    const prefix = (type === 'sale' ? 'INV' : type === 'purchase' ? 'BILL' : type === 'credit_note' ? 'CN' : 'DN');
+    const settings = (org?.settings as Record<string, any>) || {};
+    const configuredPrefix =
+      typeof settings.invoice_prefix === 'string' &&
+      settings.invoice_prefix.trim()
+        ? (settings.invoice_prefix as string)
+        : null;
+    const configuredNext =
+      typeof settings.next_invoice_number === 'number' &&
+      settings.next_invoice_number > 0
+        ? (settings.next_invoice_number as number)
+        : null;
 
-    // Determine current fiscal year
+    if (type === 'sale' && configuredPrefix) {
+      const number = configuredNext ?? 1;
+      const padded = String(number).padStart(4, '0');
+
+      // Bump the counter so the next invoice gets a fresh number. Keeping
+      // this simple (non-transactional) is fine for the current scale;
+      // concurrent creates would just race to claim the same number, which
+      // the unique index on (org_id, number) would surface as an error.
+      await this.prisma.organization.update({
+        where: { id: orgId },
+        data: {
+          settings: {
+            ...settings,
+            next_invoice_number: number + 1,
+          },
+        },
+      });
+
+      return `${configuredPrefix}${padded}`;
+    }
+
+    // Fallback: fiscal-year default
+    const defaultPrefix =
+      type === 'sale'
+        ? 'INV'
+        : type === 'purchase'
+          ? 'BILL'
+          : type === 'credit_note'
+            ? 'CN'
+            : 'DN';
+
     const now = new Date();
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
@@ -477,7 +522,6 @@ export class InvoicesService {
     const fyEnd = fyStart + 1;
     const fyString = `${String(fyStart).slice(2)}-${String(fyEnd).slice(2)}`;
 
-    // Count existing invoices of this type in this FY
     const fyStartDate = new Date(`${fyStart}-04-01`);
     const fyEndDate = new Date(`${fyEnd}-03-31`);
 
@@ -490,7 +534,6 @@ export class InvoicesService {
     });
 
     const sequence = String(count + 1).padStart(4, '0');
-
-    return `${prefix}/${fyString}/${sequence}`;
+    return `${defaultPrefix}/${fyString}/${sequence}`;
   }
 }

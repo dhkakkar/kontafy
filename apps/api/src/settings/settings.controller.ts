@@ -62,6 +62,19 @@ export class SettingsController {
     return this.settingsService.updateOrganization(orgId, userId, body);
   }
 
+  @Post('organization/logo')
+  @UseGuards(RoleGuard)
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: 'Upload organization logo (data URL)' })
+  @ApiSecurity('org-id')
+  async uploadLogo(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+    @Body() body: { data_url: string },
+  ) {
+    return this.settingsService.uploadLogo(orgId, userId, body?.data_url);
+  }
+
   // ───────────────────────────────────────────────────────
   // Team Members
   // ───────────────────────────────────────────────────────

@@ -74,6 +74,70 @@ export class SettingsService {
     return org;
   }
 
+  /**
+   * Upload an organization logo. Takes a data URL from the client,
+   * validates, uploads to the Supabase `logos` bucket via the service
+   * role (bypassing RLS), and stores the public URL on
+   * Organization.logo_url. Returns the saved URL.
+   */
+  async uploadLogo(orgId: string, userId: string, dataUrl: string) {
+    await this.verifyMembership(orgId, userId);
+
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      throw new BadRequestException('Image data is required');
+    }
+
+    const match = /^data:(image\/(png|jpeg|jpg|webp|svg\+xml));base64,(.+)$/i.exec(
+      dataUrl,
+    );
+    if (!match) {
+      throw new BadRequestException(
+        'Invalid image data. Expected a PNG, JPEG, WEBP, or SVG data URL.',
+      );
+    }
+    const mime = match[1].toLowerCase();
+    const rawExt = match[2].toLowerCase();
+    const ext =
+      rawExt === 'jpg'
+        ? 'jpg'
+        : rawExt === 'svg+xml'
+          ? 'svg'
+          : rawExt;
+    const buffer = Buffer.from(match[3], 'base64');
+
+    if (buffer.length === 0) {
+      throw new BadRequestException('Image data is empty');
+    }
+    if (buffer.length > 2 * 1024 * 1024) {
+      throw new BadRequestException('Image too large. Max 2MB.');
+    }
+
+    const path = `${orgId}/logo-${Date.now()}.${ext}`;
+    const { error: uploadErr } = await this.supabase.storage
+      .from('logos')
+      .upload(path, buffer, {
+        contentType: mime,
+        upsert: true,
+        cacheControl: '3600',
+      });
+    if (uploadErr) {
+      this.logger.error('Logo upload failed', uploadErr);
+      throw new BadRequestException(`Upload failed: ${uploadErr.message}`);
+    }
+
+    const { data: urlData } = this.supabase.storage
+      .from('logos')
+      .getPublicUrl(path);
+    const logo_url = urlData.publicUrl;
+
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { logo_url, updated_at: new Date() },
+    });
+
+    return { logo_url };
+  }
+
   // ───────────────────────────────────────────────────────
   // Team / User Management
   // ───────────────────────────────────────────────────────
