@@ -307,6 +307,141 @@ export class CreditNotesService {
   }
 
   /**
+   * Update a draft credit note (scalars + optionally items).
+   */
+  async update(orgId: string, id: string, body: Record<string, any>) {
+    const existing = await this.prisma.invoice.findFirst({
+      where: { id, org_id: orgId, type: 'credit_note' },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Credit note not found');
+    }
+
+    if (existing.status !== 'draft') {
+      throw new BadRequestException(
+        'Only draft credit notes can be edited',
+      );
+    }
+
+    // Strip identity/unique-number fields so callers can't rename
+    const {
+      type: _type,
+      org_id: _orgId,
+      id: _id,
+      invoice_number: _invoiceNumber,
+      items,
+      ...scalar
+    } = body || {};
+
+    if (items !== undefined && Array.isArray(items) && items.length === 0) {
+      throw new BadRequestException('At least one item is required');
+    }
+
+    const isIgst =
+      scalar.is_igst !== undefined ? !!scalar.is_igst : existing.is_igst;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      let subtotal = existing.subtotal?.toNumber() || 0;
+      let totalDiscount = existing.discount_amount?.toNumber() || 0;
+      let totalTax = existing.tax_amount?.toNumber() || 0;
+      let grandTotal = existing.total?.toNumber() || 0;
+
+      if (Array.isArray(items)) {
+        // Recompute using create's exact math
+        subtotal = 0;
+        totalDiscount = 0;
+        totalTax = 0;
+
+        const computedItems = items.map((item: any) => {
+          const gstRate = isIgst
+            ? (item.igst_rate || 0)
+            : ((item.cgst_rate || 0) + (item.sgst_rate || 0));
+          const cessRate = item.cess_rate || 0;
+
+          const computed = computeLineItemGst(
+            item.quantity,
+            item.rate,
+            item.discount_pct || 0,
+            gstRate,
+            cessRate,
+            isIgst,
+          );
+
+          subtotal += computed.subtotal;
+          totalDiscount += computed.discountAmount;
+          totalTax += computed.totalTax;
+
+          return {
+            product_id: item.product_id,
+            description: item.description,
+            hsn_code: item.hsn_code,
+            quantity: item.quantity,
+            unit: item.unit || 'pcs',
+            rate: item.rate,
+            discount_pct: item.discount_pct || 0,
+            taxable_amount: computed.taxableAmount,
+            cgst_rate: computed.cgstRate,
+            cgst_amount: computed.cgstAmount,
+            sgst_rate: computed.sgstRate,
+            sgst_amount: computed.sgstAmount,
+            igst_rate: computed.igstRate,
+            igst_amount: computed.igstAmount,
+            cess_rate: computed.cessRate,
+            cess_amount: computed.cessAmount,
+            total: computed.totalWithTax,
+          };
+        });
+
+        grandTotal =
+          Math.round((subtotal - totalDiscount + totalTax) * 100) / 100;
+
+        await tx.invoiceItem.deleteMany({ where: { invoice_id: id } });
+
+        await tx.invoiceItem.createMany({
+          data: computedItems.map((item) => ({
+            invoice_id: id,
+            ...item,
+          })),
+        });
+      }
+
+      const updateData: any = {
+        updated_at: new Date(),
+      };
+
+      if (scalar.contact_id !== undefined) updateData.contact_id = scalar.contact_id;
+      if (scalar.date !== undefined) updateData.date = new Date(scalar.date);
+      if (scalar.place_of_supply !== undefined)
+        updateData.place_of_supply = scalar.place_of_supply;
+      if (scalar.is_igst !== undefined) updateData.is_igst = isIgst;
+      if (scalar.notes !== undefined) updateData.notes = scalar.notes;
+      else if (scalar.reason !== undefined) updateData.notes = scalar.reason;
+
+      if (Array.isArray(items)) {
+        updateData.subtotal = subtotal;
+        updateData.discount_amount = totalDiscount;
+        updateData.tax_amount = totalTax;
+        updateData.total = grandTotal;
+        updateData.balance_due =
+          grandTotal - (existing.amount_paid?.toNumber() || 0);
+      }
+
+      await tx.invoice.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return tx.invoice.findUnique({
+        where: { id },
+        include: { items: true, contact: true },
+      });
+    });
+
+    return updated;
+  }
+
+  /**
    * Generate credit note number.
    */
   private async generateCreditNoteNumber(orgId: string): Promise<string> {

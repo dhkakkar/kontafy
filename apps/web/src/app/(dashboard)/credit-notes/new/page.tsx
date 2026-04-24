@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -105,9 +105,21 @@ function calcTax(amount: number, taxRate: number): number {
   return (amount * taxRate) / 100;
 }
 
-export default function NewCreditNotePage() {
+export default function NewCreditNotePageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewCreditNotePage />
+    </Suspense>
+  );
+}
+
+function NewCreditNotePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
+
   const [customer, setCustomer] = useState("");
   const [creditNoteDate, setCreditNoteDate] = useState(
     new Date().toISOString().split("T")[0]
@@ -124,6 +136,7 @@ export default function NewCreditNotePage() {
   const [barcodeValue, setBarcodeValue] = useState("");
 
   useEffect(() => {
+    if (isEditing) return;
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
@@ -134,7 +147,59 @@ export default function NewCreditNotePage() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isEditing]);
+
+  // Fetch the existing credit note when editing, then prefill every field.
+  const { data: existingCreditNote } = useQuery<any>({
+    queryKey: ["credit-note", editId],
+    queryFn: async () => {
+      const res = await api.get<{ data: any } | any>(
+        `/bill/credit-notes/${editId}`,
+      );
+      return (res as any)?.data ?? res;
+    },
+    enabled: isEditing,
+  });
+
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingCreditNote || prefilled) return;
+    const cn = existingCreditNote;
+    setCustomer(cn.contact_id || "");
+    if (cn.date) setCreditNoteDate(String(cn.date).slice(0, 10));
+    if (cn.reason) setReason(cn.reason);
+    if (cn.place_of_supply) setPlaceOfSupply(cn.place_of_supply);
+    if (typeof cn.notes === "string") setNotes(cn.notes);
+    if (typeof cn.terms === "string") setTerms(cn.terms);
+    if (cn.discount_amount) setAdditionalDiscount(Number(cn.discount_amount));
+
+    if (Array.isArray(cn.items) && cn.items.length > 0) {
+      setItems(
+        cn.items.map((it: any) => {
+          const cgst = Number(it.cgst_rate) || 0;
+          const sgst = Number(it.sgst_rate) || 0;
+          const igst = Number(it.igst_rate) || 0;
+          const taxRate = igst > 0 ? igst : cgst + sgst;
+          const qty = Number(it.quantity) || 0;
+          const rate = Number(it.rate) || 0;
+          const discount = Number(it.discount_pct) || 0;
+          return {
+            id: it.id || generateId(),
+            productId: it.product_id || undefined,
+            productName: it.description || "",
+            description: it.description || "",
+            hsnCode: it.hsn_code || "",
+            quantity: qty,
+            rate,
+            discount,
+            taxRate,
+            amount: calcAmount(qty, rate, discount),
+          };
+        }),
+      );
+    }
+    setPrefilled(true);
+  }, [isEditing, existingCreditNote, prefilled]);
 
   const [items, setItems] = useState<LineItem[]>([
     {
@@ -180,7 +245,7 @@ export default function NewCreditNotePage() {
   const createCreditNote = useMutation({
     mutationFn: async (status: "draft" | "issued") => {
       const halfRate = (rate: number) => rate / 2;
-      return api.post("/bill/credit-notes", {
+      const payload: Record<string, unknown> = {
         contact_id: customer,
         date: creditNoteDate,
         reason: reason || undefined,
@@ -198,11 +263,28 @@ export default function NewCreditNotePage() {
           cgst_rate: halfRate(item.taxRate),
           sgst_rate: halfRate(item.taxRate),
         })),
-      });
+      };
+
+      if (isEditing && editId) {
+        const res = await api.patch<{ data: { id: string } } | { id: string }>(
+          `/bill/credit-notes/${editId}`,
+          payload,
+        );
+        return { id: (res as any)?.data?.id || (res as any)?.id || editId };
+      }
+      const res = await api.post<{ data: { id: string } } | { id: string }>(
+        "/bill/credit-notes",
+        payload,
+      );
+      return { id: (res as any)?.data?.id || (res as any)?.id };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["credit-notes"] });
-      router.push("/credit-notes");
+      if (isEditing && result?.id) {
+        router.push(`/credit-notes/${result.id}`);
+      } else {
+        router.push("/credit-notes");
+      }
     },
   });
 
@@ -317,8 +399,12 @@ export default function NewCreditNotePage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">New Credit Note</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Create a new credit note</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isEditing ? "Edit Credit Note" : "New Credit Note"}
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {isEditing ? "Update this credit note" : "Create a new credit note"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -329,7 +415,7 @@ export default function NewCreditNotePage() {
             loading={createCreditNote.isPending}
             disabled={!canSubmit}
           >
-            Save Draft
+            {isEditing ? "Save Changes" : "Save Draft"}
           </Button>
           <Button
             icon={<Send className="h-4 w-4" />}
@@ -337,14 +423,15 @@ export default function NewCreditNotePage() {
             loading={createCreditNote.isPending}
             disabled={!canSubmit}
           >
-            Issue Credit Note
+            {isEditing ? "Save & Issue" : "Issue Credit Note"}
           </Button>
         </div>
       </div>
 
       {createCreditNote.isError && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
-          {createCreditNote.error?.message || "Failed to create credit note"}
+          {createCreditNote.error?.message ||
+            (isEditing ? "Failed to update credit note" : "Failed to create credit note")}
         </div>
       )}
 

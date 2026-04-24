@@ -1,13 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
-import { useCreateRecurringInvoice } from "@/hooks/use-recurring";
+import {
+  useCreateRecurringInvoice,
+  useUpdateRecurringInvoice,
+  useRecurringInvoice,
+} from "@/hooks/use-recurring";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ArrowLeft, Plus, Trash2, Save } from "lucide-react";
@@ -51,9 +55,22 @@ const taxOptions = [
   { value: "28", label: "GST 28%" },
 ];
 
-export default function NewRecurringInvoicePage() {
+export default function NewRecurringInvoicePageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewRecurringInvoicePage />
+    </Suspense>
+  );
+}
+
+function NewRecurringInvoicePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
   const createMutation = useCreateRecurringInvoice();
+  const updateMutation = useUpdateRecurringInvoice();
+  const { data: existingRecurring } = useRecurringInvoice(editId || "");
 
   const [name, setName] = useState("");
   const [contactId, setContactId] = useState("");
@@ -96,6 +113,40 @@ export default function NewRecurringInvoicePage() {
     },
   ]);
 
+  // Prefill from the existing recurring invoice when editing.
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingRecurring || prefilled) return;
+    const r: any = existingRecurring;
+    if (typeof r.name === "string") setName(r.name);
+    if (r.contact_id) setContactId(r.contact_id);
+    if (r.frequency) setFrequency(r.frequency);
+    if (r.start_date) setStartDate(String(r.start_date).slice(0, 10));
+    if (r.end_date) setEndDate(String(r.end_date).slice(0, 10));
+    if (r.payment_terms_days !== undefined && r.payment_terms_days !== null) {
+      setPaymentTermsDays(String(r.payment_terms_days));
+    }
+    if (typeof r.auto_send === "boolean") setAutoSend(r.auto_send);
+    if (typeof r.notes === "string") setNotes(r.notes);
+
+    if (Array.isArray(r.items) && r.items.length > 0) {
+      setItems(
+        r.items.map((it: any) => ({
+          id: it.id || genId(),
+          description: it.description || "",
+          hsn_code: it.hsn_code || "",
+          quantity: Number(it.quantity) || 0,
+          unit: it.unit || "pcs",
+          rate: Number(it.rate) || 0,
+          discount_pct: Number(it.discount_pct) || 0,
+          cgst_rate: Number(it.cgst_rate) || 0,
+          sgst_rate: Number(it.sgst_rate) || 0,
+        })),
+      );
+    }
+    setPrefilled(true);
+  }, [isEditing, existingRecurring, prefilled]);
+
   const addItem = () => {
     setItems([
       ...items,
@@ -136,7 +187,7 @@ export default function NewRecurringInvoicePage() {
   const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
     e?.preventDefault();
     try {
-      await createMutation.mutateAsync({
+      const payload = {
         name,
         contact_id: contactId,
         frequency,
@@ -155,8 +206,16 @@ export default function NewRecurringInvoicePage() {
           sgst_rate: rest.sgst_rate,
         })),
         notes: notes || undefined,
-      });
-      router.push("/recurring-invoices");
+      };
+
+      if (isEditing && editId) {
+        const res: any = await updateMutation.mutateAsync({ id: editId, data: payload });
+        const resultId = (res as any)?.data?.id || (res as any)?.id || editId;
+        router.push(`/recurring-invoices/${resultId}`);
+      } else {
+        await createMutation.mutateAsync(payload);
+        router.push("/recurring-invoices");
+      }
     } catch {
       // Error handled by mutation
     }
@@ -174,25 +233,31 @@ export default function NewRecurringInvoicePage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              New Recurring Invoice
+              {isEditing ? "Edit Recurring Invoice" : "New Recurring Invoice"}
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Set up automatic invoice generation
+              {isEditing
+                ? "Update this recurring invoice profile"
+                : "Set up automatic invoice generation"}
             </p>
           </div>
         </div>
         <Button
           icon={<Save className="h-4 w-4" />}
           onClick={handleSubmit}
-          loading={createMutation.isPending}
+          loading={createMutation.isPending || updateMutation.isPending}
         >
-          Create Profile
+          {isEditing ? "Save Changes" : "Create Profile"}
         </Button>
       </div>
 
-      {createMutation.isError && (
+      {(createMutation.isError || updateMutation.isError) && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
-          {createMutation.error?.message || "Failed to create recurring invoice"}
+          {createMutation.error?.message ||
+            updateMutation.error?.message ||
+            (isEditing
+              ? "Failed to update recurring invoice"
+              : "Failed to create recurring invoice")}
         </div>
       )}
 

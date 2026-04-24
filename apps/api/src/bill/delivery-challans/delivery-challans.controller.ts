@@ -72,4 +72,14 @@ export class DeliveryChallansController {
   ) {
     return this.deliveryChallansService.updateStatus(orgId, id, body.status);
   }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a draft delivery challan' })
+  async update(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @Body() body: Record<string, any>,
+  ) {
+    return this.deliveryChallansService.update(orgId, id, body);
+  }
 }

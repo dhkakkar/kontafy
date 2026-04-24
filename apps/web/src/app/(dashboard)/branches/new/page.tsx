@@ -1,16 +1,29 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useCreateBranch } from "@/hooks/use-branches";
+import { useCreateBranch, useUpdateBranch, useBranch } from "@/hooks/use-branches";
 import { ArrowLeft, Save } from "lucide-react";
 
-export default function NewBranchPage() {
+export default function NewBranchPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewBranchPage />
+    </Suspense>
+  );
+}
+
+function NewBranchPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
   const createMutation = useCreateBranch();
+  const updateMutation = useUpdateBranch();
+  const { data: existingBranch } = useBranch(editId || "");
 
   const [form, setForm] = useState({
     name: "",
@@ -26,6 +39,26 @@ export default function NewBranchPage() {
     is_main: false,
   });
 
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingBranch || prefilled) return;
+    const b: any = existingBranch;
+    setForm({
+      name: b.name || "",
+      code: b.code || "",
+      address_line1: b.address?.line1 || "",
+      address_line2: b.address?.line2 || "",
+      city: b.address?.city || "",
+      state: b.address?.state || "",
+      pincode: b.address?.pincode || "",
+      phone: b.phone || "",
+      email: b.email || "",
+      manager_name: b.manager_name || "",
+      is_main: !!b.is_main,
+    });
+    setPrefilled(true);
+  }, [isEditing, existingBranch, prefilled]);
+
   const updateField = (field: string, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -33,7 +66,7 @@ export default function NewBranchPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createMutation.mutateAsync({
+      const payload = {
         name: form.name,
         code: form.code || undefined,
         address: {
@@ -47,8 +80,14 @@ export default function NewBranchPage() {
         email: form.email || undefined,
         manager_name: form.manager_name || undefined,
         is_main: form.is_main,
-      });
-      router.push("/branches");
+      };
+      if (isEditing && editId) {
+        await updateMutation.mutateAsync({ id: editId, data: payload });
+        router.push(`/branches/${editId}`);
+      } else {
+        await createMutation.mutateAsync(payload);
+        router.push("/branches");
+      }
     } catch {
       // Error handled by mutation
     }
@@ -64,9 +103,11 @@ export default function NewBranchPage() {
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">New Branch</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {isEditing ? "Edit Branch" : "New Branch"}
+          </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Add a new branch or location
+            {isEditing ? "Update this branch" : "Add a new branch or location"}
           </p>
         </div>
       </div>
@@ -175,9 +216,9 @@ export default function NewBranchPage() {
           <Button
             type="submit"
             icon={<Save className="h-4 w-4" />}
-            loading={createMutation.isPending}
+            loading={createMutation.isPending || updateMutation.isPending}
           >
-            Create Branch
+            {isEditing ? "Save Changes" : "Create Branch"}
           </Button>
         </div>
       </form>

@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -219,6 +220,150 @@ export class SalesReturnsService {
     });
 
     return salesReturn;
+  }
+
+  /**
+   * Update a draft sales return (scalars + optionally items).
+   */
+  async update(orgId: string, id: string, body: Record<string, any>) {
+    const existing = await this.prisma.invoice.findFirst({
+      where: { id, org_id: orgId, type: 'sales_return' },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Sales return not found');
+    }
+
+    if (existing.status !== 'draft') {
+      throw new BadRequestException(
+        'Only draft sales returns can be edited',
+      );
+    }
+
+    const {
+      type: _type,
+      org_id: _orgId,
+      id: _id,
+      invoice_number: _invoiceNumber,
+      return_number: _returnNumber,
+      items,
+      ...scalar
+    } = body || {};
+
+    if (items !== undefined && Array.isArray(items) && items.length === 0) {
+      throw new BadRequestException('At least one item is required');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      let subtotal = existing.subtotal?.toNumber() || 0;
+      let totalDiscount = 0;
+      let totalTax = existing.tax_amount?.toNumber() || 0;
+      let grandTotal = existing.total?.toNumber() || 0;
+
+      const additionalDiscount =
+        scalar.additional_discount !== undefined
+          ? Number(scalar.additional_discount) || 0
+          : 0;
+      const additionalCharges =
+        scalar.additional_charges !== undefined
+          ? Number(scalar.additional_charges) || 0
+          : 0;
+
+      if (Array.isArray(items)) {
+        // Mirror create's math exactly
+        subtotal = 0;
+        totalDiscount = 0;
+        totalTax = 0;
+
+        const computedItems = items.map((item: any) => {
+          const gstRate = (item.cgst_rate || 0) + (item.sgst_rate || 0);
+          const cessRate = 0;
+
+          const computed = computeLineItemGst(
+            item.quantity,
+            item.rate,
+            item.discount_pct || 0,
+            gstRate,
+            cessRate,
+            false,
+          );
+
+          subtotal += computed.subtotal;
+          totalDiscount += computed.discountAmount;
+          totalTax += computed.totalTax;
+
+          return {
+            product_id: item.product_id,
+            description: item.description,
+            hsn_code: item.hsn_code,
+            quantity: item.quantity,
+            unit: 'pcs',
+            rate: item.rate,
+            discount_pct: item.discount_pct || 0,
+            taxable_amount: computed.taxableAmount,
+            cgst_rate: computed.cgstRate,
+            cgst_amount: computed.cgstAmount,
+            sgst_rate: computed.sgstRate,
+            sgst_amount: computed.sgstAmount,
+            igst_rate: computed.igstRate,
+            igst_amount: computed.igstAmount,
+            cess_rate: computed.cessRate,
+            cess_amount: computed.cessAmount,
+            total: computed.totalWithTax,
+          };
+        });
+
+        grandTotal =
+          Math.round(
+            (subtotal -
+              totalDiscount +
+              totalTax -
+              additionalDiscount +
+              additionalCharges) *
+              100,
+          ) / 100;
+
+        await tx.invoiceItem.deleteMany({ where: { invoice_id: id } });
+
+        await tx.invoiceItem.createMany({
+          data: computedItems.map((item) => ({
+            invoice_id: id,
+            ...item,
+          })),
+        });
+      }
+
+      const updateData: any = {
+        updated_at: new Date(),
+      };
+
+      if (scalar.contact_id !== undefined) updateData.contact_id = scalar.contact_id;
+      if (scalar.date !== undefined) updateData.date = new Date(scalar.date);
+      if (scalar.notes !== undefined) updateData.notes = scalar.notes;
+      else if (scalar.reason !== undefined) updateData.notes = scalar.reason;
+      if (scalar.terms !== undefined) updateData.terms = scalar.terms;
+
+      if (Array.isArray(items)) {
+        updateData.subtotal = subtotal;
+        updateData.discount_amount = totalDiscount + additionalDiscount;
+        updateData.tax_amount = totalTax;
+        updateData.total = grandTotal;
+        updateData.balance_due =
+          grandTotal - (existing.amount_paid?.toNumber() || 0);
+      }
+
+      await tx.invoice.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return tx.invoice.findUnique({
+        where: { id },
+        include: { items: true, contact: true },
+      });
+    });
+
+    return updated;
   }
 
   /**

@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Query,
@@ -73,5 +74,15 @@ export class CreditNotesController {
     @Body() body: ApplyCreditNoteDto,
   ) {
     return this.creditNotesService.apply(orgId, id, body);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a draft credit note' })
+  async update(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @Body() body: Record<string, any>,
+  ) {
+    return this.creditNotesService.update(orgId, id, body);
   }
 }

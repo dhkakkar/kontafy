@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
-import { useCreateQuotation } from "@/hooks/use-quotations";
+import { useCreateQuotation, useUpdateQuotation, useQuotation } from "@/hooks/use-quotations";
 import { api } from "@/lib/api";
 import { ArrowLeft, Plus, Trash2, Save, Send, Upload, ScanLine, X } from "lucide-react";
 
@@ -92,9 +92,22 @@ const INDIAN_STATES = [
   { value: "WB", label: "West Bengal" },
 ];
 
-export default function NewProformaInvoicePage() {
+export default function NewProformaInvoicePageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewProformaInvoicePage />
+    </Suspense>
+  );
+}
+
+function NewProformaInvoicePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
   const createMutation = useCreateQuotation();
+  const updateMutation = useUpdateQuotation();
+  const { data: existingQuotation } = useQuotation(editId || "");
 
   const { data: customers = [] } = useQuery<ContactOption[]>({
     queryKey: ["contacts-customers"],
@@ -144,6 +157,7 @@ export default function NewProformaInvoicePage() {
   const validityManuallySet = useRef(false);
 
   useEffect(() => {
+    if (isEditing) return;
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
@@ -154,7 +168,7 @@ export default function NewProformaInvoicePage() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isEditing]);
 
   useEffect(() => {
     if (validityManuallySet.current) return;
@@ -166,13 +180,57 @@ export default function NewProformaInvoicePage() {
   }, [proformaDate]);
 
   useEffect(() => {
+    if (isEditing) return;
     if (!customer) return;
     const selected = customers.find((c) => c.id === customer);
     const customerState = selected?.state || selected?.billing_address?.state;
     if (customerState) {
       setPlaceOfSupply(customerState);
     }
-  }, [customer, customers]);
+  }, [customer, customers, isEditing]);
+
+  // Prefill from the existing quotation when editing.
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingQuotation || prefilled) return;
+    const q: any = existingQuotation;
+    setCustomer(q.contact_id || "");
+    if (q.date) setProformaDate(String(q.date).slice(0, 10));
+    if (q.validity_date) {
+      setValidityDate(String(q.validity_date).slice(0, 10));
+      validityManuallySet.current = true;
+    }
+    if (q.place_of_supply) setPlaceOfSupply(q.place_of_supply);
+    if (typeof q.notes === "string") setNotes(q.notes);
+    if (typeof q.terms === "string") setTerms(q.terms);
+
+    if (Array.isArray(q.items) && q.items.length > 0) {
+      setItems(
+        q.items.map((it: any) => {
+          const cgst = Number(it.cgst_rate) || 0;
+          const sgst = Number(it.sgst_rate) || 0;
+          const igst = Number(it.igst_rate) || 0;
+          const taxRate = igst > 0 ? igst : cgst + sgst;
+          const qty = Number(it.quantity) || 0;
+          const rate = Number(it.rate) || 0;
+          const discount = Number(it.discount_pct) || 0;
+          return {
+            id: it.id || generateId(),
+            product_id: it.product_id || "",
+            productName: it.description || "",
+            description: it.description || "",
+            hsnCode: it.hsn_code || "",
+            quantity: qty,
+            rate,
+            discount,
+            taxRate,
+            amount: qty * rate * (1 - discount / 100),
+          };
+        }),
+      );
+    }
+    setPrefilled(true);
+  }, [isEditing, existingQuotation, prefilled]);
 
   const [items, setItems] = useState<LineItem[]>([
     {
@@ -287,7 +345,7 @@ export default function NewProformaInvoicePage() {
   const handleSubmit = async (e?: React.FormEvent, sendEmail = false) => {
     if (e) e.preventDefault();
     try {
-      const result = await createMutation.mutateAsync({
+      const payload = {
         contact_id: customer,
         date: proformaDate,
         validity_date: validityDate || undefined,
@@ -304,16 +362,25 @@ export default function NewProformaInvoicePage() {
           cgst_rate: item.taxRate / 2,
           sgst_rate: item.taxRate / 2,
         })),
-      });
+      };
+
+      let result: any;
+      if (isEditing && editId) {
+        result = await updateMutation.mutateAsync({ id: editId, data: payload });
+      } else {
+        result = await createMutation.mutateAsync(payload);
+      }
+
+      const resultId = (result as any)?.data?.id || (result as any)?.id || editId;
 
       // Send email if Save & Send was clicked
-      if (sendEmail && (result as any)?.id) {
+      if (sendEmail && resultId) {
         const selectedCustomer = customers.find((c) => c.id === customer);
         const email = (selectedCustomer as any)?.email;
         if (email) {
           try {
             await api.post("/email/send-invoice", {
-              invoiceId: (result as any).id,
+              invoiceId: resultId,
               toEmail: email,
             });
           } catch {
@@ -322,7 +389,11 @@ export default function NewProformaInvoicePage() {
         }
       }
 
-      router.push("/proforma-invoices");
+      if (isEditing && resultId) {
+        router.push(`/proforma-invoices/${resultId}`);
+      } else {
+        router.push("/proforma-invoices");
+      }
     } catch {
       // Error handled by mutation
     }
@@ -339,25 +410,37 @@ export default function NewProformaInvoicePage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">New Proforma Invoice</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isEditing ? "Edit Proforma Invoice" : "New Proforma Invoice"}
+            </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Create a new proforma invoice
+              {isEditing
+                ? "Update this proforma invoice"
+                : "Create a new proforma invoice"}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" icon={<Save className="h-4 w-4" />} onClick={() => handleSubmit(undefined, false)}>
-            Save Draft
+            {isEditing ? "Save Changes" : "Save Draft"}
           </Button>
-          <Button icon={<Send className="h-4 w-4" />} onClick={() => handleSubmit(undefined, true)} loading={createMutation.isPending}>
-            Save & Send
+          <Button
+            icon={<Send className="h-4 w-4" />}
+            onClick={() => handleSubmit(undefined, true)}
+            loading={createMutation.isPending || updateMutation.isPending}
+          >
+            {isEditing ? "Save & Send" : "Save & Send"}
           </Button>
         </div>
       </div>
 
-      {createMutation.isError && (
+      {(createMutation.isError || updateMutation.isError) && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
-          {createMutation.error?.message || "Failed to create proforma invoice"}
+          {createMutation.error?.message ||
+            updateMutation.error?.message ||
+            (isEditing
+              ? "Failed to update proforma invoice"
+              : "Failed to create proforma invoice")}
         </div>
       )}
 

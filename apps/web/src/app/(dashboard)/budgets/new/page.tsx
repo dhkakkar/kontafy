@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { useCreateBudget } from "@/hooks/use-budgets";
+import { useCreateBudget, useUpdateBudget, useBudget } from "@/hooks/use-budgets";
 import { ArrowLeft, Save, Plus, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
@@ -34,9 +34,22 @@ interface Account {
   type: string;
 }
 
-export default function NewBudgetPage() {
+export default function NewBudgetPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewBudgetPage />
+    </Suspense>
+  );
+}
+
+function NewBudgetPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
   const createMutation = useCreateBudget();
+  const updateMutation = useUpdateBudget();
+  const { data: existingBudget } = useBudget(editId || "");
 
   const { data: accounts = [] } = useQuery<Account[]>({
     queryKey: ["accounts"],
@@ -64,6 +77,44 @@ export default function NewBudgetPage() {
       jul: 0, aug: 0, sep: 0, oct: 0, nov: 0, dec: 0,
     },
   ]);
+
+  // Prefill from the existing budget when editing.
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingBudget || prefilled) return;
+    const b: any = existingBudget;
+    if (typeof b.name === "string") setName(b.name);
+    if (typeof b.description === "string") setDescription(b.description);
+    if (b.fiscal_year) setFiscalYear(b.fiscal_year);
+    if (b.period_type) setPeriodType(b.period_type);
+
+    const rawLines: any[] =
+      (Array.isArray(b.line_items) && b.line_items) ||
+      (Array.isArray(b.lines) && b.lines) ||
+      (Array.isArray(b.items) && b.items) ||
+      [];
+    if (rawLines.length > 0) {
+      setLines(
+        rawLines.map((l: any) => ({
+          id: l.id || genId(),
+          account_id: l.account_id || "",
+          jan: Number(l.jan) || 0,
+          feb: Number(l.feb) || 0,
+          mar: Number(l.mar) || 0,
+          apr: Number(l.apr) || 0,
+          may: Number(l.may) || 0,
+          jun: Number(l.jun) || 0,
+          jul: Number(l.jul) || 0,
+          aug: Number(l.aug) || 0,
+          sep: Number(l.sep) || 0,
+          oct: Number(l.oct) || 0,
+          nov: Number(l.nov) || 0,
+          dec: Number(l.dec) || 0,
+        })),
+      );
+    }
+    setPrefilled(true);
+  }, [isEditing, existingBudget, prefilled]);
 
   const addLine = () => {
     setLines([
@@ -101,7 +152,7 @@ export default function NewBudgetPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createMutation.mutateAsync({
+      const payload = {
         name,
         description: description || undefined,
         fiscal_year: fiscalYear,
@@ -111,8 +162,14 @@ export default function NewBudgetPage() {
         line_items: lines
           .filter((l) => l.account_id)
           .map(({ id, ...rest }) => rest),
-      });
-      router.push("/budgets");
+      };
+      if (isEditing && editId) {
+        await updateMutation.mutateAsync({ id: editId, data: payload });
+        router.push(`/budgets/${editId}`);
+      } else {
+        await createMutation.mutateAsync(payload);
+        router.push("/budgets");
+      }
     } catch {
       // Error handled by mutation
     }
@@ -129,18 +186,20 @@ export default function NewBudgetPage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">New Budget</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isEditing ? "Edit Budget" : "New Budget"}
+            </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Create a new financial budget
+              {isEditing ? "Update this budget" : "Create a new financial budget"}
             </p>
           </div>
         </div>
         <Button
           icon={<Save className="h-4 w-4" />}
           onClick={handleSubmit}
-          loading={createMutation.isPending}
+          loading={createMutation.isPending || updateMutation.isPending}
         >
-          Save Budget
+          {isEditing ? "Save Changes" : "Save Budget"}
         </Button>
       </div>
 

@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
-import { useCreatePurchaseOrder } from "@/hooks/use-purchase-orders";
+import { useCreatePurchaseOrder, useUpdatePurchaseOrder, usePurchaseOrder } from "@/hooks/use-purchase-orders";
 import { api } from "@/lib/api";
 import { ArrowLeft, Plus, Trash2, Save, Send, Upload, ScanLine, X } from "lucide-react";
 
@@ -88,9 +88,22 @@ const INDIAN_STATES = [
   { value: "WB", label: "West Bengal" },
 ];
 
-export default function NewPurchaseOrderPage() {
+export default function NewPurchaseOrderPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewPurchaseOrderPage />
+    </Suspense>
+  );
+}
+
+function NewPurchaseOrderPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
   const createMutation = useCreatePurchaseOrder();
+  const updateMutation = useUpdatePurchaseOrder();
+  const { data: existingPO } = usePurchaseOrder(editId || "");
 
   const { data: vendors = [] } = useQuery<ContactOption[]>({
     queryKey: ["contacts-vendors"],
@@ -156,6 +169,59 @@ export default function NewPurchaseOrderPage() {
       amount: 0,
     },
   ]);
+
+  // Prefill from the existing purchase order when editing.
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingPO || prefilled) return;
+    const po: any = (existingPO as any)?.data ?? existingPO;
+    setVendor(po.contact_id || "");
+    if (po.date) setOrderDate(String(po.date).slice(0, 10));
+    if (po.delivery_date) setDeliveryDate(String(po.delivery_date).slice(0, 10));
+    if (po.place_of_supply) setPlaceOfSupply(po.place_of_supply);
+    if (typeof po.notes === "string") setNotes(po.notes);
+    if (typeof po.terms === "string") setTerms(po.terms);
+
+    if (po.shipping_address) {
+      setShipLine1(po.shipping_address.line1 || "");
+      setShipCity(po.shipping_address.city || "");
+      setShipState(po.shipping_address.state || "");
+      setShipPincode(po.shipping_address.pincode || "");
+    }
+
+    if (po.additional_charges !== undefined && po.additional_charges !== null) {
+      setAdditionalCharges(String(po.additional_charges));
+    }
+    if (po.additional_discount !== undefined && po.additional_discount !== null) {
+      setAdditionalDiscount(String(po.additional_discount));
+    }
+
+    if (Array.isArray(po.items) && po.items.length > 0) {
+      setItems(
+        po.items.map((it: any) => {
+          const cgst = Number(it.cgst_rate) || 0;
+          const sgst = Number(it.sgst_rate) || 0;
+          const igst = Number(it.igst_rate) || 0;
+          const taxRate = igst > 0 ? igst : cgst + sgst;
+          const qty = Number(it.quantity) || 0;
+          const rate = Number(it.rate) || 0;
+          const discount = Number(it.discount_pct) || 0;
+          return {
+            id: it.id || generateId(),
+            product_id: it.product_id || "",
+            productName: it.description || "",
+            hsnCode: it.hsn_code || "",
+            quantity: qty,
+            rate,
+            discount,
+            taxRate,
+            amount: qty * rate * (1 - discount / 100),
+          };
+        }),
+      );
+    }
+    setPrefilled(true);
+  }, [isEditing, existingPO, prefilled]);
 
   const addItem = () => {
     setItems([
@@ -256,7 +322,7 @@ export default function NewPurchaseOrderPage() {
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     try {
-      await createMutation.mutateAsync({
+      const payload = {
         contact_id: vendor,
         date: orderDate,
         delivery_date: deliveryDate || undefined,
@@ -278,8 +344,16 @@ export default function NewPurchaseOrderPage() {
           cgst_rate: item.taxRate / 2,
           sgst_rate: item.taxRate / 2,
         })),
-      });
-      router.push("/purchase-orders");
+      };
+
+      if (isEditing && editId) {
+        const res: any = await updateMutation.mutateAsync({ id: editId, data: payload });
+        const resultId = (res as any)?.data?.id || (res as any)?.id || editId;
+        router.push(`/purchase-orders/${resultId}`);
+      } else {
+        await createMutation.mutateAsync(payload);
+        router.push("/purchase-orders");
+      }
     } catch {
       // Error handled by mutation
     }
@@ -297,10 +371,12 @@ export default function NewPurchaseOrderPage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              New Purchase Order
+              {isEditing ? "Edit Purchase Order" : "New Purchase Order"}
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Create a new purchase order for a vendor
+              {isEditing
+                ? "Update this purchase order"
+                : "Create a new purchase order for a vendor"}
             </p>
           </div>
         </div>
@@ -310,14 +386,14 @@ export default function NewPurchaseOrderPage() {
             icon={<Save className="h-4 w-4" />}
             onClick={() => handleSubmit()}
           >
-            Save Draft
+            {isEditing ? "Save Changes" : "Save Draft"}
           </Button>
           <Button
             icon={<Send className="h-4 w-4" />}
             onClick={() => handleSubmit()}
-            loading={createMutation.isPending}
+            loading={createMutation.isPending || updateMutation.isPending}
           >
-            Save & Send
+            {isEditing ? "Save & Send" : "Save & Send"}
           </Button>
         </div>
       </div>

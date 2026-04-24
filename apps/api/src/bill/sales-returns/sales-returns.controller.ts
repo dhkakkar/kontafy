@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Query,
@@ -60,5 +61,15 @@ export class SalesReturnsController {
     @Body() body: CreateSalesReturnDto,
   ) {
     return this.salesReturnsService.create(orgId, userId, body);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a draft sales return' })
+  async update(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @Body() body: Record<string, any>,
+  ) {
+    return this.salesReturnsService.update(orgId, id, body);
   }
 }

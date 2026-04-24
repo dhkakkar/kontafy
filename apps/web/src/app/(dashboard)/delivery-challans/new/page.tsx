@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,9 +77,21 @@ function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export default function NewDeliveryChallanPage() {
+export default function NewDeliveryChallanPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewDeliveryChallanPage />
+    </Suspense>
+  );
+}
+
+function NewDeliveryChallanPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
+
   const [customer, setCustomer] = useState("");
   const [challanDate, setChallanDate] = useState(
     new Date().toISOString().split("T")[0]
@@ -96,6 +108,44 @@ export default function NewDeliveryChallanPage() {
   const [additionalDiscount, setAdditionalDiscount] = useState(0);
   const [additionalCharges, setAdditionalCharges] = useState(0);
   const [additionalChargesLabel, setAdditionalChargesLabel] = useState("Shipping");
+
+  // Fetch the existing delivery challan when editing, then prefill every field.
+  const { data: existingChallan } = useQuery<any>({
+    queryKey: ["delivery-challan", editId],
+    queryFn: async () => {
+      const res = await api.get<{ data: any } | any>(
+        `/bill/delivery-challans/${editId}`,
+      );
+      return (res as any)?.data ?? res;
+    },
+    enabled: isEditing,
+  });
+
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingChallan || prefilled) return;
+    const dc = existingChallan;
+    setCustomer(dc.contact_id || "");
+    if (dc.date) setChallanDate(String(dc.date).slice(0, 10));
+    if (dc.place_of_supply) setPlaceOfSupply(dc.place_of_supply);
+    if (typeof dc.delivery_address === "string") setDeliveryAddress(dc.delivery_address);
+    if (typeof dc.notes === "string") setNotes(dc.notes);
+
+    if (Array.isArray(dc.items) && dc.items.length > 0) {
+      setItems(
+        dc.items.map((it: any) => ({
+          id: it.id || generateId(),
+          productId: it.product_id || undefined,
+          productName: it.description || "",
+          description: it.description || "",
+          hsnCode: it.hsn_code || "",
+          quantity: Number(it.quantity) || 0,
+          unit: it.unit || "pcs",
+        })),
+      );
+    }
+    setPrefilled(true);
+  }, [isEditing, existingChallan, prefilled]);
 
   const [items, setItems] = useState<LineItem[]>([
     {
@@ -137,7 +187,7 @@ export default function NewDeliveryChallanPage() {
 
   const createChallan = useMutation({
     mutationFn: async (status: "draft" | "sent") => {
-      return api.post("/bill/delivery-challans", {
+      const payload: Record<string, unknown> = {
         contact_id: customer,
         date: challanDate,
         place_of_supply: placeOfSupply || undefined,
@@ -151,11 +201,28 @@ export default function NewDeliveryChallanPage() {
           quantity: item.quantity,
           unit: item.unit || "pcs",
         })),
-      });
+      };
+
+      if (isEditing && editId) {
+        const res = await api.patch<{ data: { id: string } } | { id: string }>(
+          `/bill/delivery-challans/${editId}`,
+          payload,
+        );
+        return { id: (res as any)?.data?.id || (res as any)?.id || editId };
+      }
+      const res = await api.post<{ data: { id: string } } | { id: string }>(
+        "/bill/delivery-challans",
+        payload,
+      );
+      return { id: (res as any)?.data?.id || (res as any)?.id };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["delivery-challans"] });
-      router.push("/delivery-challans");
+      if (isEditing && result?.id) {
+        router.push(`/delivery-challans/${result.id}`);
+      } else {
+        router.push("/delivery-challans");
+      }
     },
   });
 
@@ -242,8 +309,14 @@ export default function NewDeliveryChallanPage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">New Delivery Challan</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Create a new delivery challan</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isEditing ? "Edit Delivery Challan" : "New Delivery Challan"}
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {isEditing
+                ? "Update this delivery challan"
+                : "Create a new delivery challan"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -254,7 +327,7 @@ export default function NewDeliveryChallanPage() {
             loading={createChallan.isPending}
             disabled={!canSubmit}
           >
-            Save Draft
+            {isEditing ? "Save Changes" : "Save Draft"}
           </Button>
           <Button
             icon={<Send className="h-4 w-4" />}
@@ -262,14 +335,17 @@ export default function NewDeliveryChallanPage() {
             loading={createChallan.isPending}
             disabled={!canSubmit}
           >
-            Send Challan
+            {isEditing ? "Save & Send" : "Send Challan"}
           </Button>
         </div>
       </div>
 
       {createChallan.isError && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
-          {createChallan.error?.message || "Failed to create delivery challan"}
+          {createChallan.error?.message ||
+            (isEditing
+              ? "Failed to update delivery challan"
+              : "Failed to create delivery challan")}
         </div>
       )}
 

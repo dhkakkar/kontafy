@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,8 +97,20 @@ function calcTax(amount: number, taxRate: number): number {
   return (amount * taxRate) / 100;
 }
 
-export default function NewPurchasePage() {
+export default function NewPurchasePageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewPurchasePage />
+    </Suspense>
+  );
+}
+
+function NewPurchasePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
+
   const [vendor, setVendor] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(
     new Date().toISOString().split("T")[0]
@@ -117,6 +129,7 @@ export default function NewPurchasePage() {
 
   // Auto-fill terms & notes from invoice settings
   useEffect(() => {
+    if (isEditing) return;
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
@@ -131,7 +144,56 @@ export default function NewPurchasePage() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isEditing]);
+
+  // Fetch the existing purchase when editing, then prefill every field.
+  const { data: existingPurchase } = useQuery<any>({
+    queryKey: ["purchase", editId],
+    queryFn: async () => {
+      const res = await api.get<{ data: any } | any>(
+        `/bill/purchases/${editId}`,
+      );
+      return (res as any)?.data ?? res;
+    },
+    enabled: isEditing,
+  });
+
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingPurchase || prefilled) return;
+    const p = existingPurchase;
+    setVendor(p.contact_id || "");
+    if (p.date) setInvoiceDate(String(p.date).slice(0, 10));
+    if (p.due_date) setDueDate(String(p.due_date).slice(0, 10));
+    if (p.place_of_supply) setPlaceOfSupply(p.place_of_supply);
+    if (p.vendor_invoice_no) setVendorInvoiceNo(p.vendor_invoice_no);
+    if (typeof p.notes === "string") setNotes(p.notes);
+    if (typeof p.terms === "string") setTerms(p.terms);
+
+    if (Array.isArray(p.items) && p.items.length > 0) {
+      setItems(
+        p.items.map((it: any) => {
+          const cgst = Number(it.cgst_rate) || 0;
+          const sgst = Number(it.sgst_rate) || 0;
+          const igst = Number(it.igst_rate) || 0;
+          const taxRate = igst > 0 ? igst : cgst + sgst;
+          const qty = Number(it.quantity) || 0;
+          const rate = Number(it.rate) || 0;
+          return {
+            id: it.id || generateId(),
+            productName: it.description || "",
+            description: it.description || "",
+            hsnCode: it.hsn_code || "",
+            quantity: qty,
+            rate,
+            taxRate,
+            amount: calcAmount(qty, rate),
+          };
+        }),
+      );
+    }
+    setPrefilled(true);
+  }, [isEditing, existingPurchase, prefilled]);
 
   // Fetch contacts (vendors) from API
   const { data: contacts = [] } = useQuery<Contact[]>({
@@ -189,11 +251,11 @@ export default function NewPurchasePage() {
     setShowBarcodeInput(false);
   };
 
-  // Create purchase mutation
+  // Create or update purchase mutation
   const createPurchase = useMutation({
     mutationFn: async (status: "draft" | "approved") => {
       const halfRate = (rate: number) => rate / 2;
-      return api.post("/bill/purchases", {
+      const payload: Record<string, unknown> = {
         type: "purchase",
         contact_id: vendor,
         date: invoiceDate,
@@ -211,10 +273,29 @@ export default function NewPurchasePage() {
           cgst_rate: halfRate(item.taxRate),
           sgst_rate: halfRate(item.taxRate),
         })),
-      });
+      };
+
+      if (isEditing && editId) {
+        const { type: _type, ...updatePayload } = payload;
+        void _type;
+        const res = await api.patch<{ data: { id: string } } | { id: string }>(
+          `/bill/purchases/${editId}`,
+          updatePayload,
+        );
+        return { id: (res as any)?.data?.id || (res as any)?.id || editId };
+      }
+      const res = await api.post<{ data: { id: string } } | { id: string }>(
+        "/bill/purchases",
+        payload,
+      );
+      return { id: (res as any)?.data?.id || (res as any)?.id };
     },
-    onSuccess: () => {
-      router.push("/purchases");
+    onSuccess: (result) => {
+      if (isEditing && result?.id) {
+        router.push(`/purchases/${result.id}`);
+      } else {
+        router.push("/purchases");
+      }
     },
   });
 
@@ -295,10 +376,12 @@ export default function NewPurchasePage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              New Purchase Invoice
+              {isEditing ? "Edit Purchase Invoice" : "New Purchase Invoice"}
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Record a bill from a vendor
+              {isEditing
+                ? "Update this purchase invoice"
+                : "Record a bill from a vendor"}
             </p>
           </div>
         </div>
@@ -310,7 +393,7 @@ export default function NewPurchasePage() {
             loading={createPurchase.isPending}
             disabled={!canSubmit}
           >
-            Save Draft
+            {isEditing ? "Save Changes" : "Save Draft"}
           </Button>
           <Button
             icon={<Send className="h-4 w-4" />}
@@ -318,14 +401,15 @@ export default function NewPurchasePage() {
             loading={createPurchase.isPending}
             disabled={!canSubmit}
           >
-            Save & Approve
+            {isEditing ? "Save & Approve" : "Save & Approve"}
           </Button>
         </div>
       </div>
 
       {createPurchase.isError && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
-          {createPurchase.error?.message || "Failed to create purchase"}
+          {createPurchase.error?.message ||
+            (isEditing ? "Failed to update purchase" : "Failed to create purchase")}
         </div>
       )}
 

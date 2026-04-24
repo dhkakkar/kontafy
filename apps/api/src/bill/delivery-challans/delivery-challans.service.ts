@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -183,6 +184,104 @@ export class DeliveryChallansService {
       where: { id },
       data: { status, updated_at: new Date() },
     });
+  }
+
+  async update(orgId: string, id: string, body: Record<string, any>) {
+    const existing = await this.prisma.invoice.findFirst({
+      where: { id, org_id: orgId, type: 'delivery_challan' },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Delivery challan not found');
+    }
+
+    if (existing.status !== 'draft') {
+      throw new BadRequestException(
+        'Only draft delivery challans can be edited',
+      );
+    }
+
+    const {
+      type: _type,
+      org_id: _orgId,
+      id: _id,
+      invoice_number: _invoiceNumber,
+      challan_number: _challanNumber,
+      items,
+      ...scalar
+    } = body || {};
+
+    if (items !== undefined && Array.isArray(items) && items.length === 0) {
+      throw new BadRequestException('At least one item is required');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      let subtotal = existing.subtotal?.toNumber() || 0;
+      let totalAmount = existing.total?.toNumber() || 0;
+
+      if (Array.isArray(items)) {
+        // Mirror create's math exactly: no GST computation, total = rate * qty
+        const mappedItems = items.map((item: any) => ({
+          product_id: item.product_id,
+          description: item.description,
+          hsn_code: item.hsn_code,
+          quantity: item.quantity,
+          unit: item.unit || 'pcs',
+          rate: item.rate || 0,
+          discount_pct: 0,
+          taxable_amount: 0,
+          cgst_rate: 0,
+          cgst_amount: 0,
+          sgst_rate: 0,
+          sgst_amount: 0,
+          igst_rate: 0,
+          igst_amount: 0,
+          cess_rate: 0,
+          cess_amount: 0,
+          total: (item.rate || 0) * item.quantity,
+        }));
+
+        subtotal = mappedItems.reduce((sum, it) => sum + it.total, 0);
+        totalAmount = subtotal;
+
+        await tx.invoiceItem.deleteMany({ where: { invoice_id: id } });
+
+        await tx.invoiceItem.createMany({
+          data: mappedItems.map((item) => ({
+            invoice_id: id,
+            ...item,
+          })),
+        });
+      }
+
+      const updateData: any = {
+        updated_at: new Date(),
+      };
+
+      if (scalar.contact_id !== undefined) updateData.contact_id = scalar.contact_id;
+      if (scalar.date !== undefined) updateData.date = new Date(scalar.date);
+      if (scalar.place_of_supply !== undefined)
+        updateData.place_of_supply = scalar.place_of_supply;
+      if (scalar.notes !== undefined) updateData.notes = scalar.notes;
+      if (scalar.terms !== undefined) updateData.terms = scalar.terms;
+
+      if (Array.isArray(items)) {
+        updateData.subtotal = subtotal;
+        updateData.total = totalAmount;
+      }
+
+      await tx.invoice.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return tx.invoice.findUnique({
+        where: { id },
+        include: { items: true, contact: true },
+      });
+    });
+
+    return updated;
   }
 
   private async generateChallanNumber(orgId: string): Promise<string> {

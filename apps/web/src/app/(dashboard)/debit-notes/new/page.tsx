@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,9 +106,21 @@ function calcTax(amount: number, taxRate: number): number {
   return (amount * taxRate) / 100;
 }
 
-export default function NewDebitNotePage() {
+export default function NewDebitNotePageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewDebitNotePage />
+    </Suspense>
+  );
+}
+
+function NewDebitNotePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
+
   const [vendor, setVendor] = useState("");
   const [debitNoteDate, setDebitNoteDate] = useState(
     new Date().toISOString().split("T")[0]
@@ -125,6 +137,7 @@ export default function NewDebitNotePage() {
   const [barcodeValue, setBarcodeValue] = useState("");
 
   useEffect(() => {
+    if (isEditing) return;
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
@@ -135,7 +148,59 @@ export default function NewDebitNotePage() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isEditing]);
+
+  // Fetch the existing debit note when editing, then prefill every field.
+  const { data: existingDebitNote } = useQuery<any>({
+    queryKey: ["debit-note", editId],
+    queryFn: async () => {
+      const res = await api.get<{ data: any } | any>(
+        `/bill/invoices/${editId}`,
+      );
+      return (res as any)?.data ?? res;
+    },
+    enabled: isEditing,
+  });
+
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingDebitNote || prefilled) return;
+    const dn = existingDebitNote;
+    setVendor(dn.contact_id || "");
+    if (dn.date) setDebitNoteDate(String(dn.date).slice(0, 10));
+    if (dn.reason) setReason(dn.reason);
+    if (dn.place_of_supply) setPlaceOfSupply(dn.place_of_supply);
+    if (typeof dn.notes === "string") setNotes(dn.notes);
+    if (typeof dn.terms === "string") setTerms(dn.terms);
+    if (dn.discount_amount) setAdditionalDiscount(Number(dn.discount_amount));
+
+    if (Array.isArray(dn.items) && dn.items.length > 0) {
+      setItems(
+        dn.items.map((it: any) => {
+          const cgst = Number(it.cgst_rate) || 0;
+          const sgst = Number(it.sgst_rate) || 0;
+          const igst = Number(it.igst_rate) || 0;
+          const taxRate = igst > 0 ? igst : cgst + sgst;
+          const qty = Number(it.quantity) || 0;
+          const rate = Number(it.rate) || 0;
+          const discount = Number(it.discount_pct) || 0;
+          return {
+            id: it.id || generateId(),
+            productId: it.product_id || undefined,
+            productName: it.description || "",
+            description: it.description || "",
+            hsnCode: it.hsn_code || "",
+            quantity: qty,
+            rate,
+            discount,
+            taxRate,
+            amount: calcAmount(qty, rate, discount),
+          };
+        }),
+      );
+    }
+    setPrefilled(true);
+  }, [isEditing, existingDebitNote, prefilled]);
 
   const [items, setItems] = useState<LineItem[]>([
     {
@@ -181,7 +246,7 @@ export default function NewDebitNotePage() {
   const createDebitNote = useMutation({
     mutationFn: async (status: "draft" | "sent") => {
       const halfRate = (rate: number) => rate / 2;
-      return api.post("/bill/invoices", {
+      const payload: Record<string, unknown> = {
         type: "debit_note",
         contact_id: vendor,
         date: debitNoteDate,
@@ -200,11 +265,30 @@ export default function NewDebitNotePage() {
           cgst_rate: halfRate(item.taxRate),
           sgst_rate: halfRate(item.taxRate),
         })),
-      });
+      };
+
+      if (isEditing && editId) {
+        const { type: _type, ...updatePayload } = payload;
+        void _type;
+        const res = await api.patch<{ data: { id: string } } | { id: string }>(
+          `/bill/invoices/${editId}`,
+          updatePayload,
+        );
+        return { id: (res as any)?.data?.id || (res as any)?.id || editId };
+      }
+      const res = await api.post<{ data: { id: string } } | { id: string }>(
+        "/bill/invoices",
+        payload,
+      );
+      return { id: (res as any)?.data?.id || (res as any)?.id };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["debit-notes"] });
-      router.push("/debit-notes");
+      if (isEditing && result?.id) {
+        router.push(`/debit-notes/${result.id}`);
+      } else {
+        router.push("/debit-notes");
+      }
     },
   });
 
@@ -319,8 +403,14 @@ export default function NewDebitNotePage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">New Debit Note</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Create a new debit note for purchase returns</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isEditing ? "Edit Debit Note" : "New Debit Note"}
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {isEditing
+                ? "Update this debit note"
+                : "Create a new debit note for purchase returns"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -331,7 +421,7 @@ export default function NewDebitNotePage() {
             loading={createDebitNote.isPending}
             disabled={!canSubmit}
           >
-            Save Draft
+            {isEditing ? "Save Changes" : "Save Draft"}
           </Button>
           <Button
             icon={<Send className="h-4 w-4" />}
@@ -339,14 +429,15 @@ export default function NewDebitNotePage() {
             loading={createDebitNote.isPending}
             disabled={!canSubmit}
           >
-            Issue Debit Note
+            {isEditing ? "Save & Issue" : "Issue Debit Note"}
           </Button>
         </div>
       </div>
 
       {createDebitNote.isError && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
-          {createDebitNote.error?.message || "Failed to create debit note"}
+          {createDebitNote.error?.message ||
+            (isEditing ? "Failed to update debit note" : "Failed to create debit note")}
         </div>
       )}
 
