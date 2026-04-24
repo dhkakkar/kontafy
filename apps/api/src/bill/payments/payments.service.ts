@@ -181,6 +181,7 @@ export class PaymentsService {
               amount_paid: newAmountPaid,
               balance_due: Math.max(0, newBalanceDue),
               status: newStatus,
+              pdf_url: null,
               updated_at: new Date(),
             },
           });
@@ -270,6 +271,9 @@ export class PaymentsService {
               amount_paid: newAmountPaid,
               balance_due: Math.max(0, newBalanceDue),
               status: newStatus,
+              // Invalidate the cached PDF so the next download regenerates
+              // it with the latest amount_paid / balance_due / status.
+              pdf_url: null,
               updated_at: new Date(),
             },
           });
@@ -371,6 +375,7 @@ export class PaymentsService {
               amount_paid: newAmountPaid,
               balance_due: Math.max(0, newBalanceDue),
               status: newStatus,
+              pdf_url: null,
               updated_at: new Date(),
             },
           });
