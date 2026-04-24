@@ -158,10 +158,21 @@ export class SuperadminService {
 
   /**
    * Create an organization and assign an owner.
+   *
+   * Supports two modes of picking the owner:
+   * - `owner_email` + `owner_password` (+ optional `owner_full_name`): if a
+   *   Supabase Auth user with that email doesn't exist, one is created with
+   *   the given password (email auto-confirmed). If a user already exists
+   *   with that email, it is linked as the owner (password is ignored —
+   *   the existing account is not modified).
+   * - `owner_user_id`: legacy — directly use an existing Supabase user by id.
    */
   async createOrganization(data: {
     name: string;
-    owner_user_id: string;
+    owner_user_id?: string;
+    owner_email?: string;
+    owner_password?: string;
+    owner_full_name?: string;
     legal_name?: string;
     gstin?: string;
     pan?: string;
@@ -172,11 +183,51 @@ export class SuperadminService {
     plan?: string;
     fiscal_year_start?: number;
   }) {
-    // Verify owner user exists in Supabase
-    const { data: userData, error } =
-      await this.supabase.auth.admin.getUserById(data.owner_user_id);
-    if (error || !userData.user) {
-      throw new NotFoundException('Owner user not found in auth system');
+    // Resolve owner user_id from either mode.
+    let ownerUserId: string;
+    let ownerEmailOnRecord: string | undefined;
+
+    if (data.owner_user_id) {
+      const { data: userData, error } =
+        await this.supabase.auth.admin.getUserById(data.owner_user_id);
+      if (error || !userData.user) {
+        throw new NotFoundException('Owner user not found in auth system');
+      }
+      ownerUserId = userData.user.id;
+      ownerEmailOnRecord = userData.user.email;
+    } else if (data.owner_email) {
+      const email = data.owner_email.trim().toLowerCase();
+      const existing = await this.findUserByEmail(email);
+      if (existing) {
+        ownerUserId = existing.id;
+        ownerEmailOnRecord = existing.email;
+      } else {
+        if (!data.owner_password || data.owner_password.length < 8) {
+          throw new BadRequestException(
+            'A password of at least 8 characters is required to create a new owner account.',
+          );
+        }
+        const { data: created, error } =
+          await this.supabase.auth.admin.createUser({
+            email,
+            password: data.owner_password,
+            email_confirm: true,
+            user_metadata: data.owner_full_name
+              ? { full_name: data.owner_full_name }
+              : {},
+          });
+        if (error || !created?.user) {
+          throw new BadRequestException(
+            `Failed to create owner account: ${error?.message || 'unknown error'}`,
+          );
+        }
+        ownerUserId = created.user.id;
+        ownerEmailOnRecord = created.user.email;
+      }
+    } else {
+      throw new BadRequestException(
+        'Either owner_email or owner_user_id must be provided.',
+      );
     }
 
     // Create organization
@@ -186,7 +237,7 @@ export class SuperadminService {
         legal_name: data.legal_name || undefined,
         gstin: data.gstin || undefined,
         pan: data.pan || undefined,
-        email: data.email || userData.user.email || undefined,
+        email: data.email || ownerEmailOnRecord || undefined,
         phone: data.phone || undefined,
         business_type: data.business_type || undefined,
         industry: data.industry || undefined,
@@ -199,12 +250,42 @@ export class SuperadminService {
     await this.prisma.orgMember.create({
       data: {
         org_id: org.id,
-        user_id: data.owner_user_id,
+        user_id: ownerUserId,
         role: 'owner',
       },
     });
 
     return org;
+  }
+
+  /**
+   * Scan Supabase Auth users for a given email. Paginated — stops at the
+   * first match. Returns null if the email doesn't belong to any user.
+   */
+  private async findUserByEmail(email: string) {
+    const target = email.toLowerCase();
+    const perPage = 200;
+    let page = 1;
+    // Hard cap at 10 pages (2000 users) — well beyond any realistic platform
+    // size that'd hit this path without a dedicated lookup endpoint.
+    while (page <= 10) {
+      const { data, error } = await this.supabase.auth.admin.listUsers({
+        page,
+        perPage,
+      });
+      if (error) {
+        throw new BadRequestException(
+          `Failed to look up owner by email: ${error.message}`,
+        );
+      }
+      const match = data.users.find(
+        (u) => u.email?.toLowerCase() === target,
+      );
+      if (match) return match;
+      if (data.users.length < perPage) return null;
+      page += 1;
+    }
+    return null;
   }
 
   /**

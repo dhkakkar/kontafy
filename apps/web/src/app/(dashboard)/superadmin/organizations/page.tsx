@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useAuthStore } from "@/stores/auth.store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +19,9 @@ const FY_MONTHS = [
 
 interface NewOrgState {
   name: string;
-  owner_user_id: string;
+  owner_email: string;
+  owner_password: string;
+  owner_full_name: string;
   legal_name: string;
   gstin: string;
   pan: string;
@@ -34,7 +35,9 @@ interface NewOrgState {
 
 const EMPTY_ORG: NewOrgState = {
   name: "",
-  owner_user_id: "",
+  owner_email: "",
+  owner_password: "",
+  owner_full_name: "",
   legal_name: "",
   gstin: "",
   pan: "",
@@ -48,7 +51,6 @@ const EMPTY_ORG: NewOrgState = {
 
 export default function SuperadminOrganizationsPage() {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
@@ -90,10 +92,14 @@ export default function SuperadminOrganizationsPage() {
       // Strip empty optional fields so backend defaults apply cleanly
       const payload: Record<string, unknown> = {
         name: newOrg.name,
-        owner_user_id: newOrg.owner_user_id,
+        owner_email: newOrg.owner_email.trim(),
+        owner_password: newOrg.owner_password,
         plan: newOrg.plan,
         fiscal_year_start: newOrg.fiscal_year_start,
       };
+      if (newOrg.owner_full_name.trim()) {
+        payload.owner_full_name = newOrg.owner_full_name.trim();
+      }
       (
         ["legal_name", "gstin", "pan", "email", "phone", "business_type", "industry"] as const
       ).forEach((k) => {
@@ -103,7 +109,9 @@ export default function SuperadminOrganizationsPage() {
       return api.post("/superadmin/organizations", payload);
     },
     onSuccess: () => {
-      alert("Organization created successfully");
+      alert(
+        `Organization created. Owner can log in with ${newOrg.owner_email} and the password you set.`,
+      );
       setShowCreate(false);
       setNewOrg(EMPTY_ORG);
       queryClient.invalidateQueries({ queryKey: ["superadmin", "organizations"] });
@@ -149,30 +157,54 @@ export default function SuperadminOrganizationsPage() {
               />
             </div>
 
-            <div className="md:col-span-2">
-              <label className="text-xs font-medium text-gray-700 mb-1 block">
-                Owner User ID (UUID) <span className="text-red-500">*</span>
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Paste user UUID from Users tab..."
-                  value={newOrg.owner_user_id}
-                  onChange={(e) => setNewOrg({ ...newOrg, owner_user_id: e.target.value })}
-                  className="flex-1"
-                />
-                {user?.id && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setNewOrg({ ...newOrg, owner_user_id: user.id })}
-                    type="button"
-                  >
-                    Use My ID
-                  </Button>
-                )}
+            <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Owner Account
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">
+                    Owner Email <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="owner@company.com"
+                    value={newOrg.owner_email}
+                    onChange={(e) =>
+                      setNewOrg({ ...newOrg, owner_email: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">
+                    Owner Password <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Min 8 characters"
+                    value={newOrg.owner_password}
+                    onChange={(e) =>
+                      setNewOrg({ ...newOrg, owner_password: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">
+                    Owner Full Name
+                  </label>
+                  <Input
+                    placeholder="e.g. Rahul Sharma"
+                    value={newOrg.owner_full_name}
+                    onChange={(e) =>
+                      setNewOrg({ ...newOrg, owner_full_name: e.target.value })
+                    }
+                  />
+                </div>
               </div>
-              <p className="text-xs text-gray-400 mt-1">
-                This user will be the org owner. Find IDs in the Users tab.
+              <p className="text-xs text-gray-500">
+                If an account with this email already exists, it will be linked as
+                the owner and the password field is ignored. Otherwise a new
+                account is created with the given password (email auto-verified).
               </p>
             </div>
 
@@ -281,7 +313,11 @@ export default function SuperadminOrganizationsPage() {
               variant="primary"
               onClick={() => createMutation.mutate()}
               loading={createMutation.isPending}
-              disabled={!newOrg.name.trim() || !newOrg.owner_user_id.trim()}
+              disabled={
+                !newOrg.name.trim() ||
+                !newOrg.owner_email.trim() ||
+                newOrg.owner_password.length < 8
+              }
             >
               <Plus className="h-4 w-4 mr-1" /> Create Organization
             </Button>

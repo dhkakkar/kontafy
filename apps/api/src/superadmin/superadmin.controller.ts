@@ -58,7 +58,10 @@ export class SuperadminController {
     @Body()
     body: {
       name: string;
-      owner_user_id: string;
+      owner_user_id?: string;
+      owner_email?: string;
+      owner_password?: string;
+      owner_full_name?: string;
       legal_name?: string;
       gstin?: string;
       pan?: string;
