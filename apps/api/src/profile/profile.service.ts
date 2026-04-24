@@ -120,6 +120,71 @@ export class ProfileService {
   }
 
   /**
+   * Upload a new avatar image for the user. Takes a data URL
+   * ("data:image/png;base64,...") from the client, decodes it, uploads
+   * to the Supabase Storage `avatars` bucket using the service role
+   * (bypassing RLS), and stores the public URL on the user's metadata.
+   */
+  async uploadAvatar(userId: string, dataUrl: string) {
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      throw new BadRequestException('Image data is required');
+    }
+
+    const match = /^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/i.exec(
+      dataUrl,
+    );
+    if (!match) {
+      throw new BadRequestException(
+        'Invalid image data. Expected a PNG, JPEG, or WEBP data URL.',
+      );
+    }
+    const mime = match[1].toLowerCase();
+    const ext = match[2].toLowerCase() === 'jpg' ? 'jpg' : match[2].toLowerCase();
+    const base64 = match[3];
+    const buffer = Buffer.from(base64, 'base64');
+
+    if (buffer.length === 0) {
+      throw new BadRequestException('Image data is empty');
+    }
+    if (buffer.length > 1024 * 1024) {
+      throw new BadRequestException('Image too large. Max 1MB.');
+    }
+
+    const path = `${userId}/avatar-${Date.now()}.${ext}`;
+    const { error: uploadErr } = await this.supabase.storage
+      .from('avatars')
+      .upload(path, buffer, {
+        contentType: mime,
+        upsert: true,
+        cacheControl: '3600',
+      });
+
+    if (uploadErr) {
+      this.logger.error('Avatar upload failed', uploadErr);
+      throw new BadRequestException(`Upload failed: ${uploadErr.message}`);
+    }
+
+    const { data: urlData } = this.supabase.storage
+      .from('avatars')
+      .getPublicUrl(path);
+    const avatar_url = urlData.publicUrl;
+
+    // Persist on the user's Supabase Auth metadata so /profile reflects it.
+    const { error: updateErr } =
+      await this.supabase.auth.admin.updateUserById(userId, {
+        user_metadata: { avatar_url },
+      });
+    if (updateErr) {
+      this.logger.error('Failed to persist avatar URL', updateErr);
+      throw new BadRequestException(
+        `Failed to save avatar URL: ${updateErr.message}`,
+      );
+    }
+
+    return { avatar_url };
+  }
+
+  /**
    * Change the current user's password.
    */
   async changePassword(

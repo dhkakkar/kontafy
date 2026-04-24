@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Post,
   Body,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -46,5 +47,14 @@ export class ProfileController {
     },
   ) {
     return this.profileService.changePassword(user.sub, body);
+  }
+
+  @Post('avatar')
+  @ApiOperation({ summary: 'Upload a new avatar image (data URL)' })
+  async uploadAvatar(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: { data_url: string },
+  ) {
+    return this.profileService.uploadAvatar(user.sub, body?.data_url);
   }
 }

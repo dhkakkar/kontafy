@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/stores/auth.store";
 import { api } from "@/lib/api";
-import { createClient } from "@/lib/supabase/client";
 import {
   Save,
   Upload,
@@ -85,39 +84,28 @@ export default function ProfilePage() {
 
     setAvatarUploading(true);
     try {
-      const supabase = createClient();
-      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-      const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+      // Read the file as a base64 data URL and send it to our API. The
+      // backend uploads to Supabase Storage with the service role key,
+      // so this works without the client needing RLS policies set up.
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
 
-      const { error: uploadErr } = await supabase.storage
-        .from("avatars")
-        .upload(path, file, {
-          upsert: true,
-          contentType: file.type,
-          cacheControl: "3600",
-        });
-
-      if (uploadErr) {
-        setAvatarError(
-          uploadErr.message.toLowerCase().includes("bucket")
-            ? 'Avatar storage not configured. Create a public bucket named "avatars" in Supabase.'
-            : `Upload failed: ${uploadErr.message}`,
-        );
-        return;
-      }
-
-      const { data: urlData } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(path);
-      const avatarUrl = urlData.publicUrl;
-
-      const result = await api.patch<{
+      const response = await api.post<{
         data?: { avatar_url?: string };
         avatar_url?: string;
-      }>("/profile", { avatar_url: avatarUrl });
-      // Response is wrapped by backend interceptor: { data: { avatar_url } }
+      }>("/profile/avatar", { data_url: dataUrl });
+
       const finalUrl =
-        result?.data?.avatar_url || result?.avatar_url || avatarUrl;
+        response?.data?.avatar_url || response?.avatar_url || null;
+
+      if (!finalUrl) {
+        setAvatarError("Upload succeeded but no URL was returned.");
+        return;
+      }
 
       setUser({
         ...user,
