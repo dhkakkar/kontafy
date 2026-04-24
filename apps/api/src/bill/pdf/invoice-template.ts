@@ -128,8 +128,12 @@ function getInvoiceTitle(type: string): string {
   }
 }
 
+// Accepts EITHER a 2-digit GSTIN state code ('27') OR a state abbreviation
+// ('MH') and returns the full state name. Falls back to the input if the
+// key isn't recognized so we never render nothing.
 function getStateNameByCode(code: string): string {
-  const states: Record<string, string> = {
+  if (!code) return '';
+  const byCode: Record<string, string> = {
     '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab',
     '04': 'Chandigarh', '05': 'Uttarakhand', '06': 'Haryana',
     '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh',
@@ -144,14 +148,42 @@ function getStateNameByCode(code: string): string {
     '34': 'Puducherry', '35': 'Andaman & Nicobar', '36': 'Telangana',
     '37': 'Andhra Pradesh (New)', '38': 'Ladakh',
   };
-  return states[code] || code;
+  const byAbbr: Record<string, string> = {
+    JK: 'Jammu & Kashmir', HP: 'Himachal Pradesh', PB: 'Punjab',
+    CH: 'Chandigarh', UK: 'Uttarakhand', HR: 'Haryana',
+    DL: 'Delhi', RJ: 'Rajasthan', UP: 'Uttar Pradesh',
+    BR: 'Bihar', SK: 'Sikkim', AR: 'Arunachal Pradesh',
+    NL: 'Nagaland', MN: 'Manipur', MZ: 'Mizoram',
+    TR: 'Tripura', ML: 'Meghalaya', AS: 'Assam',
+    WB: 'West Bengal', JH: 'Jharkhand', OD: 'Odisha',
+    CT: 'Chhattisgarh', MP: 'Madhya Pradesh', GJ: 'Gujarat',
+    DN: 'Dadra & Nagar Haveli and Daman & Diu', MH: 'Maharashtra',
+    AP: 'Andhra Pradesh', KA: 'Karnataka', GA: 'Goa',
+    LD: 'Lakshadweep', KL: 'Kerala', TN: 'Tamil Nadu',
+    PY: 'Puducherry', AN: 'Andaman & Nicobar', TG: 'Telangana',
+    LA: 'Ladakh',
+  };
+  const key = code.toUpperCase();
+  return byCode[key] || byAbbr[key] || code;
 }
 
 export function generateInvoiceHtml(data: InvoiceTemplateData): string {
   const title = getInvoiceTitle(data.type);
   const totalInWords = numberToIndianWords(data.total);
-  const placeOfSupply = data.place_of_supply
-    ? `${data.place_of_supply} - ${getStateNameByCode(data.place_of_supply)}`
+
+  // Seller state is derived from the org's GSTIN (first two digits, a
+  // numeric state code). Buyer state comes from place_of_supply, which
+  // the rest of the app stores as a 2-letter abbreviation (e.g. "MH").
+  const sellerStateName = data.org.gstin
+    ? getStateNameByCode(data.org.gstin.slice(0, 2))
+    : '';
+  const buyerStateName = data.place_of_supply
+    ? getStateNameByCode(data.place_of_supply)
+    : '';
+  const placeOfSupply = buyerStateName
+    ? sellerStateName && sellerStateName !== buyerStateName
+      ? `${sellerStateName} → ${buyerStateName}`
+      : buyerStateName
     : '';
 
   const hasCess = data.items.some((item) => Number(item.cess_amount) > 0);

@@ -115,6 +115,44 @@ function getInvoiceTitle(type: string): string {
   }
 }
 
+// Resolve a GSTIN state code (e.g. "27") OR a state abbreviation (e.g.
+// "MH") to a full state name. Returns the input if unrecognized.
+const STATE_NAME_BY_CODE: Record<string, string> = {
+  "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab",
+  "04": "Chandigarh", "05": "Uttarakhand", "06": "Haryana",
+  "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
+  "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh",
+  "13": "Nagaland", "14": "Manipur", "15": "Mizoram",
+  "16": "Tripura", "17": "Meghalaya", "18": "Assam",
+  "19": "West Bengal", "20": "Jharkhand", "21": "Odisha",
+  "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
+  "26": "Dadra & Nagar Haveli and Daman & Diu", "27": "Maharashtra",
+  "28": "Andhra Pradesh", "29": "Karnataka", "30": "Goa",
+  "31": "Lakshadweep", "32": "Kerala", "33": "Tamil Nadu",
+  "34": "Puducherry", "35": "Andaman & Nicobar", "36": "Telangana",
+  "37": "Andhra Pradesh (New)", "38": "Ladakh",
+};
+const STATE_NAME_BY_ABBR: Record<string, string> = {
+  JK: "Jammu & Kashmir", HP: "Himachal Pradesh", PB: "Punjab",
+  CH: "Chandigarh", UK: "Uttarakhand", HR: "Haryana",
+  DL: "Delhi", RJ: "Rajasthan", UP: "Uttar Pradesh",
+  BR: "Bihar", SK: "Sikkim", AR: "Arunachal Pradesh",
+  NL: "Nagaland", MN: "Manipur", MZ: "Mizoram",
+  TR: "Tripura", ML: "Meghalaya", AS: "Assam",
+  WB: "West Bengal", JH: "Jharkhand", OD: "Odisha",
+  CT: "Chhattisgarh", MP: "Madhya Pradesh", GJ: "Gujarat",
+  DN: "Dadra & Nagar Haveli and Daman & Diu", MH: "Maharashtra",
+  AP: "Andhra Pradesh", KA: "Karnataka", GA: "Goa",
+  LD: "Lakshadweep", KL: "Kerala", TN: "Tamil Nadu",
+  PY: "Puducherry", AN: "Andaman & Nicobar", TG: "Telangana",
+  LA: "Ladakh",
+};
+function resolveStateName(code: string | null | undefined): string {
+  if (!code) return "";
+  const key = code.toUpperCase();
+  return STATE_NAME_BY_CODE[key] || STATE_NAME_BY_ABBR[key] || code;
+}
+
 // ─── Component ─────────────────────────────────────────────────
 
 export default function InvoicePreviewPageWrapper() {
@@ -332,7 +370,15 @@ function InvoicePreviewPage() {
             {invoice.place_of_supply && (
               <MetaItem
                 label="Place of Supply"
-                value={invoice.place_of_supply}
+                value={(() => {
+                  const sellerCode = org?.gstin ? org.gstin.slice(0, 2) : "";
+                  const sellerName = resolveStateName(sellerCode);
+                  const buyerName = resolveStateName(invoice.place_of_supply);
+                  if (sellerName && sellerName !== buyerName) {
+                    return `${sellerName} → ${buyerName}`;
+                  }
+                  return buyerName || invoice.place_of_supply;
+                })()}
               />
             )}
             <MetaItem

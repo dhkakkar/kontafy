@@ -144,6 +144,22 @@ const statusBadgeMap: Record<
   cancelled: { variant: "default", label: "Cancelled" },
 };
 
+const STATE_NAME_BY_ABBR: Record<string, string> = {
+  JK: "Jammu & Kashmir", HP: "Himachal Pradesh", PB: "Punjab",
+  CH: "Chandigarh", UK: "Uttarakhand", HR: "Haryana",
+  DL: "Delhi", RJ: "Rajasthan", UP: "Uttar Pradesh",
+  BR: "Bihar", SK: "Sikkim", AR: "Arunachal Pradesh",
+  NL: "Nagaland", MN: "Manipur", MZ: "Mizoram",
+  TR: "Tripura", ML: "Meghalaya", AS: "Assam",
+  WB: "West Bengal", JH: "Jharkhand", OD: "Odisha",
+  CT: "Chhattisgarh", MP: "Madhya Pradesh", GJ: "Gujarat",
+  DN: "Dadra & Nagar Haveli and Daman & Diu", MH: "Maharashtra",
+  AP: "Andhra Pradesh", KA: "Karnataka", GA: "Goa",
+  LD: "Lakshadweep", KL: "Kerala", TN: "Tamil Nadu",
+  PY: "Puducherry", AN: "Andaman & Nicobar", TG: "Telangana",
+  LA: "Ladakh",
+};
+
 function formatAddress(addr: Address | undefined | null): string {
   if (!addr) return "";
   return [addr.line1, addr.line2, addr.city, addr.state, addr.pincode]
@@ -548,7 +564,8 @@ export default function InvoiceDetailPage() {
                       Place of Supply
                     </p>
                     <p className="text-sm font-semibold text-gray-900 mt-0.5">
-                      {invoice.place_of_supply}
+                      {STATE_NAME_BY_ABBR[invoice.place_of_supply.toUpperCase()] ||
+                        invoice.place_of_supply}
                     </p>
                   </div>
                 )}
