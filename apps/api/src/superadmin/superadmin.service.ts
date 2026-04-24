@@ -278,11 +278,15 @@ export class SuperadminService {
           `Failed to look up owner by email: ${error.message}`,
         );
       }
-      const match = data.users.find(
+      const users = (data?.users || []) as Array<{
+        id: string;
+        email?: string;
+      }>;
+      const match = users.find(
         (u) => u.email?.toLowerCase() === target,
       );
       if (match) return match;
-      if (data.users.length < perPage) return null;
+      if (users.length < perPage) return null;
       page += 1;
     }
     return null;
