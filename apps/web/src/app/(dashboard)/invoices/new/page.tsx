@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,8 +99,20 @@ function calcTax(amount: number, taxRate: number): number {
   return (amount * taxRate) / 100;
 }
 
-export default function NewInvoicePage() {
+export default function NewInvoicePageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <NewInvoicePage />
+    </Suspense>
+  );
+}
+
+function NewInvoicePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit") || null;
+  const isEditing = !!editId;
+
   const [customer, setCustomer] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(
     new Date().toISOString().split("T")[0]
@@ -116,8 +128,10 @@ export default function NewInvoicePage() {
   const [showBarcodeInput, setShowBarcodeInput] = useState(false);
   const [barcodeValue, setBarcodeValue] = useState("");
 
-  // Auto-fill terms & notes from invoice settings
+  // Auto-fill terms & notes from invoice settings — only for NEW invoices,
+  // not when editing an existing one (we'd clobber the saved values).
   useEffect(() => {
+    if (isEditing) return;
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
@@ -132,7 +146,59 @@ export default function NewInvoicePage() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isEditing]);
+
+  // Fetch the existing invoice when editing, then prefill every field.
+  const { data: existingInvoice } = useQuery<any>({
+    queryKey: ["invoice", editId],
+    queryFn: async () => {
+      const res = await api.get<{ data: any } | any>(
+        `/bill/invoices/${editId}`,
+      );
+      return (res as any)?.data ?? res;
+    },
+    enabled: isEditing,
+  });
+
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!isEditing || !existingInvoice || prefilled) return;
+    const inv = existingInvoice;
+    setCustomer(inv.contact_id || "");
+    if (inv.date) setInvoiceDate(String(inv.date).slice(0, 10));
+    if (inv.due_date) setDueDate(String(inv.due_date).slice(0, 10));
+    if (inv.place_of_supply) setPlaceOfSupply(inv.place_of_supply);
+    if (typeof inv.notes === "string") setNotes(inv.notes);
+    if (typeof inv.terms === "string") setTerms(inv.terms);
+    if (inv.discount_amount) setAdditionalDiscount(Number(inv.discount_amount));
+
+    if (Array.isArray(inv.items) && inv.items.length > 0) {
+      setItems(
+        inv.items.map((it: any) => {
+          const cgst = Number(it.cgst_rate) || 0;
+          const sgst = Number(it.sgst_rate) || 0;
+          const igst = Number(it.igst_rate) || 0;
+          const taxRate = igst > 0 ? igst : cgst + sgst;
+          const qty = Number(it.quantity) || 0;
+          const rate = Number(it.rate) || 0;
+          const discount = Number(it.discount_pct) || 0;
+          return {
+            id: it.id || generateId(),
+            productId: it.product_id || undefined,
+            productName: it.description || "",
+            description: it.description || "",
+            hsnCode: it.hsn_code || "",
+            quantity: qty,
+            rate,
+            discount,
+            taxRate,
+            amount: calcAmount(qty, rate, discount),
+          };
+        }),
+      );
+    }
+    setPrefilled(true);
+  }, [isEditing, existingInvoice, prefilled]);
 
   const [items, setItems] = useState<LineItem[]>([
     {
@@ -177,7 +243,7 @@ export default function NewInvoicePage() {
     description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
   }));
 
-  // Create invoice mutation
+  // Create-or-update invoice mutation.
   const createInvoice = useMutation({
     mutationFn: async (status: "draft" | "sent") => {
       const halfRate = (rate: number) => rate / 2;
@@ -202,15 +268,41 @@ export default function NewInvoicePage() {
             sgst_rate: halfRate(item.taxRate),
           })),
       };
-      const result = await api.post<{ data: { id: string } }>("/bill/invoices", payload);
-      // If "sent", update status after creation
-      if (status === "sent" && result?.data?.id) {
-        await api.patch(`/bill/invoices/${result.data.id}/status`, { status: "sent" });
+
+      let invoiceId: string | undefined;
+
+      if (isEditing && editId) {
+        // Update an existing draft invoice. Type can't change on update;
+        // backend treats it as immutable, so drop from payload.
+        const { type: _type, ...updatePayload } = payload;
+        void _type;
+        const res = await api.patch<{ data: { id: string } } | { id: string }>(
+          `/bill/invoices/${editId}`,
+          updatePayload,
+        );
+        invoiceId =
+          (res as any)?.data?.id || (res as any)?.id || editId;
+      } else {
+        const res = await api.post<{ data: { id: string } } | { id: string }>(
+          "/bill/invoices",
+          payload,
+        );
+        invoiceId = (res as any)?.data?.id || (res as any)?.id;
       }
-      return result;
+
+      if (status === "sent" && invoiceId) {
+        await api.patch(`/bill/invoices/${invoiceId}/status`, {
+          status: "sent",
+        });
+      }
+      return { id: invoiceId };
     },
-    onSuccess: () => {
-      router.push("/invoices");
+    onSuccess: (result) => {
+      if (isEditing && result?.id) {
+        router.push(`/invoices/${result.id}`);
+      } else {
+        router.push("/invoices");
+      }
     },
   });
 
@@ -329,8 +421,14 @@ export default function NewInvoicePage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">New Invoice</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Create a new sales invoice</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isEditing ? "Edit Invoice" : "New Invoice"}
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {isEditing
+                ? "Update this sales invoice"
+                : "Create a new sales invoice"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -341,7 +439,7 @@ export default function NewInvoicePage() {
             loading={createInvoice.isPending}
             disabled={!canSubmit}
           >
-            Save Draft
+            {isEditing ? "Save Changes" : "Save Draft"}
           </Button>
           <Button
             icon={<Send className="h-4 w-4" />}
@@ -349,14 +447,17 @@ export default function NewInvoicePage() {
             loading={createInvoice.isPending}
             disabled={!canSubmit}
           >
-            Send Invoice
+            {isEditing ? "Save & Send" : "Send Invoice"}
           </Button>
         </div>
       </div>
 
       {createInvoice.isError && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg text-sm">
-          {createInvoice.error?.message || "Failed to create invoice"}
+          {createInvoice.error?.message ||
+            (isEditing
+              ? "Failed to update invoice"
+              : "Failed to create invoice")}
         </div>
       )}
 
