@@ -132,7 +132,13 @@ function InvoicePreviewPage() {
 
   const { data: invoice, isLoading } = useQuery<InvoiceData>({
     queryKey: ["invoice", invoiceId],
-    queryFn: () => api.get(`/bill/invoices/${invoiceId}`),
+    queryFn: async () => {
+      // Response is wrapped by the backend interceptor as { success, data, meta }.
+      const res = await api.get<{ data: InvoiceData } | InvoiceData>(
+        `/bill/invoices/${invoiceId}`,
+      );
+      return ((res as { data?: InvoiceData })?.data ?? res) as InvoiceData;
+    },
   });
 
   useEffect(() => {
@@ -177,13 +183,14 @@ function InvoicePreviewPage() {
   const title = getInvoiceTitle(invoice.type);
   const org = invoice.organization;
   const contact = invoice.contact;
-  const hasCess = invoice.items.some((i) => toNum(i.cess_amount) > 0);
+  const items = invoice.items || [];
+  const hasCess = items.some((i) => toNum(i.cess_amount) > 0);
 
   // Tax totals
-  const totalCgst = invoice.items.reduce((s, i) => s + toNum(i.cgst_amount), 0);
-  const totalSgst = invoice.items.reduce((s, i) => s + toNum(i.sgst_amount), 0);
-  const totalIgst = invoice.items.reduce((s, i) => s + toNum(i.igst_amount), 0);
-  const totalCess = invoice.items.reduce((s, i) => s + toNum(i.cess_amount), 0);
+  const totalCgst = items.reduce((s, i) => s + toNum(i.cgst_amount), 0);
+  const totalSgst = items.reduce((s, i) => s + toNum(i.sgst_amount), 0);
+  const totalIgst = items.reduce((s, i) => s + toNum(i.igst_amount), 0);
+  const totalCess = items.reduce((s, i) => s + toNum(i.cess_amount), 0);
 
   return (
     <>
@@ -409,7 +416,7 @@ function InvoicePreviewPage() {
               </tr>
             </thead>
             <tbody>
-              {invoice.items.map((item, idx) => (
+              {items.map((item, idx) => (
                 <tr
                   key={item.id || idx}
                   className={idx % 2 === 1 ? "bg-gray-50" : ""}
