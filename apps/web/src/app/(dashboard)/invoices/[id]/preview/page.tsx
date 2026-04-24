@@ -261,13 +261,27 @@ function InvoicePreviewPage() {
           main > div {
             padding: 0 !important;
           }
+          /* The on-screen invoice uses min-height:297mm so it looks like a
+             full A4 page in the browser preview. In print, that min-height
+             combined with the @page margins pushes one pixel past the page
+             boundary and produces a blank second page. Drop the min-height
+             and force no page-break inside the invoice card so it fits on
+             a single printed page. */
           .print-page {
             box-shadow: none !important;
             margin: 0 !important;
+            padding: 0 !important;
             border-radius: 0 !important;
             max-width: none !important;
             width: 100% !important;
+            min-height: 0 !important;
+            height: auto !important;
+            page-break-after: avoid !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
+          /* Nothing after the invoice card should trigger an extra page. */
+          .print-page + * { display: none !important; }
         }
       ` }} />
 
