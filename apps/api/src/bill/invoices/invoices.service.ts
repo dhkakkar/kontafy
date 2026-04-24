@@ -299,6 +299,30 @@ export class InvoicesService {
     void _num;
     void _org;
 
+    // Prisma's Date columns need a JS Date / full ISO DateTime. Browser date
+    // inputs send "YYYY-MM-DD" which Prisma rejects with "premature end of
+    // input". Normalize anything date-ish before the update call.
+    const toDate = (v: unknown): Date | undefined => {
+      if (v == null || v === '') return undefined;
+      if (v instanceof Date) return v;
+      if (typeof v === 'string') {
+        const iso = v.length === 10 ? `${v}T00:00:00.000Z` : v;
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? undefined : d;
+      }
+      return undefined;
+    };
+    if ('date' in rest) {
+      const d = toDate((rest as any).date);
+      if (d) (rest as any).date = d;
+      else delete (rest as any).date;
+    }
+    if ('due_date' in rest) {
+      const d = toDate((rest as any).due_date);
+      if (d) (rest as any).due_date = d;
+      else (rest as any).due_date = null;
+    }
+
     return this.prisma.$transaction(async (tx) => {
       if (Array.isArray(items)) {
         await tx.invoiceItem.deleteMany({ where: { invoice_id: id } });

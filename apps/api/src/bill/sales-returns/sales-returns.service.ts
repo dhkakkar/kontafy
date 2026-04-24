@@ -255,6 +255,27 @@ export class SalesReturnsService {
       throw new BadRequestException('At least one item is required');
     }
 
+    // Normalize "YYYY-MM-DD" -> Date so Prisma accepts the values.
+    const toDate = (v: unknown): Date | undefined => {
+      if (v == null || v === '') return undefined;
+      if (v instanceof Date) return v;
+      if (typeof v === 'string') {
+        const iso = v.length === 10 ? `${v}T00:00:00.000Z` : v;
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? undefined : d;
+      }
+      return undefined;
+    };
+    if ('date' in scalar) {
+      const d = toDate((scalar as any).date);
+      if (d) (scalar as any).date = d;
+      else delete (scalar as any).date;
+    }
+    if ('due_date' in scalar) {
+      const d = toDate((scalar as any).due_date);
+      (scalar as any).due_date = d ?? null;
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       let subtotal = existing.subtotal?.toNumber() || 0;
       let totalDiscount = 0;
