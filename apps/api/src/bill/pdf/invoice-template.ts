@@ -101,6 +101,7 @@ export interface InvoiceTemplateData {
   // Extras
   notes?: string;
   terms?: string;
+  signature_url?: string;
   bank_details?: {
     bank_name?: string;
     account_name?: string;
@@ -830,7 +831,9 @@ export function generateInvoiceHtml(data: InvoiceTemplateData): string {
         <div class="powered-by">Powered by <span>Kontafy</span></div>
       </div>
       <div class="footer-right">
-        <div class="signature-line"></div>
+        <div class="signature-line">
+          ${data.signature_url ? `<img src="${data.signature_url}" alt="Signature" style="max-height: 48px; max-width: 170px; object-fit: contain; display: block; margin: 0 auto;" />` : ''}
+        </div>
         <div class="signature-label">Authorised Signatory</div>
         <div class="signature-label">${data.org.name}</div>
       </div>

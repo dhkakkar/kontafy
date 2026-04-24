@@ -171,6 +171,9 @@ function NewInvoicePage() {
     if (typeof inv.notes === "string") setNotes(inv.notes);
     if (typeof inv.terms === "string") setTerms(inv.terms);
     if (inv.discount_amount) setAdditionalDiscount(Number(inv.discount_amount));
+    if (typeof inv.signature_url === "string" && inv.signature_url) {
+      setSignaturePreview(inv.signature_url);
+    }
 
     if (Array.isArray(inv.items) && inv.items.length > 0) {
       setItems(
@@ -255,6 +258,7 @@ function NewInvoicePage() {
         place_of_supply: placeOfSupply || undefined,
         notes: notes || undefined,
         terms: terms || undefined,
+        signature_url: signaturePreview || null,
         items: items
           .filter((item) => item.productName || item.description || item.productId)
           .map((item) => ({

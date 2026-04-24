@@ -57,6 +57,7 @@ interface InvoiceData {
   balance_due: number;
   notes: string | null;
   terms: string | null;
+  signature_url: string | null;
   items: InvoiceItem[];
   contact: {
     name: string;
@@ -604,12 +605,21 @@ function InvoicePreviewPage() {
             </div>
             <div className="text-right">
               <div
-                className="w-44 mb-1"
+                className="w-44 mb-1 flex items-end justify-center"
                 style={{
                   borderBottom: "1px solid #D1D5DB",
                   height: 50,
                 }}
-              />
+              >
+                {invoice.signature_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={invoice.signature_url}
+                    alt="Signature"
+                    className="max-h-12 max-w-40 object-contain"
+                  />
+                )}
+              </div>
               <p className="text-[9px] text-gray-500 text-center">
                 Authorised Signatory
               </p>

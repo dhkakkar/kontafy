@@ -317,6 +317,7 @@ export class PdfService implements OnModuleDestroy {
       tax_summary: taxSummary,
       notes: invoice.notes,
       terms: invoice.terms,
+      signature_url: invoice.signature_url,
       bank_details: bankDetails,
     };
   }
