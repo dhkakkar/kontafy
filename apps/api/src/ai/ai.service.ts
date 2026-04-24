@@ -707,7 +707,7 @@ Return JSON with:
       where: {
         org_id: orgId,
         type: 'sale',
-        status: { in: ['sent', 'partial'] },
+        status: { in: ['sent', 'partially_paid'] },
         due_date: { lt: now },
       },
       select: { balance_due: true, due_date: true },

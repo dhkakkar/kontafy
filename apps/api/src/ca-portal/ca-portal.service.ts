@@ -307,13 +307,13 @@ export class CaPortalService {
       }),
       // Outstanding receivables
       this.prisma.invoice.aggregate({
-        where: { org_id: orgId, type: 'sales', status: { in: ['sent', 'overdue', 'partial'] } },
+        where: { org_id: orgId, type: 'sales', status: { in: ['sent', 'overdue', 'partially_paid'] } },
         _sum: { balance_due: true },
         _count: true,
       }),
       // Outstanding payables
       this.prisma.invoice.aggregate({
-        where: { org_id: orgId, type: 'purchase', status: { in: ['sent', 'overdue', 'partial'] } },
+        where: { org_id: orgId, type: 'purchase', status: { in: ['sent', 'overdue', 'partially_paid'] } },
         _sum: { balance_due: true },
         _count: true,
       }),

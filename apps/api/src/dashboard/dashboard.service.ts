@@ -50,7 +50,7 @@ export class DashboardService {
         where: {
           org_id: orgId,
           type: 'sale',
-          status: { in: ['sent', 'paid', 'partial'] },
+          status: { in: ['sent', 'paid', 'partially_paid'] },
           date: { gte: thisMonth.start, lte: thisMonth.end },
         },
         _sum: { amount_paid: true },
@@ -59,7 +59,7 @@ export class DashboardService {
         where: {
           org_id: orgId,
           type: 'sale',
-          status: { in: ['sent', 'paid', 'partial'] },
+          status: { in: ['sent', 'paid', 'partially_paid'] },
           date: { gte: lastMonth.start, lte: lastMonth.end },
         },
         _sum: { amount_paid: true },
@@ -119,7 +119,7 @@ export class DashboardService {
         where: {
           org_id: orgId,
           type: 'sale',
-          status: { in: ['sent', 'partial'] },
+          status: { in: ['sent', 'partially_paid'] },
         },
         _sum: { balance_due: true },
       }),
@@ -127,7 +127,7 @@ export class DashboardService {
         where: {
           org_id: orgId,
           type: 'sale',
-          status: { in: ['sent', 'partial'] },
+          status: { in: ['sent', 'partially_paid'] },
           due_date: { lt: now },
         },
         _sum: { balance_due: true },
@@ -150,7 +150,7 @@ export class DashboardService {
         where: {
           org_id: orgId,
           type: 'purchase',
-          status: { in: ['sent', 'partial'] },
+          status: { in: ['sent', 'partially_paid'] },
         },
         _sum: { balance_due: true },
       }),
@@ -158,7 +158,7 @@ export class DashboardService {
         where: {
           org_id: orgId,
           type: 'purchase',
-          status: { in: ['sent', 'partial'] },
+          status: { in: ['sent', 'partially_paid'] },
           due_date: { lt: now },
         },
         _sum: { balance_due: true },
@@ -230,7 +230,7 @@ export class DashboardService {
           where: {
             org_id: orgId,
             type: 'sale',
-            status: { in: ['sent', 'paid', 'partial'] },
+            status: { in: ['sent', 'paid', 'partially_paid'] },
             date: { gte: start, lte: end },
           },
           _sum: { total: true },
@@ -354,7 +354,7 @@ export class DashboardService {
       where: {
         org_id: orgId,
         type: 'sale',
-        status: { in: ['sent', 'partial'] },
+        status: { in: ['sent', 'partially_paid'] },
         due_date: { lt: now },
       },
       orderBy: { due_date: 'asc' },
@@ -391,7 +391,7 @@ export class DashboardService {
       where: {
         org_id: orgId,
         type: invoiceType,
-        status: { in: ['sent', 'partial'] },
+        status: { in: ['sent', 'partially_paid'] },
         due_date: { not: null },
       },
       select: { id: true, due_date: true, balance_due: true },
@@ -447,7 +447,7 @@ export class DashboardService {
       where: {
         org_id: orgId,
         type: invoiceType,
-        status: { in: ['sent', 'partial'] },
+        status: { in: ['sent', 'partially_paid'] },
         due_date: { not: null },
       },
       include: {
@@ -512,7 +512,7 @@ export class DashboardService {
           where: {
             org_id: orgId,
             type: 'sale',
-            status: { in: ['sent', 'paid', 'partial'] },
+            status: { in: ['sent', 'paid', 'partially_paid'] },
             date: { gte: monthStart, lte: monthEnd },
           },
           _sum: { total: true },
@@ -549,7 +549,7 @@ export class DashboardService {
       where: {
         org_id: orgId,
         type: 'sale',
-        status: { in: ['paid', 'partial', 'sent'] },
+        status: { in: ['paid', 'partially_paid', 'sent'] },
         contact_id: { not: null },
       },
       _sum: { total: true },

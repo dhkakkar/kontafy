@@ -112,7 +112,7 @@ export class ReconciliationService {
     const invoices = await this.prisma.invoice.findMany({
       where: {
         org_id: orgId,
-        status: { in: ['sent', 'overdue', 'partial'] },
+        status: { in: ['sent', 'overdue', 'partially_paid'] },
       },
       include: {
         contact: { select: { name: true } },
