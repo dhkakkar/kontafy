@@ -283,17 +283,104 @@ export class InvoicesService {
       throw new NotFoundException('Invoice not found');
     }
 
-    if (invoice.status !== 'draft') {
-      throw new BadRequestException('Only draft invoices can be updated');
+    // Lock editing only for terminal / reconciled statuses where changing
+    // totals would break books. Draft, sent, overdue can still be tweaked.
+    const locked = ['paid', 'partially_paid', 'cancelled'];
+    if (locked.includes(invoice.status)) {
+      throw new BadRequestException(
+        `This invoice is ${invoice.status} and cannot be edited. Create a credit note or reverse the payment first.`,
+      );
     }
 
-    return this.prisma.invoice.update({
-      where: { id },
-      data: {
-        ...data,
-        updated_at: new Date(),
-      },
-      include: { items: true, contact: true },
+    // Items come in with the same shape as create. Replace them atomically
+    // so totals stay consistent with the new lines.
+    const { items, type: _type, invoice_number: _num, org_id: _org, ...rest } = data as any;
+    void _type;
+    void _num;
+    void _org;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (Array.isArray(items)) {
+        await tx.invoiceItem.deleteMany({ where: { invoice_id: id } });
+        if (items.length > 0) {
+          await tx.invoiceItem.createMany({
+            data: items.map((it: any) => {
+              const qty = Number(it.quantity) || 0;
+              const rate = Number(it.rate) || 0;
+              const discountPct = Number(it.discount_pct) || 0;
+              const cgst = Number(it.cgst_rate) || 0;
+              const sgst = Number(it.sgst_rate) || 0;
+              const igst = Number(it.igst_rate) || 0;
+              const taxable =
+                Math.round(qty * rate * (1 - discountPct / 100) * 100) / 100;
+              const cgstAmt = Math.round((taxable * cgst) / 100 * 100) / 100;
+              const sgstAmt = Math.round((taxable * sgst) / 100 * 100) / 100;
+              const igstAmt = Math.round((taxable * igst) / 100 * 100) / 100;
+              const total =
+                Math.round(
+                  (taxable + cgstAmt + sgstAmt + igstAmt) * 100,
+                ) / 100;
+              return {
+                invoice_id: id,
+                product_id: it.product_id || null,
+                description: it.description || '',
+                hsn_code: it.hsn_code || null,
+                quantity: qty,
+                unit: it.unit || 'pcs',
+                rate,
+                discount_pct: discountPct,
+                taxable_amount: taxable,
+                cgst_rate: cgst,
+                cgst_amount: cgstAmt,
+                sgst_rate: sgst,
+                sgst_amount: sgstAmt,
+                igst_rate: igst,
+                igst_amount: igstAmt,
+                cess_rate: Number(it.cess_rate) || 0,
+                cess_amount: Number(it.cess_amount) || 0,
+                total,
+              };
+            }),
+          });
+        }
+
+        // Re-aggregate parent totals from the fresh line set.
+        const newItems = await tx.invoiceItem.findMany({
+          where: { invoice_id: id },
+        });
+        const subtotal = newItems.reduce(
+          (s, i) => s + Number(i.taxable_amount),
+          0,
+        );
+        const taxAmount = newItems.reduce(
+          (s, i) =>
+            s +
+            Number(i.cgst_amount) +
+            Number(i.sgst_amount) +
+            Number(i.igst_amount) +
+            Number(i.cess_amount),
+          0,
+        );
+        const additionalDiscount = Number((rest as any).discount_amount) || 0;
+        const grandTotal =
+          Math.round((subtotal + taxAmount - additionalDiscount) * 100) / 100;
+
+        (rest as any).subtotal = Math.round(subtotal * 100) / 100;
+        (rest as any).tax_amount = Math.round(taxAmount * 100) / 100;
+        (rest as any).total = grandTotal;
+        (rest as any).balance_due =
+          Math.round((grandTotal - Number(invoice.amount_paid)) * 100) / 100;
+      }
+
+      return tx.invoice.update({
+        where: { id },
+        data: {
+          ...rest,
+          pdf_url: null, // invalidate cached PDF so the next download regenerates with the new data
+          updated_at: new Date(),
+        },
+        include: { items: true, contact: true },
+      });
     });
   }
 

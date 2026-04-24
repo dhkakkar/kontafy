@@ -220,8 +220,11 @@ export class PurchasesService {
       throw new NotFoundException('Purchase invoice not found');
     }
 
-    if (purchase.status !== 'draft') {
-      throw new BadRequestException('Only draft purchase invoices can be updated');
+    const locked = ['paid', 'partially_paid', 'cancelled'];
+    if (locked.includes(purchase.status)) {
+      throw new BadRequestException(
+        `This purchase invoice is ${purchase.status} and cannot be edited.`,
+      );
     }
 
     // If items are provided, recalculate

@@ -195,9 +195,10 @@ export class DeliveryChallansService {
       throw new NotFoundException('Delivery challan not found');
     }
 
-    if (existing.status !== 'draft') {
+    const locked = ['invoiced', 'cancelled'];
+    if (locked.includes(existing.status)) {
       throw new BadRequestException(
-        'Only draft delivery challans can be edited',
+        `This delivery challan is ${existing.status} and cannot be edited.`,
       );
     }
 

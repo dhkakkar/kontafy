@@ -318,9 +318,10 @@ export class CreditNotesService {
       throw new NotFoundException('Credit note not found');
     }
 
-    if (existing.status !== 'draft') {
+    const locked = ['applied', 'paid', 'partially_paid', 'cancelled'];
+    if (locked.includes(existing.status)) {
       throw new BadRequestException(
-        'Only draft credit notes can be edited',
+        `This credit note is ${existing.status} and cannot be edited.`,
       );
     }
 

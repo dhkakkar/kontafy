@@ -234,9 +234,10 @@ export class SalesReturnsService {
       throw new NotFoundException('Sales return not found');
     }
 
-    if (existing.status !== 'draft') {
+    const locked = ['applied', 'paid', 'partially_paid', 'cancelled'];
+    if (locked.includes(existing.status)) {
       throw new BadRequestException(
-        'Only draft sales returns can be edited',
+        `This sales return is ${existing.status} and cannot be edited.`,
       );
     }
 
