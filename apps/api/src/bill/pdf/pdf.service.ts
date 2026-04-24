@@ -128,11 +128,18 @@ export class PdfService implements OnModuleDestroy {
           Key: key,
           Body: buffer,
           ContentType: 'application/pdf',
-          CacheControl: 'public, max-age=31536000',
+          // Invoices get regenerated on edits, so don't let browsers
+          // cache the URL forever. `must-revalidate` still lets the CDN
+          // serve the file but forces an ETag check on each load.
+          CacheControl: 'public, max-age=0, must-revalidate',
         }),
       );
 
-      const publicUrl = `${this.publicBaseUrl}/${key}`;
+      // Add a cache-buster so already-cached browser copies are bypassed
+      // immediately after a regeneration. Matches the file's mtime well
+      // enough that distinct content always gets a distinct URL.
+      const cacheBuster = Date.now().toString(36);
+      const publicUrl = `${this.publicBaseUrl}/${key}?v=${cacheBuster}`;
       this.logger.log(`PDF uploaded to R2: ${publicUrl}`);
       return publicUrl;
     } catch (error) {
