@@ -108,6 +108,15 @@ export class SuperadminController {
     return this.service.seedOrgAccounts(id);
   }
 
+  @Post('organizations/:id/backfill-journals')
+  @ApiOperation({
+    summary:
+      'Backfill journal entries for invoices and payments that were created before auto-posting was wired in',
+  })
+  async backfillJournals(@Param('id') id: string) {
+    return this.service.backfillJournals(id);
+  }
+
   @Delete('organizations/:id')
   @ApiOperation({ summary: 'Delete organization' })
   async deleteOrganization(@Param('id') id: string) {

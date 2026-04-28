@@ -2,11 +2,13 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
   ArrowLeft,
   Printer,
@@ -85,9 +87,31 @@ const typeLabels: Record<string, string> = {
   expense: "Expense",
 };
 
+const EMPTY_TB: TrialBalanceData = {
+  as_of: new Date().toISOString().slice(0, 10),
+  entries: [],
+  totals: { debit: 0, credit: 0, balanced: true },
+};
+
 export default function TrialBalancePage() {
-  const [asOfDate, setAsOfDate] = useState("2026-03-13");
-  const data = demoData; // Replace with TanStack Query: useQuery(['trial-balance', asOfDate], () => api.get('/books/reports/trial-balance', { asOfDate }))
+  const [asOfDate, setAsOfDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+
+  const { data: serverData, isLoading } = useQuery<TrialBalanceData>({
+    queryKey: ["trial-balance", asOfDate],
+    queryFn: async () => {
+      const res = await api.get<{ data: TrialBalanceData } | TrialBalanceData>(
+        "/books/reports/trial-balance",
+        { asOfDate },
+      );
+      return ((res as any)?.data ?? res) as TrialBalanceData;
+    },
+  });
+
+  const data = serverData ?? EMPTY_TB;
+  void isLoading;
+  void demoData; // keep import live; structure reference
 
   // Group by type — only show accounts with actual balances
   const grouped = useMemo(() => {

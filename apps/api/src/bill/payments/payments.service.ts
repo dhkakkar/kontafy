@@ -6,12 +6,16 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePaymentDto, AllocatePaymentDto } from '../dto/payments.dto';
+import { JournalPostingService } from '../../books/journal-posting/journal-posting.service';
 
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly journalPosting: JournalPostingService,
+  ) {}
 
   /**
    * List payments with filtering and pagination.
@@ -160,6 +164,14 @@ export class PaymentsService {
       throw new NotFoundException('Payment not found');
     }
 
+    // Reverse the payment's own journal first (uses the payment row's
+    // journal_id, which is gone after the delete below).
+    await this.journalPosting
+      .reversePayment(id)
+      .catch((err) => this.logger.error(`Reverse payment journal failed ${id}`, err));
+
+    const affectedInvoiceIds = payment.allocations.map((a) => a.invoice_id);
+
     await this.prisma.$transaction(async (tx) => {
       // Reverse allocations on invoices
       for (const alloc of payment.allocations) {
@@ -192,6 +204,16 @@ export class PaymentsService {
       await tx.paymentAllocation.deleteMany({ where: { payment_id: id } });
       await tx.payment.delete({ where: { id } });
     });
+
+    // Re-post each affected invoice's journal so the books reflect the
+    // reversed AR/AP balances and updated status.
+    for (const invId of affectedInvoiceIds) {
+      try {
+        await this.journalPosting.postInvoice(invId);
+      } catch (err) {
+        this.logger.error(`Journal repost failed for invoice ${invId}`, err as any);
+      }
+    }
 
     return { deleted: true };
   }
@@ -294,6 +316,26 @@ export class PaymentsService {
         },
       });
     });
+
+    // Post the cash/AR (or cash/AP) journal entry. Best-effort — never
+    // block the payment response on bookkeeping issues; a missing
+    // ledger account just leaves the payment unposted to be backfilled.
+    if (payment?.id) {
+      try {
+        await this.journalPosting.postPayment(payment.id);
+        // Allocated payments also affect invoice journals (the AR going
+        // down was already in the payment journal, but invoice's own
+        // journal stays untouched — re-post it so balance_due flows
+        // through to the cached PDF and any reconciliation views).
+        for (const alloc of payment.allocations || []) {
+          if (alloc?.invoice?.id) {
+            await this.journalPosting.postInvoice(alloc.invoice.id);
+          }
+        }
+      } catch (err) {
+        this.logger.error(`Journal post failed for payment ${payment.id}`, err as any);
+      }
+    }
 
     return payment;
   }

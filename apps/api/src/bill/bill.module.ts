@@ -22,9 +22,10 @@ import { SalesReturnsService } from './sales-returns/sales-returns.service';
 import { DeliveryChallansController } from './delivery-challans/delivery-challans.controller';
 import { DeliveryChallansService } from './delivery-challans/delivery-challans.service';
 import { PdfModule } from './pdf/pdf.module';
+import { JournalPostingModule } from '../books/journal-posting/journal-posting.module';
 
 @Module({
-  imports: [PdfModule],
+  imports: [PdfModule, JournalPostingModule],
   controllers: [
     InvoicesController,
     ContactsController,

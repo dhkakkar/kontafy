@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeLineItemGst, isInterStateSupply } from '../../common/utils/gst.util';
+import { JournalPostingService } from '../../books/journal-posting/journal-posting.service';
 
 // Map Indian state abbreviations (as used in place_of_supply) to GSTIN
 // state codes (first two digits of a GSTIN). Used to decide intra-state
@@ -24,7 +25,23 @@ const STATE_ABBR_TO_GSTIN_CODE: Record<string, string> = {
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly journalPosting: JournalPostingService,
+  ) {}
+
+  /**
+   * Best-effort journal post that swallows errors. Posting failures must
+   * never block an invoice operation — the journal can be retried via
+   * backfill if it fails.
+   */
+  private async tryPostJournal(invoiceId: string): Promise<void> {
+    try {
+      await this.journalPosting.postInvoice(invoiceId);
+    } catch (err) {
+      this.logger.error(`Journal post failed for invoice ${invoiceId}`, err as any);
+    }
+  }
 
   /**
    * List invoices with filtering, search, and pagination.
@@ -446,7 +463,7 @@ export class InvoicesService {
           Math.round((grandTotal - Number(invoice.amount_paid)) * 100) / 100;
       }
 
-      return tx.invoice.update({
+      const updated = await tx.invoice.update({
         where: { id },
         data: {
           ...rest,
@@ -455,6 +472,14 @@ export class InvoicesService {
         },
         include: { items: true, contact: true },
       });
+      return updated;
+    }).then(async (updated) => {
+      // After commit, repost the journal so totals stay in sync. Only
+      // affects invoices that are already past draft state.
+      if (updated && !['draft', 'cancelled'].includes(updated.status)) {
+        await this.tryPostJournal(id);
+      }
+      return updated;
     });
   }
 
@@ -492,10 +517,24 @@ export class InvoicesService {
       );
     }
 
-    return this.prisma.invoice.update({
+    const updated = await this.prisma.invoice.update({
       where: { id },
       data: { status, updated_at: new Date() },
     });
+
+    // Status transitions trigger journal posting / reversal:
+    // - moving away from draft  → post a fresh journal
+    // - moving into cancelled   → reverse the existing journal
+    // - moving back to draft    → reverse (rare; transitions table forbids it)
+    if (status === 'cancelled' || status === 'draft') {
+      await this.journalPosting.reverseInvoice(id).catch((err) =>
+        this.logger.error(`Reverse failed for invoice ${id}`, err),
+      );
+    } else {
+      await this.tryPostJournal(id);
+    }
+
+    return updated;
   }
 
   /**

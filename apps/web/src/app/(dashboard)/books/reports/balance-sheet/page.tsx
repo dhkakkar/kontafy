@@ -2,11 +2,13 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
   ArrowLeft,
   Printer,
@@ -150,8 +152,24 @@ function SectionGroup({
 }
 
 export default function BalanceSheetPage() {
-  const [asOfDate, setAsOfDate] = useState("2026-03-13");
-  const data = demoData; // Replace with TanStack Query
+  const [asOfDate, setAsOfDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+
+  const { data: serverData } = useQuery<BalanceSheetData>({
+    queryKey: ["balance-sheet", asOfDate],
+    queryFn: async () => {
+      const res = await api.get<{ data: BalanceSheetData } | BalanceSheetData>(
+        "/books/reports/balance-sheet",
+        { asOfDate },
+      );
+      return ((res as any)?.data ?? res) as BalanceSheetData;
+    },
+    enabled: !!asOfDate,
+  });
+
+  const data = serverData ?? demoData;
+  void demoData;
 
   return (
     <div className="space-y-6">

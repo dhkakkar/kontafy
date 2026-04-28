@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrganizationService } from '../organization/organization.service';
+import { JournalPostingService } from '../books/journal-posting/journal-posting.service';
 
 @Injectable()
 export class SuperadminService {
@@ -18,6 +19,7 @@ export class SuperadminService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly orgService: OrganizationService,
+    private readonly journalPosting: JournalPostingService,
   ) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL', ''),
@@ -336,6 +338,19 @@ export class SuperadminService {
       throw new NotFoundException('Organization not found');
     }
     return this.orgService.seedDefaultAccounts(orgId);
+  }
+
+  /**
+   * Backfill journal entries for every non-draft invoice and every payment
+   * in an org that doesn't already have a journal_id. Idempotent — safe to
+   * re-run after the auto-posting hooks were added.
+   */
+  async backfillJournals(orgId: string) {
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+    return this.journalPosting.backfillOrg(orgId);
   }
 
   /**

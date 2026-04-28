@@ -2,10 +2,12 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
   ArrowLeft,
   Printer,
@@ -154,10 +156,32 @@ function SubtotalRow({
   );
 }
 
+function defaultFyStart(): string {
+  const now = new Date();
+  const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${year}-04-01`;
+}
+
 export default function ProfitLossPage() {
-  const [fromDate, setFromDate] = useState("2025-04-01");
-  const [toDate, setToDate] = useState("2026-03-13");
-  const data = demoData; // Replace with TanStack Query
+  const [fromDate, setFromDate] = useState(defaultFyStart());
+  const [toDate, setToDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+
+  const { data: serverData } = useQuery<ProfitLossData>({
+    queryKey: ["profit-loss", fromDate, toDate],
+    queryFn: async () => {
+      const res = await api.get<{ data: ProfitLossData } | ProfitLossData>(
+        "/books/reports/profit-loss",
+        { fromDate, toDate },
+      );
+      return ((res as any)?.data ?? res) as ProfitLossData;
+    },
+    enabled: !!fromDate && !!toDate,
+  });
+
+  const data = serverData ?? demoData;
+  void demoData;
 
   const profitMargin =
     data.revenue.total > 0
