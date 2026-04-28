@@ -18,6 +18,32 @@ export class LedgerService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Walk the account tree downward and return the full set of descendant
+   * account ids (including the root itself). Header / group accounts in
+   * the chart don't carry journal lines themselves — entries always land
+   * on the leaves — so a ledger query for "1000 Assets" needs to pull in
+   * 1100, 1101, 1102, etc.
+   */
+  private async collectDescendantAccountIds(
+    orgId: string,
+    rootId: string,
+  ): Promise<string[]> {
+    const ids: string[] = [rootId];
+    let frontier: string[] = [rootId];
+    while (frontier.length > 0) {
+      const children = await this.prisma.account.findMany({
+        where: { org_id: orgId, parent_id: { in: frontier } },
+        select: { id: true },
+      });
+      if (children.length === 0) break;
+      const childIds = children.map((c) => c.id);
+      ids.push(...childIds);
+      frontier = childIds;
+    }
+    return ids;
+  }
+
+  /**
    * Get the ledger for a specific account, showing all journal entries
    * that affect this account, with a running balance.
    */
@@ -40,6 +66,10 @@ export class LedgerService {
     const limit = Number(filters.limit) || 20;
     const skip = (page - 1) * limit;
 
+    // If the user picked a header account, fold in every descendant so
+    // the ledger shows the consolidated activity for the whole branch.
+    const accountIds = await this.collectDescendantAccountIds(orgId, accountId);
+
     // Build date filter on the parent journal_entry
     const dateFilter: any = {};
     if (from) dateFilter.gte = new Date(from);
@@ -55,7 +85,7 @@ export class LedgerService {
     if (from) {
       const priorEntries = await this.prisma.journalLine.findMany({
         where: {
-          account_id: accountId,
+          account_id: { in: accountIds },
           entry: {
             org_id: orgId,
             is_posted: true,
@@ -82,7 +112,7 @@ export class LedgerService {
     const [lines, total] = await Promise.all([
       this.prisma.journalLine.findMany({
         where: {
-          account_id: accountId,
+          account_id: { in: accountIds },
           ...entryDateWhere,
         },
         include: {
@@ -104,7 +134,7 @@ export class LedgerService {
       }),
       this.prisma.journalLine.count({
         where: {
-          account_id: accountId,
+          account_id: { in: accountIds },
           ...entryDateWhere,
         },
       }),
