@@ -269,7 +269,7 @@ export class DashboardService {
         this.prisma.payment.aggregate({
           where: {
             org_id: orgId,
-            type: 'receive',
+            type: { in: ['received', 'receive'] },
             date: { gte: start, lte: end },
           },
           _sum: { amount: true },
@@ -277,7 +277,7 @@ export class DashboardService {
         this.prisma.payment.aggregate({
           where: {
             org_id: orgId,
-            type: 'pay',
+            type: { in: ['paid', 'pay'] },
             date: { gte: start, lte: end },
           },
           _sum: { amount: true },

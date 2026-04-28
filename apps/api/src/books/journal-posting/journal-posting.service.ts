@@ -226,7 +226,11 @@ export class JournalPostingService {
       return null;
     }
 
-    const isReceive = payment.type === 'receive';
+    // Accept either spelling — historic data uses 'received'/'paid', newer
+    // code uses 'receive'/'pay'. Default to receive when unknown.
+    const isReceive = ['receive', 'received', 'receipt', 'in'].includes(
+      String(payment.type || '').toLowerCase(),
+    );
     const counterCode = isReceive ? '1103' : '2101'; // AR or AP
     const counterId = ids[counterCode];
     if (!counterId) return null;
@@ -252,7 +256,7 @@ export class JournalPostingService {
         data: {
           org_id: orgId,
           date: payment.date,
-          narration: `Auto-post: ${payment.type === 'receive' ? 'Payment received' : 'Payment made'}`,
+          narration: `Auto-post: ${isReceive ? 'Payment received' : 'Payment made'}`,
           reference: payment.reference || null,
           reference_type: 'payment',
           reference_id: payment.id,

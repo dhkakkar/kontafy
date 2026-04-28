@@ -146,7 +146,7 @@ export class AiService {
       this.prisma.payment.findMany({
         where: {
           org_id: orgId,
-          type: 'receive',
+          type: { in: ['received', 'receive'] },
           date: { gte: twelveMonthsAgo },
         },
         select: { amount: true, date: true },
@@ -155,7 +155,7 @@ export class AiService {
       this.prisma.payment.findMany({
         where: {
           org_id: orgId,
-          type: 'pay',
+          type: { in: ['paid', 'pay'] },
           date: { gte: twelveMonthsAgo },
         },
         select: { amount: true, date: true },
@@ -664,7 +664,7 @@ Return JSON with:
       this.prisma.payment.aggregate({
         where: {
           org_id: orgId,
-          type: 'receive',
+          type: { in: ['received', 'receive'] },
           date: { gte: thisMonthStart },
         },
         _sum: { amount: true },
@@ -673,7 +673,7 @@ Return JSON with:
       this.prisma.payment.aggregate({
         where: {
           org_id: orgId,
-          type: 'receive',
+          type: { in: ['received', 'receive'] },
           date: { gte: lastMonthStart, lte: lastMonthEnd },
         },
         _sum: { amount: true },
