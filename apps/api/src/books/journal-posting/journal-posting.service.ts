@@ -157,7 +157,7 @@ export class JournalPostingService {
     return this.prisma.$transaction(async (tx) => {
       // Replace existing entry if invoice was already posted.
       if (invoice.journal_id) {
-        await tx.journalLine.deleteMany({ where: { journal_id: invoice.journal_id } });
+        await tx.journalLine.deleteMany({ where: { entry_id:invoice.journal_id } });
         await tx.journalEntry.delete({ where: { id: invoice.journal_id } }).catch(() => undefined);
       }
 
@@ -244,7 +244,7 @@ export class JournalPostingService {
 
     return this.prisma.$transaction(async (tx) => {
       if (payment.journal_id) {
-        await tx.journalLine.deleteMany({ where: { journal_id: payment.journal_id } });
+        await tx.journalLine.deleteMany({ where: { entry_id:payment.journal_id } });
         await tx.journalEntry.delete({ where: { id: payment.journal_id } }).catch(() => undefined);
       }
 
@@ -280,7 +280,7 @@ export class JournalPostingService {
   /** Delete a journal entry and its lines. Used when reversing a post. */
   async deleteJournal(journalId: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      await tx.journalLine.deleteMany({ where: { journal_id: journalId } });
+      await tx.journalLine.deleteMany({ where: { entry_id:journalId } });
       await tx.journalEntry
         .delete({ where: { id: journalId } })
         .catch(() => undefined);
