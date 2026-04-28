@@ -18,14 +18,23 @@ import { ReportsService } from './reports.service';
 import { ReportsExportService } from './reports-export.service';
 import {
   GeneralLedgerQuery,
+  GeneralLedgerQuerySchema,
   DayBookQuery,
+  DayBookQuerySchema,
   AgingQuery,
+  AgingQuerySchema,
   SalesRegisterQuery,
+  SalesRegisterQuerySchema,
   PurchaseRegisterQuery,
+  PurchaseRegisterQuerySchema,
   StockSummaryQuery,
+  StockSummaryQuerySchema,
   StockMovementQuery,
+  StockMovementQuerySchema,
   GstSummaryQuery,
+  GstSummaryQuerySchema,
   TdsSummaryQuery,
+  TdsSummaryQuerySchema,
   ExportReportDto,
 } from './dto/reports.dto';
 
@@ -39,94 +48,128 @@ export class ReportsController {
     private readonly reportsExportService: ReportsExportService,
   ) {}
 
+  // Query strings come in untyped from Express; running each one through
+  // its Zod schema coerces page/limit to numbers and validates date
+  // formats so the underlying Prisma calls don't blow up with "Expected
+  // Int, provided String" errors.
   @Get('general-ledger')
   @ApiOperation({ summary: 'General Ledger report' })
   async getGeneralLedger(
     @OrgId() orgId: string,
-    @Query() query: GeneralLedgerQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getGeneralLedger(orgId, query);
+    return this.reportsService.getGeneralLedger(
+      orgId,
+      GeneralLedgerQuerySchema.parse(query),
+    );
   }
 
   @Get('day-book')
   @ApiOperation({ summary: 'Day Book (journal register)' })
   async getDayBook(
     @OrgId() orgId: string,
-    @Query() query: DayBookQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getDayBook(orgId, query);
+    return this.reportsService.getDayBook(
+      orgId,
+      DayBookQuerySchema.parse(query),
+    );
   }
 
   @Get('receivable-aging')
   @ApiOperation({ summary: 'Accounts Receivable aging report' })
   async getReceivableAging(
     @OrgId() orgId: string,
-    @Query() query: AgingQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getReceivableAging(orgId, query);
+    return this.reportsService.getReceivableAging(
+      orgId,
+      AgingQuerySchema.parse(query),
+    );
   }
 
   @Get('payable-aging')
   @ApiOperation({ summary: 'Accounts Payable aging report' })
   async getPayableAging(
     @OrgId() orgId: string,
-    @Query() query: AgingQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getPayableAging(orgId, query);
+    return this.reportsService.getPayableAging(
+      orgId,
+      AgingQuerySchema.parse(query),
+    );
   }
 
   @Get('sales-register')
   @ApiOperation({ summary: 'Sales Register report' })
   async getSalesRegister(
     @OrgId() orgId: string,
-    @Query() query: SalesRegisterQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getSalesRegister(orgId, query);
+    return this.reportsService.getSalesRegister(
+      orgId,
+      SalesRegisterQuerySchema.parse(query),
+    );
   }
 
   @Get('purchase-register')
   @ApiOperation({ summary: 'Purchase Register report' })
   async getPurchaseRegister(
     @OrgId() orgId: string,
-    @Query() query: PurchaseRegisterQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getPurchaseRegister(orgId, query);
+    return this.reportsService.getPurchaseRegister(
+      orgId,
+      PurchaseRegisterQuerySchema.parse(query),
+    );
   }
 
   @Get('stock-summary')
   @ApiOperation({ summary: 'Stock Summary / Inventory Valuation' })
   async getStockSummary(
     @OrgId() orgId: string,
-    @Query() query: StockSummaryQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getStockSummary(orgId, query);
+    return this.reportsService.getStockSummary(
+      orgId,
+      StockSummaryQuerySchema.parse(query),
+    );
   }
 
   @Get('stock-movement')
   @ApiOperation({ summary: 'Stock Movement report' })
   async getStockMovement(
     @OrgId() orgId: string,
-    @Query() query: StockMovementQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getStockMovement(orgId, query);
+    return this.reportsService.getStockMovement(
+      orgId,
+      StockMovementQuerySchema.parse(query),
+    );
   }
 
   @Get('gst-summary')
   @ApiOperation({ summary: 'GST Summary (output vs input tax)' })
   async getGstSummary(
     @OrgId() orgId: string,
-    @Query() query: GstSummaryQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getGstSummary(orgId, query);
+    return this.reportsService.getGstSummary(
+      orgId,
+      GstSummaryQuerySchema.parse(query),
+    );
   }
 
   @Get('tds-summary')
   @ApiOperation({ summary: 'TDS Summary report' })
   async getTdsSummary(
     @OrgId() orgId: string,
-    @Query() query: TdsSummaryQuery,
+    @Query() query: Record<string, unknown>,
   ) {
-    return this.reportsService.getTdsSummary(orgId, query);
+    return this.reportsService.getTdsSummary(
+      orgId,
+      TdsSummaryQuerySchema.parse(query),
+    );
   }
 
   @Post('export')
