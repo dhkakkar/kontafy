@@ -221,9 +221,35 @@ export class PdfService implements OnModuleDestroy {
     const shippingAddr = typeof contact.shipping_address === 'string'
       ? JSON.parse(contact.shipping_address) : (contact.shipping_address || {});
 
-    // Parse org settings for bank details
+    // Parse org settings for bank details. Settings stores them as flat
+    // keys (bank_name, bank_account_number, bank_ifsc, bank_branch); the
+    // PDF template wants a nested bank_details object. Map the flat
+    // schema into the shape the template expects, and only emit the
+    // block when at least one field is filled in so an unconfigured org
+    // doesn't render an empty "Bank Details" panel.
     const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : (org.settings || {});
-    const bankDetails = settings.bank_details || null;
+    const flatBank = {
+      bank_name: settings.bank_name || settings.bank_details?.bank_name || '',
+      account_name:
+        settings.bank_account_name ||
+        settings.bank_details?.account_name ||
+        org.legal_name ||
+        org.name ||
+        '',
+      account_number:
+        settings.bank_account_number ||
+        settings.bank_details?.account_number ||
+        '',
+      ifsc: settings.bank_ifsc || settings.bank_details?.ifsc || '',
+      branch: settings.bank_branch || settings.bank_details?.branch || '',
+      upi_id: settings.bank_upi_id || settings.bank_details?.upi_id || '',
+    };
+    const hasBankInfo =
+      !!flatBank.bank_name ||
+      !!flatBank.account_number ||
+      !!flatBank.ifsc ||
+      !!flatBank.upi_id;
+    const bankDetails = hasBankInfo ? flatBank : null;
 
     // Format dates
     const formatDate = (d: Date | string | null): string => {

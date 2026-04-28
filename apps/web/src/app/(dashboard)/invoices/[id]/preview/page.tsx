@@ -180,6 +180,27 @@ function InvoicePreviewPage() {
     },
   });
 
+  // Fetch invoice config so we can render the company's bank/UPI block
+  // on the printed/exported invoice. Kept separate from the invoice
+  // payload so the same query cache is reusable across pages.
+  const { data: invoiceConfig } = useQuery<{
+    bank_name?: string;
+    bank_account_number?: string;
+    bank_ifsc?: string;
+    bank_branch?: string;
+    bank_account_name?: string;
+    bank_upi_id?: string;
+  }>({
+    queryKey: ["settings", "invoice-config"],
+    queryFn: async () => {
+      const res = await api.get<{ data: any } | any>(
+        "/settings/invoice-config",
+      );
+      return ((res as any)?.data ?? res) || {};
+    },
+    enabled: !!invoiceId,
+  });
+
   useEffect(() => {
     if (autoPrint && invoice) {
       const timer = setTimeout(() => window.print(), 500);
@@ -626,6 +647,73 @@ function InvoicePreviewPage() {
               )}
             </div>
           </div>
+
+          {/* ─── Bank / Payment Details ─────────────────────── */}
+          {(() => {
+            const cfg = invoiceConfig || {};
+            const bankName = cfg.bank_name || "";
+            const accountNumber = cfg.bank_account_number || "";
+            const ifsc = cfg.bank_ifsc || "";
+            const branch = cfg.bank_branch || "";
+            const accountName =
+              cfg.bank_account_name || org?.legal_name || org?.name || "";
+            const upiId = cfg.bank_upi_id || "";
+            const hasBankInfo = !!(bankName || accountNumber || ifsc || upiId);
+            if (!hasBankInfo) return null;
+            return (
+              <div className="mb-4">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">
+                  Bank Details
+                </h4>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[10px] text-gray-700 leading-relaxed">
+                  {bankName && (
+                    <div>
+                      <span className="text-gray-500">Bank: </span>
+                      <span className="font-medium text-gray-900">
+                        {bankName}
+                      </span>
+                    </div>
+                  )}
+                  {accountName && (
+                    <div>
+                      <span className="text-gray-500">A/C Name: </span>
+                      <span className="font-medium text-gray-900">
+                        {accountName}
+                      </span>
+                    </div>
+                  )}
+                  {accountNumber && (
+                    <div>
+                      <span className="text-gray-500">A/C No.: </span>
+                      <span className="font-medium text-gray-900">
+                        {accountNumber}
+                      </span>
+                    </div>
+                  )}
+                  {ifsc && (
+                    <div>
+                      <span className="text-gray-500">IFSC: </span>
+                      <span className="font-medium text-gray-900">{ifsc}</span>
+                    </div>
+                  )}
+                  {branch && (
+                    <div>
+                      <span className="text-gray-500">Branch: </span>
+                      <span className="font-medium text-gray-900">
+                        {branch}
+                      </span>
+                    </div>
+                  )}
+                  {upiId && (
+                    <div>
+                      <span className="text-gray-500">UPI ID: </span>
+                      <span className="font-medium text-gray-900">{upiId}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ─── Notes & Terms ──────────────────────────────── */}
           {invoice.notes && (
