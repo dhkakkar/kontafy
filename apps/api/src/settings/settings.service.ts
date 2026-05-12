@@ -6,30 +6,19 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class SettingsService {
   private readonly logger = new Logger(SettingsService.name);
-  private supabase: SupabaseClient;
 
   private readonly s3: S3Client;
   private readonly bucket = 'syscode-uploads';
   private readonly keyPrefix = 'kontafy/logos';
   private readonly publicBaseUrl = 'https://pub-3c9b20f24ae34d4d935610c014f9ba51.r2.dev';
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
-  ) {
-    this.supabase = createClient(
-      this.configService.get<string>('SUPABASE_URL', ''),
-      this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY', ''),
-    );
-
+  constructor(private readonly prisma: PrismaService) {
     this.s3 = new S3Client({
       region: 'auto',
       endpoint: 'https://08c5215e60e39dc2fbb3fb67ae7359a5.r2.cloudflarestorage.com',
@@ -169,37 +158,25 @@ export class SettingsService {
       orderBy: { joined_at: 'asc' },
     });
 
-    // Fetch user details from Supabase for each member
-    const enrichedMembers = await Promise.all(
-      members.map(async (member) => {
-        try {
-          const { data } = await this.supabase.auth.admin.getUserById(member.user_id);
-          return {
-            id: member.id,
-            user_id: member.user_id,
-            role: member.role,
-            permissions: member.permissions,
-            joined_at: member.joined_at,
-            name: data?.user?.user_metadata?.name || null,
-            email: data?.user?.email || null,
-            phone: data?.user?.phone || null,
-          };
-        } catch {
-          return {
-            id: member.id,
-            user_id: member.user_id,
-            role: member.role,
-            permissions: member.permissions,
-            joined_at: member.joined_at,
-            name: null,
-            email: null,
-            phone: null,
-          };
-        }
-      }),
-    );
+    const userIds = members.map((m) => m.user_id);
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
 
-    return enrichedMembers;
+    return members.map((member) => {
+      const u = userMap.get(member.user_id);
+      return {
+        id: member.id,
+        user_id: member.user_id,
+        role: member.role,
+        permissions: member.permissions,
+        joined_at: member.joined_at,
+        name: u?.name || null,
+        email: u?.email || null,
+        phone: u?.phone || null,
+      };
+    });
   }
 
   async inviteUser(
@@ -209,22 +186,17 @@ export class SettingsService {
   ) {
     await this.verifyMembership(orgId, userId);
 
-    // Look up the user by email in Supabase
-    const { data: usersData, error } = await this.supabase.auth.admin.listUsers();
-    if (error) {
-      throw new BadRequestException('Failed to look up user');
-    }
-
-    const targetUser = (usersData as any).users.find((u: any) => u.email === data.email);
+    const targetEmail = data.email.trim().toLowerCase();
+    const targetUser = await this.prisma.user.findUnique({
+      where: { email: targetEmail },
+    });
 
     if (!targetUser) {
-      // For now, throw an error. In production, you'd send an invitation email.
       throw new NotFoundException(
         'No user found with this email. They must sign up first.',
       );
     }
 
-    // Check if already a member
     const existing = await this.prisma.orgMember.findUnique({
       where: {
         org_id_user_id: {
@@ -250,7 +222,7 @@ export class SettingsService {
 
     return {
       ...member,
-      name: targetUser.user_metadata?.name || null,
+      name: targetUser.name,
       email: targetUser.email,
     };
   }

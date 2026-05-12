@@ -7,31 +7,24 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { JwtService } from '@nestjs/jwt';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
-  private supabase: SupabaseClient;
 
   constructor(
     private readonly reflector: Reflector,
     private readonly configService: ConfigService,
-  ) {
-    this.supabase = createClient(
-      this.configService.get<string>('SUPABASE_URL', ''),
-      this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY', ''),
-    );
-  }
+    private readonly jwtService: JwtService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // Check if route is marked @Public()
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-
     if (isPublic) {
       return true;
     }
@@ -44,23 +37,16 @@ export class AuthGuard implements CanActivate {
     }
 
     try {
-      const {
-        data: { user },
-        error,
-      } = await this.supabase.auth.getUser(token);
+      const payload = await this.jwtService.verifyAsync<{
+        sub: string;
+        email: string;
+      }>(token, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
 
-      if (error || !user) {
-        throw new UnauthorizedException('Invalid or expired token');
-      }
-
-      // Attach user payload to request
       request.user = {
-        sub: user.id,
-        email: user.email,
-        phone: user.phone,
-        aud: user.aud,
-        role: user.role,
-        ...user.user_metadata,
+        sub: payload.sub,
+        email: payload.email,
       };
 
       return true;
@@ -68,8 +54,7 @@ export class AuthGuard implements CanActivate {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
-      this.logger.error('Auth verification failed', error);
-      throw new UnauthorizedException('Authentication failed');
+      throw new UnauthorizedException('Invalid or expired token');
     }
   }
 

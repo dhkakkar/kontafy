@@ -10,22 +10,6 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
-  @Post('otp/send')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Send OTP to phone number via Supabase' })
-  async sendOtp(@Body() body: { phone: string }) {
-    return this.authService.sendOtp(body.phone);
-  }
-
-  @Public()
-  @Post('otp/verify')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verify OTP and get access token' })
-  async verifyOtp(@Body() body: { phone: string; otp: string }) {
-    return this.authService.verifyOtp(body.phone, body.otp);
-  }
-
-  @Public()
   @Post('signup')
   @ApiOperation({ summary: 'Register new user with email and password' })
   async signup(@Body() body: { email: string; password: string; name?: string }) {
@@ -48,6 +32,37 @@ export class AuthController {
     return this.authService.refreshToken(body.refresh_token);
   }
 
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send a password reset email' })
+  async forgotPassword(@Body() body: { email: string }) {
+    return this.authService.forgotPassword(body.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password using a token from the reset email' })
+  async resetPassword(@Body() body: { token: string; new_password: string }) {
+    return this.authService.resetPassword(body.token, body.new_password);
+  }
+
+  @ApiBearerAuth('access-token')
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change password for the current user' })
+  async changePassword(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: { current_password: string; new_password: string },
+  ) {
+    return this.authService.changePassword(
+      user.sub,
+      body.current_password,
+      body.new_password,
+    );
+  }
+
   @ApiBearerAuth('access-token')
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
@@ -59,7 +74,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Sign out current session' })
-  async logout() {
-    return this.authService.signOut();
+  async logout(@Body() body: { refresh_token?: string }) {
+    return this.authService.signOut(body?.refresh_token);
   }
 }

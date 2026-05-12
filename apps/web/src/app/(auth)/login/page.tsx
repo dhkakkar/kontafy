@@ -39,7 +39,15 @@ export default function LoginPage() {
 
       // Fetch user profile (includes is_superadmin) and organizations
       const [profileRes, orgsRes] = await Promise.all([
-        api.get<{ data: { is_superadmin?: boolean } }>("/auth/me"),
+        api.get<{
+          data: {
+            id: string;
+            email: string;
+            name?: string;
+            avatar_url?: string;
+            is_superadmin?: boolean;
+          };
+        }>("/auth/me"),
         api.get<{
           data: Array<{
             id: string;
@@ -56,13 +64,16 @@ export default function LoginPage() {
       const isSuperadmin = !!profile?.is_superadmin;
 
       const user = authData.user;
-      const meta = user?.user_metadata || {};
+      if (!user) {
+        setError("Login failed. Please try again.");
+        return;
+      }
 
       const userPayload = {
         id: user.id,
-        email: user.email!,
-        fullName: meta.full_name || user.email!,
-        avatarUrl: meta.avatar_url,
+        email: user.email,
+        fullName: profile?.name || user.email,
+        avatarUrl: profile?.avatar_url || undefined,
       };
 
       if (orgs.length > 0) {

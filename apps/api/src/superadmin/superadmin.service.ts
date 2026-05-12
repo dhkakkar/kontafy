@@ -2,30 +2,25 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrganizationService } from '../organization/organization.service';
 import { JournalPostingService } from '../books/journal-posting/journal-posting.service';
 
+const BCRYPT_COST = 10;
+
 @Injectable()
 export class SuperadminService {
   private readonly logger = new Logger(SuperadminService.name);
-  private supabase: SupabaseClient;
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
     private readonly orgService: OrganizationService,
     private readonly journalPosting: JournalPostingService,
-  ) {
-    this.supabase = createClient(
-      this.configService.get<string>('SUPABASE_URL', ''),
-      this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY', ''),
-    );
-  }
+  ) {}
 
   /**
    * Platform dashboard stats.
@@ -56,7 +51,6 @@ export class SuperadminService {
       }),
     ]);
 
-    // Get total revenue from all invoices
     const revenueResult = await this.prisma.invoice.aggregate({
       _sum: { total: true },
       where: { status: { in: ['sent', 'paid', 'partially_paid', 'overdue'] } },
@@ -163,13 +157,11 @@ export class SuperadminService {
   /**
    * Create an organization and assign an owner.
    *
-   * Supports two modes of picking the owner:
-   * - `owner_email` + `owner_password` (+ optional `owner_full_name`): if a
-   *   Supabase Auth user with that email doesn't exist, one is created with
-   *   the given password (email auto-confirmed). If a user already exists
-   *   with that email, it is linked as the owner (password is ignored —
-   *   the existing account is not modified).
-   * - `owner_user_id`: legacy — directly use an existing Supabase user by id.
+   * Two ways to pick the owner:
+   * - `owner_email` + `owner_password` (+ optional `owner_full_name`): if no
+   *   user with that email exists, create one with the given password. If a
+   *   user already exists, link them as owner (their password is unchanged).
+   * - `owner_user_id`: directly use an existing user by id.
    */
   async createOrganization(data: {
     name: string;
@@ -187,21 +179,21 @@ export class SuperadminService {
     plan?: string;
     fiscal_year_start?: number;
   }) {
-    // Resolve owner user_id from either mode.
     let ownerUserId: string;
     let ownerEmailOnRecord: string | undefined;
 
     if (data.owner_user_id) {
-      const { data: userData, error } =
-        await this.supabase.auth.admin.getUserById(data.owner_user_id);
-      if (error || !userData.user) {
-        throw new NotFoundException('Owner user not found in auth system');
+      const existing = await this.prisma.user.findUnique({
+        where: { id: data.owner_user_id },
+      });
+      if (!existing) {
+        throw new NotFoundException('Owner user not found');
       }
-      ownerUserId = userData.user.id;
-      ownerEmailOnRecord = userData.user.email;
+      ownerUserId = existing.id;
+      ownerEmailOnRecord = existing.email;
     } else if (data.owner_email) {
       const email = data.owner_email.trim().toLowerCase();
-      const existing = await this.findUserByEmail(email);
+      const existing = await this.prisma.user.findUnique({ where: { email } });
       if (existing) {
         ownerUserId = existing.id;
         ownerEmailOnRecord = existing.email;
@@ -211,22 +203,17 @@ export class SuperadminService {
             'A password of at least 8 characters is required to create a new owner account.',
           );
         }
-        const { data: created, error } =
-          await this.supabase.auth.admin.createUser({
+        const password_hash = await bcrypt.hash(data.owner_password, BCRYPT_COST);
+        const created = await this.prisma.user.create({
+          data: {
             email,
-            password: data.owner_password,
-            email_confirm: true,
-            user_metadata: data.owner_full_name
-              ? { full_name: data.owner_full_name }
-              : {},
-          });
-        if (error || !created?.user) {
-          throw new BadRequestException(
-            `Failed to create owner account: ${error?.message || 'unknown error'}`,
-          );
-        }
-        ownerUserId = created.user.id;
-        ownerEmailOnRecord = created.user.email;
+            password_hash,
+            name: data.owner_full_name || null,
+            email_verified: true,
+          },
+        });
+        ownerUserId = created.id;
+        ownerEmailOnRecord = created.email;
       }
     } else {
       throw new BadRequestException(
@@ -234,7 +221,6 @@ export class SuperadminService {
       );
     }
 
-    // Create organization
     const org = await this.prisma.organization.create({
       data: {
         name: data.name,
@@ -250,7 +236,6 @@ export class SuperadminService {
       },
     });
 
-    // Create owner membership
     await this.prisma.orgMember.create({
       data: {
         org_id: org.id,
@@ -259,10 +244,6 @@ export class SuperadminService {
       },
     });
 
-    // Seed the default Indian chart of accounts so the new org can post
-    // journals, render ledger/reports, and run tax/GST flows out of the box.
-    // The regular /organizations POST does this; the superadmin path used
-    // to skip it, leaving new orgs with zero accounts.
     try {
       await this.orgService.seedDefaultAccounts(org.id);
     } catch (err) {
@@ -275,43 +256,6 @@ export class SuperadminService {
     return org;
   }
 
-  /**
-   * Scan Supabase Auth users for a given email. Paginated — stops at the
-   * first match. Returns null if the email doesn't belong to any user.
-   */
-  private async findUserByEmail(email: string) {
-    const target = email.toLowerCase();
-    const perPage = 200;
-    let page = 1;
-    // Hard cap at 10 pages (2000 users) — well beyond any realistic platform
-    // size that'd hit this path without a dedicated lookup endpoint.
-    while (page <= 10) {
-      const { data, error } = await this.supabase.auth.admin.listUsers({
-        page,
-        perPage,
-      });
-      if (error) {
-        throw new BadRequestException(
-          `Failed to look up owner by email: ${error.message}`,
-        );
-      }
-      const users = (data?.users || []) as Array<{
-        id: string;
-        email?: string;
-      }>;
-      const match = users.find(
-        (u) => u.email?.toLowerCase() === target,
-      );
-      if (match) return match;
-      if (users.length < perPage) return null;
-      page += 1;
-    }
-    return null;
-  }
-
-  /**
-   * Update any organization.
-   */
   async updateOrganization(
     id: string,
     data: { name?: string; plan?: string; settings?: any },
@@ -327,11 +271,6 @@ export class SuperadminService {
     });
   }
 
-  /**
-   * Seed the default chart of accounts for an existing org that was
-   * created before default-account bootstrap was wired in. No-op if the
-   * org already has accounts.
-   */
   async seedOrgAccounts(orgId: string) {
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
     if (!org) {
@@ -340,11 +279,6 @@ export class SuperadminService {
     return this.orgService.seedDefaultAccounts(orgId);
   }
 
-  /**
-   * Backfill journal entries for every non-draft invoice and every payment
-   * in an org that doesn't already have a journal_id. Idempotent — safe to
-   * re-run after the auto-posting hooks were added.
-   */
   async backfillJournals(orgId: string) {
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
     if (!org) {
@@ -353,10 +287,6 @@ export class SuperadminService {
     return this.journalPosting.backfillOrg(orgId);
   }
 
-  /**
-   * Activate or deactivate an organization.
-   * Deactivated orgs can't be accessed by their members (except superadmins).
-   */
   async setOrganizationStatus(
     id: string,
     data: { is_active: boolean; reason?: string },
@@ -376,9 +306,6 @@ export class SuperadminService {
     });
   }
 
-  /**
-   * Delete an organization and all its data.
-   */
   async deleteOrganization(id: string) {
     const org = await this.prisma.organization.findUnique({ where: { id } });
     if (!org) {
@@ -390,192 +317,145 @@ export class SuperadminService {
   }
 
   /**
-   * List all users from Supabase with their org memberships.
+   * List users with their org memberships.
    */
   async listUsers(params: { page?: number; limit?: number; search?: string }) {
     const page = params.page || 1;
     const limit = params.limit || 20;
+    const skip = (page - 1) * limit;
 
-    try {
-      const { data, error } = await this.supabase.auth.admin.listUsers({
-        page,
-        perPage: limit,
+    const where: any = {};
+    if (params.search) {
+      where.OR = [
+        { email: { contains: params.search, mode: 'insensitive' } },
+        { name: { contains: params.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { created_at: 'desc' },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    const userIds = users.map((u) => u.id);
+    const memberships = await this.prisma.orgMember.findMany({
+      where: { user_id: { in: userIds } },
+      include: { organization: { select: { id: true, name: true } } },
+    });
+    const superadmins = await this.prisma.superadmin.findMany({
+      where: { user_id: { in: userIds } },
+    });
+    const superadminSet = new Set(superadmins.map((s) => s.user_id));
+
+    const membershipMap = new Map<string, any[]>();
+    for (const m of memberships) {
+      if (!membershipMap.has(m.user_id)) membershipMap.set(m.user_id, []);
+      membershipMap.get(m.user_id)!.push({
+        org_id: m.organization.id,
+        org_name: m.organization.name,
+        role: m.role,
       });
+    }
 
-      if (error) {
-        throw new BadRequestException(`Failed to list users: ${error.message}`);
-      }
-
-      // Get all org memberships for these users
-      const userIds = data.users.map((u) => u.id);
-      const memberships = await this.prisma.orgMember.findMany({
-        where: { user_id: { in: userIds } },
-        include: { organization: { select: { id: true, name: true } } },
-      });
-
-      // Get superadmin statuses
-      const superadmins = await this.prisma.superadmin.findMany({
-        where: { user_id: { in: userIds } },
-      });
-      const superadminSet = new Set(superadmins.map((s) => s.user_id));
-
-      const membershipMap = new Map<string, any[]>();
-      for (const m of memberships) {
-        if (!membershipMap.has(m.user_id)) {
-          membershipMap.set(m.user_id, []);
-        }
-        membershipMap.get(m.user_id)!.push({
-          org_id: m.organization.id,
-          org_name: m.organization.name,
-          role: m.role,
-        });
-      }
-
-      const users = data.users.map((u) => ({
+    return {
+      data: users.map((u) => ({
         id: u.id,
         email: u.email,
         phone: u.phone,
-        full_name: u.user_metadata?.full_name || u.user_metadata?.name || '',
+        full_name: u.name || '',
         created_at: u.created_at,
-        last_sign_in_at: u.last_sign_in_at,
+        last_sign_in_at: null,
         is_superadmin: superadminSet.has(u.id),
         organizations: membershipMap.get(u.id) || [],
-      }));
-
-      return {
-        data: users,
-        meta: {
-          total: (data as any).total || users.length,
-          page,
-          limit,
-        },
-      };
-    } catch (error) {
-      if (error instanceof BadRequestException) throw error;
-      this.logger.error('Failed to list users', error);
-      throw new BadRequestException('Failed to list users');
-    }
+      })),
+      meta: { total, page, limit },
+    };
   }
 
-  /**
-   * Get user detail.
-   */
   async getUser(userId: string) {
-    try {
-      const { data, error } = await this.supabase.auth.admin.getUserById(userId);
-      if (error || !data.user) {
-        throw new NotFoundException('User not found');
-      }
-
-      const memberships = await this.prisma.orgMember.findMany({
-        where: { user_id: userId },
-        include: {
-          organization: {
-            select: { id: true, name: true, plan: true, gstin: true },
-          },
-        },
-      });
-
-      const superadmin = await this.prisma.superadmin.findUnique({
-        where: { user_id: userId },
-      });
-
-      return {
-        id: data.user.id,
-        email: data.user.email,
-        phone: data.user.phone,
-        full_name:
-          data.user.user_metadata?.full_name ||
-          data.user.user_metadata?.name ||
-          '',
-        created_at: data.user.created_at,
-        last_sign_in_at: data.user.last_sign_in_at,
-        is_superadmin: !!superadmin,
-        organizations: memberships.map((m) => ({
-          org_id: m.organization.id,
-          org_name: m.organization.name,
-          plan: m.organization.plan,
-          gstin: m.organization.gstin,
-          role: m.role,
-          joined_at: m.joined_at,
-        })),
-      };
-    } catch (error) {
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      )
-        throw error;
-      this.logger.error('Failed to get user', error);
-      throw new BadRequestException('Failed to get user');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
+
+    const memberships = await this.prisma.orgMember.findMany({
+      where: { user_id: userId },
+      include: {
+        organization: {
+          select: { id: true, name: true, plan: true, gstin: true },
+        },
+      },
+    });
+
+    const superadmin = await this.prisma.superadmin.findUnique({
+      where: { user_id: userId },
+    });
+
+    return {
+      id: user.id,
+      email: user.email,
+      phone: user.phone,
+      full_name: user.name || '',
+      created_at: user.created_at,
+      last_sign_in_at: null,
+      is_superadmin: !!superadmin,
+      organizations: memberships.map((m) => ({
+        org_id: m.organization.id,
+        org_name: m.organization.name,
+        plan: m.organization.plan,
+        gstin: m.organization.gstin,
+        role: m.role,
+        joined_at: m.joined_at,
+      })),
+    };
   }
 
-  /**
-   * List all superadmins.
-   */
   async listSuperadmins() {
     const superadmins = await this.prisma.superadmin.findMany({
       orderBy: { created_at: 'asc' },
     });
 
-    // Enrich with user info from Supabase
-    const enriched = await Promise.all(
-      superadmins.map(async (sa) => {
-        try {
-          const { data } = await this.supabase.auth.admin.getUserById(
-            sa.user_id,
-          );
-          return {
-            ...sa,
-            email: data.user?.email || 'unknown',
-            full_name:
-              data.user?.user_metadata?.full_name ||
-              data.user?.user_metadata?.name ||
-              '',
-          };
-        } catch {
-          return { ...sa, email: 'unknown', full_name: '' };
-        }
-      }),
-    );
+    const userIds = superadmins.map((s) => s.user_id);
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
 
-    return enriched;
+    return superadmins.map((sa) => {
+      const u = userMap.get(sa.user_id);
+      return {
+        ...sa,
+        email: u?.email || 'unknown',
+        full_name: u?.name || '',
+      };
+    });
   }
 
-  /**
-   * Grant superadmin to a user.
-   */
   async grantSuperadmin(userId: string, grantedBy: string) {
-    // Verify user exists in Supabase
-    const { data, error } = await this.supabase.auth.admin.getUserById(userId);
-    if (error || !data.user) {
-      throw new NotFoundException('User not found in auth system');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
 
     const existing = await this.prisma.superadmin.findUnique({
       where: { user_id: userId },
     });
     if (existing) {
-      throw new BadRequestException('User is already a superadmin');
+      throw new ConflictException('User is already a superadmin');
     }
 
     const superadmin = await this.prisma.superadmin.create({
-      data: {
-        user_id: userId,
-        granted_by: grantedBy,
-      },
+      data: { user_id: userId, granted_by: grantedBy },
     });
 
-    return {
-      ...superadmin,
-      email: data.user.email,
-    };
+    return { ...superadmin, email: user.email };
   }
 
-  /**
-   * Revoke superadmin from a user.
-   */
   async revokeSuperadmin(userId: string) {
     const existing = await this.prisma.superadmin.findUnique({
       where: { user_id: userId },
@@ -584,7 +464,6 @@ export class SuperadminService {
       throw new NotFoundException('User is not a superadmin');
     }
 
-    // Prevent revoking the last superadmin
     const count = await this.prisma.superadmin.count();
     if (count <= 1) {
       throw new BadRequestException(
@@ -596,9 +475,6 @@ export class SuperadminService {
     return { message: 'Superadmin access revoked' };
   }
 
-  /**
-   * Platform-wide audit log.
-   */
   async getAuditLog(params: { page?: number; limit?: number }) {
     const page = params.page || 1;
     const limit = params.limit || 50;

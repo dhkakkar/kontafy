@@ -393,8 +393,8 @@ export class EmailService {
     email: string,
     resetToken: string,
   ): Promise<{ emailLogId: string }> {
-    const appUrl = this.configService.get<string>('APP_URL', 'https://app.kontafy.in');
-    const resetUrl = `${appUrl}/auth/reset-password?token=${resetToken}`;
+    const appUrl = this.configService.get<string>('APP_URL', 'https://app.kontafy.com');
+    const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
 
     const html = passwordResetEmailTemplate({
       email,

@@ -102,6 +102,55 @@ model Superadmin {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// AUTH: Users, sessions, password resets
+// ═══════════════════════════════════════════════════════════════
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String    @unique
+  password_hash  String
+  name           String?
+  phone          String?   @db.VarChar(20)
+  avatar_url     String?
+  email_verified Boolean   @default(false)
+  created_at     DateTime  @default(now()) @db.Timestamptz
+  updated_at     DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  refresh_tokens        RefreshToken[]
+  password_reset_tokens PasswordResetToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String    @db.Uuid
+  token_hash String    @unique
+  expires_at DateTime  @db.Timestamptz
+  revoked_at DateTime? @db.Timestamptz
+  created_at DateTime  @default(now()) @db.Timestamptz
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String    @db.Uuid
+  token_hash String    @unique
+  expires_at DateTime  @db.Timestamptz
+  used_at    DateTime? @db.Timestamptz
+  created_at DateTime  @default(now()) @db.Timestamptz
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("password_reset_tokens")
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Support / Help Center
 // ═══════════════════════════════════════════════════════════════
 

@@ -1,32 +1,26 @@
 import {
   Injectable,
   BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import * as bcrypt from 'bcrypt';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { PrismaService } from '../prisma/prisma.service';
+
+const BCRYPT_COST = 10;
 
 @Injectable()
 export class ProfileService {
   private readonly logger = new Logger(ProfileService.name);
-  private supabase: SupabaseClient;
 
   private readonly s3: S3Client;
   private readonly bucket = 'syscode-uploads';
   private readonly keyPrefix = 'kontafy/avatars';
   private readonly publicBaseUrl = 'https://pub-3c9b20f24ae34d4d935610c014f9ba51.r2.dev';
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
-  ) {
-    this.supabase = createClient(
-      this.configService.get<string>('SUPABASE_URL', ''),
-      this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY', ''),
-    );
-
+  constructor(private readonly prisma: PrismaService) {
     this.s3 = new S3Client({
       region: 'auto',
       endpoint: 'https://08c5215e60e39dc2fbb3fb67ae7359a5.r2.cloudflarestorage.com',
@@ -39,16 +33,13 @@ export class ProfileService {
   }
 
   /**
-   * Get the current user's profile from Supabase Auth + org memberships.
+   * Get the current user's profile + org memberships.
    */
   async getProfile(userId: string) {
-    const { data, error } = await this.supabase.auth.admin.getUserById(userId);
-
-    if (error || !data?.user) {
-      throw new BadRequestException('Failed to fetch user profile');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
-
-    const user = data.user;
 
     const memberships = await this.prisma.orgMember.findMany({
       where: { user_id: userId },
@@ -68,10 +59,10 @@ export class ProfileService {
 
     return {
       id: user.id,
-      email: user.email || null,
-      phone: user.phone || null,
-      name: user.user_metadata?.name || null,
-      avatar_url: user.user_metadata?.avatar_url || null,
+      email: user.email,
+      phone: user.phone,
+      name: user.name,
+      avatar_url: user.avatar_url,
       created_at: user.created_at,
       organizations: memberships.map((m) => ({
         id: m.organization.id,
@@ -87,7 +78,7 @@ export class ProfileService {
   }
 
   /**
-   * Update the current user's profile (name, phone, avatar).
+   * Update the current user's profile (name, phone, email, avatar).
    */
   async updateProfile(
     userId: string,
@@ -99,39 +90,31 @@ export class ProfileService {
     },
   ) {
     const updateData: Record<string, any> = {};
-
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.avatar_url !== undefined) updateData.avatar_url = data.avatar_url;
     if (data.email) {
-      updateData.email = data.email;
-    }
-    if (data.phone) {
-      updateData.phone = data.phone;
-    }
-
-    // Name and avatar go into user_metadata
-    const metadataUpdate: Record<string, any> = {};
-    if (data.name !== undefined) metadataUpdate.name = data.name;
-    if (data.avatar_url !== undefined) metadataUpdate.avatar_url = data.avatar_url;
-
-    if (Object.keys(metadataUpdate).length > 0) {
-      updateData.user_metadata = metadataUpdate;
+      const newEmail = data.email.trim().toLowerCase();
+      const existing = await this.prisma.user.findUnique({
+        where: { email: newEmail },
+      });
+      if (existing && existing.id !== userId) {
+        throw new BadRequestException('Email is already in use');
+      }
+      updateData.email = newEmail;
     }
 
-    const { data: result, error } = await this.supabase.auth.admin.updateUserById(
-      userId,
-      updateData,
-    );
-
-    if (error) {
-      this.logger.error(`Failed to update profile for user ${userId}`, error);
-      throw new BadRequestException(`Failed to update profile: ${error.message}`);
-    }
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+    });
 
     return {
-      id: result.user.id,
-      email: result.user.email || null,
-      phone: result.user.phone || null,
-      name: result.user.user_metadata?.name || null,
-      avatar_url: result.user.user_metadata?.avatar_url || null,
+      id: updated.id,
+      email: updated.email,
+      phone: updated.phone,
+      name: updated.name,
+      avatar_url: updated.avatar_url,
     };
   }
 
@@ -187,23 +170,16 @@ export class ProfileService {
 
     const avatar_url = `${this.publicBaseUrl}/${key}`;
 
-    // Persist on the user's Supabase Auth metadata so /profile reflects it.
-    const { error: updateErr } =
-      await this.supabase.auth.admin.updateUserById(userId, {
-        user_metadata: { avatar_url },
-      });
-    if (updateErr) {
-      this.logger.error('Failed to persist avatar URL', updateErr);
-      throw new BadRequestException(
-        `Failed to save avatar URL: ${updateErr.message}`,
-      );
-    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatar_url },
+    });
 
     return { avatar_url };
   }
 
   /**
-   * Change the current user's password.
+   * Change the current user's password. Requires current password.
    */
   async changePassword(
     userId: string,
@@ -213,15 +189,19 @@ export class ProfileService {
       throw new BadRequestException('Password must be at least 8 characters');
     }
 
-    // Update the password using admin API
-    const { error } = await this.supabase.auth.admin.updateUserById(userId, {
-      password: data.new_password,
-    });
-
-    if (error) {
-      this.logger.error(`Failed to change password for user ${userId}`, error);
-      throw new BadRequestException(`Failed to change password: ${error.message}`);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (
+      !user ||
+      !(await bcrypt.compare(data.current_password, user.password_hash))
+    ) {
+      throw new UnauthorizedException('Current password is incorrect');
     }
+
+    const password_hash = await bcrypt.hash(data.new_password, BCRYPT_COST);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password_hash },
+    });
 
     return { message: 'Password changed successfully' };
   }
