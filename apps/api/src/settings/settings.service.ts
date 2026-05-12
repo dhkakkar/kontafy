@@ -8,12 +8,18 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class SettingsService {
   private readonly logger = new Logger(SettingsService.name);
   private supabase: SupabaseClient;
+
+  private readonly s3: S3Client;
+  private readonly bucket = 'syscode-uploads';
+  private readonly keyPrefix = 'kontafy/logos';
+  private readonly publicBaseUrl = 'https://pub-3c9b20f24ae34d4d935610c014f9ba51.r2.dev';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -23,6 +29,16 @@ export class SettingsService {
       this.configService.get<string>('SUPABASE_URL', ''),
       this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY', ''),
     );
+
+    this.s3 = new S3Client({
+      region: 'auto',
+      endpoint: 'https://08c5215e60e39dc2fbb3fb67ae7359a5.r2.cloudflarestorage.com',
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID || '0bd5fa4925a7b2172467c4b1976bb65a',
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || 'ada1bfa44238f83b2097bb6b23d7ed17594bf46c62bdbbcba3e8ec00e6b40bcd',
+      },
+      forcePathStyle: true,
+    });
   }
 
   // ───────────────────────────────────────────────────────
@@ -76,8 +92,8 @@ export class SettingsService {
 
   /**
    * Upload an organization logo. Takes a data URL from the client,
-   * validates, uploads to the Supabase `logos` bucket via the service
-   * role (bypassing RLS), and stores the public URL on
+   * validates, uploads to the Cloudflare R2 `syscode-uploads` bucket
+   * under `kontafy/logos/`, and stores the public URL on
    * Organization.logo_url. Returns the saved URL.
    */
   async uploadLogo(orgId: string, userId: string, dataUrl: string) {
@@ -112,23 +128,26 @@ export class SettingsService {
       throw new BadRequestException('Image too large. Max 2MB.');
     }
 
-    const path = `${orgId}/logo-${Date.now()}.${ext}`;
-    const { error: uploadErr } = await this.supabase.storage
-      .from('logos')
-      .upload(path, buffer, {
-        contentType: mime,
-        upsert: true,
-        cacheControl: '3600',
-      });
-    if (uploadErr) {
-      this.logger.error('Logo upload failed', uploadErr);
-      throw new BadRequestException(`Upload failed: ${uploadErr.message}`);
+    const key = `${this.keyPrefix}/${orgId}/logo-${Date.now()}.${ext}`;
+
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: mime,
+          // Each upload gets a timestamped key, so the URL itself changes
+          // when the logo changes — content at this key never mutates.
+          CacheControl: 'public, max-age=31536000, immutable',
+        }),
+      );
+    } catch (err) {
+      this.logger.error('Logo upload failed', err);
+      throw new BadRequestException('Logo upload failed');
     }
 
-    const { data: urlData } = this.supabase.storage
-      .from('logos')
-      .getPublicUrl(path);
-    const logo_url = urlData.publicUrl;
+    const logo_url = `${this.publicBaseUrl}/${key}`;
 
     await this.prisma.organization.update({
       where: { id: orgId },
