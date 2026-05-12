@@ -29,3 +29,6 @@ packages/db/prisma/migrations/
 # Logs
 *.log
 pnpm-debug.log*
+
+# Database backups
+backups/
