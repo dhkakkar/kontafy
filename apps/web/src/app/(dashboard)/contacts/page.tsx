@@ -13,7 +13,7 @@ import { Select } from "@/components/ui/select";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/auth/client";
 import {
   Plus,
   Search,

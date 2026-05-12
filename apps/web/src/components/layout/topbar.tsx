@@ -14,7 +14,7 @@ import {
   Building2,
   Check,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/auth/client";
 import { Breadcrumbs } from "./breadcrumbs";
 import { NotificationBell } from "./notification-bell";
 import { api } from "@/lib/api";

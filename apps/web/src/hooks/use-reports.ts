@@ -539,7 +539,7 @@ export function useExportReport() {
       let authToken = "";
       let orgId = "";
       try {
-        const { createClient } = await import("@/lib/supabase/client");
+        const { createClient } = await import("@/lib/auth/client");
         const supabase = createClient();
         const { data } = await supabase.auth.getSession();
         authToken = data.session?.access_token || "";
