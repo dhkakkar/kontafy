@@ -60,43 +60,65 @@ export class AiModule implements OnModuleInit {
   constructor(@InjectQueue('ai') private readonly aiQueue: Queue) {}
 
   async onModuleInit() {
+    // BullMQ v5 renamed RepeatOptions.cron → RepeatOptions.pattern. Passing
+    // the old { cron } field made aiQueue.add() hang indefinitely inside
+    // Nest's onModuleInit, which in turn blocked app.listen() from ever
+    // running and left the API never binding port 5002. The fix is to
+    // use { pattern } and to wrap each add in a hard timeout so any future
+    // bull oddity can't take the whole boot down with it.
+    const withTimeout = <T>(
+      label: string,
+      op: () => Promise<T>,
+      ms = 5000,
+    ): Promise<T | null> =>
+      Promise.race([
+        op(),
+        new Promise<null>((resolve) => {
+          setTimeout(() => {
+            this.logger.warn(`${label} timed out after ${ms}ms — skipping`);
+            resolve(null);
+          }, ms);
+        }),
+      ]);
+
     try {
-      // Register repeatable cron jobs
-
-      // Daily forecast refresh at 6:00 AM
-      await this.aiQueue.add(
-        'daily-forecast',
-        { type: 'forecast' },
-        {
-          repeat: { cron: '0 6 * * *' } as any,
-          removeOnComplete: 10,
-          removeOnFail: 5,
-        },
+      await withTimeout('daily-forecast', () =>
+        this.aiQueue.add(
+          'daily-forecast',
+          { type: 'forecast' },
+          {
+            repeat: { pattern: '0 6 * * *' },
+            removeOnComplete: 10,
+            removeOnFail: 5,
+          },
+        ),
+      );
+      await withTimeout('daily-anomalies', () =>
+        this.aiQueue.add(
+          'daily-anomalies',
+          { type: 'anomalies' },
+          {
+            repeat: { pattern: '0 7 * * *' },
+            removeOnComplete: 10,
+            removeOnFail: 5,
+          },
+        ),
+      );
+      await withTimeout('weekly-insights', () =>
+        this.aiQueue.add(
+          'weekly-insights',
+          { type: 'insights' },
+          {
+            repeat: { pattern: '0 8 * * 1' },
+            removeOnComplete: 10,
+            removeOnFail: 5,
+          },
+        ),
       );
 
-      // Daily anomaly scan at 7:00 AM
-      await this.aiQueue.add(
-        'daily-anomalies',
-        { type: 'anomalies' },
-        {
-          repeat: { cron: '0 7 * * *' } as any,
-          removeOnComplete: 10,
-          removeOnFail: 5,
-        },
+      this.logger.log(
+        'AI cron jobs registered (forecast 6AM, anomalies 7AM, insights Mon 8AM)',
       );
-
-      // Weekly insights generation on Monday at 8:00 AM
-      await this.aiQueue.add(
-        'weekly-insights',
-        { type: 'insights' },
-        {
-          repeat: { cron: '0 8 * * 1' } as any,
-          removeOnComplete: 10,
-          removeOnFail: 5,
-        },
-      );
-
-      this.logger.log('AI cron jobs registered (forecast 6AM, anomalies 7AM, insights Mon 8AM)');
     } catch (err) {
       this.logger.warn('Failed to register AI cron jobs — skipping', err);
     }
