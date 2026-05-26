@@ -15,10 +15,6 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
-  Upload,
-  FileText,
-  ExternalLink,
-  X,
 } from "lucide-react";
 
 const DIN_REGEX = /^[0-9]{8}$/;
@@ -58,16 +54,6 @@ const BANK_AUTHORITY = [
   { value: "either_or_survivor", label: "Either or Survivor" },
 ];
 
-type DocType = "pan" | "aadhaar" | "din_letter" | "signature" | "photograph";
-
-interface DirectorDocuments {
-  pan: string | null;
-  aadhaar: string | null;
-  din_letter: string | null;
-  signature: string | null;
-  photograph: string | null;
-}
-
 interface Director {
   id: string;
   full_name: string;
@@ -91,16 +77,7 @@ interface Director {
   bank_authority_type: string;
   permanent_address: string;
   current_address: string;
-  documents: DirectorDocuments;
 }
-
-const DOC_LABELS: Record<DocType, string> = {
-  pan: "PAN Card",
-  aadhaar: "Aadhaar Card",
-  din_letter: "DIN Allotment Letter",
-  signature: "Signature Image",
-  photograph: "Photograph",
-};
 
 function newDirector(): Director {
   return {
@@ -126,13 +103,6 @@ function newDirector(): Director {
     bank_authority_type: "sole",
     permanent_address: "",
     current_address: "",
-    documents: {
-      pan: null,
-      aadhaar: null,
-      din_letter: null,
-      signature: null,
-      photograph: null,
-    },
   };
 }
 
@@ -152,12 +122,6 @@ export default function DirectorsPage() {
 
   const [directors, setDirectors] = useState<Director[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // Keyed by `${directorId}:${docType}` so each upload button shows its own
-  // spinner; failures show inline below the button.
-  const [uploadingDoc, setUploadingDoc] = useState<Record<string, boolean>>(
-    {},
-  );
-  const [uploadError, setUploadError] = useState<Record<string, string>>({});
 
   useEffect(() => {
     (async () => {
@@ -202,54 +166,6 @@ export default function DirectorsPage() {
     setDirectors((prev) => prev.filter((d) => d.id !== id));
     if (expandedId === id) setExpandedId(null);
     setSuccess(false);
-  };
-
-  // Uploads a director KYC document straight to R2 via the backend, then
-  // sets the returned URL in local director state. The user still has to
-  // click Save Changes for the URL to persist on the directors record —
-  // that's intentional so cancelling Save discards orphaned uploads.
-  const uploadDocument = async (
-    director: Director,
-    docType: DocType,
-    file: File,
-  ) => {
-    const key = `${director.id}:${docType}`;
-    setUploadingDoc((p) => ({ ...p, [key]: true }));
-    setUploadError((p) => ({ ...p, [key]: "" }));
-    try {
-      const allowedMime = [
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-        "image/webp",
-        "application/pdf",
-      ];
-      if (!allowedMime.includes(file.type)) {
-        throw new Error("Only PNG, JPEG, WEBP or PDF files are supported.");
-      }
-      if (file.size > 2 * 1024 * 1024) {
-        throw new Error("File too large. Max 2MB.");
-      }
-      const dataUrl: string = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result as string);
-        r.onerror = () => reject(new Error("Failed to read file"));
-        r.readAsDataURL(file);
-      });
-      const res = await api.post<{ data?: { url?: string }; url?: string }>(
-        "/settings/director-documents",
-        { director_id: director.id, doc_type: docType, data_url: dataUrl },
-      );
-      const url = res?.data?.url || (res as any)?.url;
-      if (!url) throw new Error("Upload succeeded but no URL returned");
-      updateDir(director.id, {
-        documents: { ...director.documents, [docType]: url },
-      });
-    } catch (err: any) {
-      setUploadError((p) => ({ ...p, [key]: err?.message || "Upload failed" }));
-    } finally {
-      setUploadingDoc((p) => ({ ...p, [key]: false }));
-    }
   };
 
   // Per-row validation — same pattern as the bank-accounts page.
@@ -771,88 +687,10 @@ export default function DirectorsPage() {
                       </div>
                     </div>
 
-                    {/* Documents */}
-                    <div>
-                      <h5 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">
-                        Documents
-                      </h5>
-                      <p className="text-xs text-gray-500 mb-3">
-                        Optional KYC scans. PNG, JPEG, WEBP or PDF up to 2MB.
-                        Uploads happen immediately — click Save Changes below
-                        to persist the URLs on the director record.
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {(Object.keys(DOC_LABELS) as DocType[]).map((docType) => {
-                          const url = d.documents?.[docType];
-                          const uploadKey = `${d.id}:${docType}`;
-                          const isUploading = !!uploadingDoc[uploadKey];
-                          const err = uploadError[uploadKey];
-                          return (
-                            <div
-                              key={docType}
-                              className="border border-gray-200 rounded-lg p-3"
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-medium text-gray-700">
-                                  {DOC_LABELS[docType]}
-                                </span>
-                                {url && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateDir(d.id, {
-                                        documents: {
-                                          ...d.documents,
-                                          [docType]: null,
-                                        },
-                                      })
-                                    }
-                                    className="text-gray-400 hover:text-danger-600"
-                                    aria-label="Remove document"
-                                  >
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                              {url ? (
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-primary-700 hover:text-primary-900 break-all"
-                                >
-                                  <FileText className="h-3.5 w-3.5 shrink-0" />
-                                  <span className="truncate">View uploaded file</span>
-                                  <ExternalLink className="h-3 w-3 shrink-0" />
-                                </a>
-                              ) : (
-                                <label className="inline-flex items-center gap-2 text-xs font-medium text-primary-700 hover:text-primary-900 cursor-pointer">
-                                  {isUploading ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <Upload className="h-3.5 w-3.5" />
-                                  )}
-                                  {isUploading ? "Uploading..." : "Upload file"}
-                                  <input
-                                    type="file"
-                                    accept="image/png,image/jpeg,image/webp,application/pdf"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) uploadDocument(d, docType, file);
-                                      // Reset so the same file can be reselected.
-                                      e.target.value = "";
-                                    }}
-                                  />
-                                </label>
-                              )}
-                              {err && (
-                                <p className="mt-1 text-xs text-danger-600">{err}</p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                    {/* Documents placeholder — uploads land in Phase 2 */}
+                    <div className="rounded-lg bg-gray-50 border border-dashed border-gray-300 p-3 text-xs text-gray-500">
+                      Document uploads (PAN, Aadhaar, DIN letter, signature
+                      image, photograph) will be added in the next release.
                     </div>
                   </div>
                 )}

@@ -1,14 +1,12 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RevenueChart } from "@/components/charts/revenue-chart";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { api } from "@/lib/api";
 import {
   useDashboardStats,
   useRevenueChart,
@@ -89,49 +87,6 @@ export default function DashboardPage() {
   const { data: transactions, isLoading: txnLoading } = useRecentTransactions(5);
   const { data: overdueInvoices, isLoading: overdueLoading } = useOverdueInvoices();
   const { data: aiInsights, isLoading: aiLoading } = useStoredInsights(4);
-
-  // Directors with DIR-3 KYC coming due in the next 30 days. We fetch the
-  // raw list and compute the alert client-side so the page stays usable
-  // even if the directors endpoint is unavailable (the query just returns
-  // empty and the section quietly hides).
-  const { data: directorsResp } = useQuery<{
-    directors: Array<{
-      id: string;
-      full_name: string;
-      dir3_kyc_due_on: string | null;
-      status: string;
-    }>;
-  }>({
-    queryKey: ["settings", "directors-for-kyc-alert"],
-    queryFn: async () => {
-      try {
-        const res = await api.get<any>("/settings/directors");
-        return res.data || res;
-      } catch {
-        return { directors: [] };
-      }
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-  const kycDueSoon = useMemo(() => {
-    const now = new Date();
-    const horizon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const list = directorsResp?.directors || [];
-    return list
-      .filter((d) => d.status === "active" && d.dir3_kyc_due_on)
-      .map((d) => ({
-        ...d,
-        // Days until KYC due — negative numbers mean already overdue.
-        daysUntilDue: Math.ceil(
-          (new Date(d.dir3_kyc_due_on as string).getTime() - now.getTime()) /
-            (24 * 60 * 60 * 1000),
-        ),
-      }))
-      .filter(
-        (d) => new Date(d.dir3_kyc_due_on as string).getTime() <= horizon.getTime(),
-      )
-      .sort((a, b) => a.daysUntilDue - b.daysUntilDue);
-  }, [directorsResp]);
 
   // Aging state
   const [agingType, setAgingType] = useState<"receivable" | "payable" | null>(null);
@@ -515,61 +470,6 @@ export default function DashboardPage() {
           )}
         </Card>
       </div>
-
-      {/* Compliance Alerts — DIR-3 KYC due in next 30 days */}
-      {kycDueSoon.length > 0 && (
-        <Card padding="md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-warning-600" />
-              DIR-3 KYC Due Soon
-            </CardTitle>
-            <Badge variant="warning" dot>
-              {kycDueSoon.length}
-            </Badge>
-          </CardHeader>
-          <div className="space-y-2">
-            {kycDueSoon.slice(0, 5).map((d) => (
-              <Link
-                key={d.id}
-                href="/settings/directors"
-                className="flex items-center justify-between p-3 rounded-lg bg-warning-50/50 border border-warning-500/20 hover:bg-warning-50 transition-colors"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {d.full_name || "Unnamed director"}
-                  </p>
-                  <p className="text-xs text-gray-600">
-                    KYC due {formatDate(d.dir3_kyc_due_on as string)}
-                  </p>
-                </div>
-                <span
-                  className={`text-xs font-semibold ${
-                    d.daysUntilDue < 0
-                      ? "text-danger-700"
-                      : d.daysUntilDue <= 7
-                        ? "text-danger-600"
-                        : "text-warning-700"
-                  }`}
-                >
-                  {d.daysUntilDue < 0
-                    ? `${Math.abs(d.daysUntilDue)}d overdue`
-                    : d.daysUntilDue === 0
-                      ? "due today"
-                      : `${d.daysUntilDue}d left`}
-                </span>
-              </Link>
-            ))}
-          </div>
-          {kycDueSoon.length > 5 && (
-            <Link href="/settings/directors">
-              <Button variant="ghost" size="sm" className="w-full mt-3">
-                View all directors ({kycDueSoon.length})
-              </Button>
-            </Link>
-          )}
-        </Card>
-      )}
 
       {/* Recent Transactions + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
