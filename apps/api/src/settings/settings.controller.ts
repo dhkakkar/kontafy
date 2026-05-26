@@ -254,6 +254,23 @@ export class SettingsController {
     return this.settingsService.updateDirectors(orgId, userId, body?.directors || []);
   }
 
+  @Post('director-documents')
+  @UseGuards(RoleGuard)
+  @Roles('owner', 'admin')
+  @ApiOperation({
+    summary:
+      'Upload a director KYC document (PAN/Aadhaar/DIN letter/signature/photo) to R2',
+  })
+  @ApiSecurity('org-id')
+  async uploadDirectorDocument(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+    @Body()
+    body: { director_id: string; doc_type: string; data_url: string },
+  ) {
+    return this.settingsService.uploadDirectorDocument(orgId, userId, body);
+  }
+
   // ───────────────────────────────────────────────────────
   // Tax / GST Settings
   // ───────────────────────────────────────────────────────

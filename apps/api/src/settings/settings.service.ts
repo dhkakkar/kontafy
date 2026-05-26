@@ -198,6 +198,82 @@ export class SettingsService {
     return { logo_url };
   }
 
+  /**
+   * Upload a director KYC document (PAN / Aadhaar / DIN letter / signature
+   * image / photograph) to R2 and return the public URL. The caller is
+   * responsible for stitching the URL onto the right director record and
+   * PATCHing /settings/directors. Accepts PNG, JPEG, WEBP and PDF up to 2MB.
+   */
+  async uploadDirectorDocument(
+    orgId: string,
+    userId: string,
+    body: { director_id: string; doc_type: string; data_url: string },
+  ) {
+    await this.verifyMembership(orgId, userId);
+
+    const { director_id, doc_type, data_url } = body || ({} as any);
+    if (!director_id || !doc_type || !data_url) {
+      throw new BadRequestException(
+        'director_id, doc_type and data_url are required',
+      );
+    }
+    const allowedDocTypes = new Set([
+      'pan',
+      'aadhaar',
+      'din_letter',
+      'signature',
+      'photograph',
+    ]);
+    if (!allowedDocTypes.has(doc_type)) {
+      throw new BadRequestException(`Unsupported doc_type: ${doc_type}`);
+    }
+
+    // Accept the same image MIME set as logos plus PDF for legal docs.
+    const match =
+      /^data:(image\/(png|jpeg|jpg|webp)|application\/pdf);base64,(.+)$/i.exec(
+        data_url,
+      );
+    if (!match) {
+      throw new BadRequestException(
+        'Invalid file data. Expected a PNG, JPEG, WEBP or PDF data URL.',
+      );
+    }
+    const mime = match[1].toLowerCase();
+    const rawExt = match[2].toLowerCase();
+    const ext =
+      mime === 'application/pdf' ? 'pdf' : rawExt === 'jpg' ? 'jpg' : rawExt;
+    const buffer = Buffer.from(match[3], 'base64');
+    if (buffer.length === 0) {
+      throw new BadRequestException('File is empty');
+    }
+    if (buffer.length > 2 * 1024 * 1024) {
+      throw new BadRequestException('File too large. Max 2MB.');
+    }
+
+    // Directories: kontafy/directors/{orgId}/{directorId}/{docType}-{ts}.{ext}
+    // Each upload gets a timestamped key so URLs are content-addressed and
+    // the CDN cache doesn't serve a stale doc after replacement.
+    const safeDirId = director_id.replace(/[^A-Za-z0-9_-]/g, '');
+    const key = `kontafy/directors/${orgId}/${safeDirId}/${doc_type}-${Date.now()}.${ext}`;
+
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: mime,
+          CacheControl: 'public, max-age=31536000, immutable',
+        }),
+      );
+    } catch (err) {
+      this.logger.error('Director document upload failed', err);
+      throw new BadRequestException('Director document upload failed');
+    }
+
+    return { url: `${this.publicBaseUrl}/${key}` };
+  }
+
   // ───────────────────────────────────────────────────────
   // Team / User Management
   // ───────────────────────────────────────────────────────
@@ -624,6 +700,51 @@ export class SettingsService {
       },
     });
 
+    // Phase 2: keep the COA "Owner's Capital" ledger (code 3001) in sync
+    // with paid-up capital. We update its opening_balance — not a journal
+    // entry — because the share-issue cash receipt belongs to the bank
+    // ledger separately, and using opening_balance avoids double-counting.
+    // Best-effort: if the org hasn't seeded a chart of accounts yet we just
+    // skip rather than fail the save.
+    try {
+      const existing = await this.prisma.account.findFirst({
+        where: { org_id: orgId, code: '3001' },
+        select: { id: true },
+      });
+      if (existing) {
+        await this.prisma.account.update({
+          where: { id: existing.id },
+          data: { opening_balance: paidUp },
+        });
+      } else {
+        // Auto-create only if the equity group (3000) already exists —
+        // otherwise the org has no chart yet and superadmin should seed it.
+        const parent = await this.prisma.account.findFirst({
+          where: { org_id: orgId, code: '3000' },
+          select: { id: true },
+        });
+        if (parent) {
+          await this.prisma.account.create({
+            data: {
+              org_id: orgId,
+              code: '3001',
+              name: "Owner's Capital",
+              type: 'equity',
+              sub_type: 'capital',
+              parent_id: parent.id,
+              is_system: true,
+              is_active: true,
+              opening_balance: paidUp,
+            },
+          });
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Capital structure saved but Share Capital ledger sync failed for org ${orgId}: ${(err as Error).message}`,
+      );
+    }
+
     return this.getCapitalStructure(orgId, userId);
   }
 
@@ -712,6 +833,16 @@ export class SettingsService {
       bank_authority_type: d.bank_authority_type || 'sole',
       permanent_address: (d.permanent_address || '').trim(),
       current_address: (d.current_address || '').trim(),
+      // Phase 2: KYC document URLs, set by /settings/director-documents.
+      // Empty/missing keys are normalised to null so the client gets a
+      // predictable shape it can render conditionally.
+      documents: {
+        pan: d?.documents?.pan || null,
+        aadhaar: d?.documents?.aadhaar || null,
+        din_letter: d?.documents?.din_letter || null,
+        signature: d?.documents?.signature || null,
+        photograph: d?.documents?.photograph || null,
+      },
     }));
 
     await this.prisma.organization.update({
