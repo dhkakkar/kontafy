@@ -1,12 +1,29 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import { Save, Landmark, Shield, Loader2 } from "lucide-react";
+import { Save, Landmark, Shield, Loader2, Info } from "lucide-react";
+
+// First two digits of a GSTIN encode the GST state code. We use this to
+// auto-derive Place of Supply so the user can't pick something that
+// contradicts their registration — picking the wrong state silently
+// flips every invoice between CGST+SGST and IGST.
+const GST_STATE_CODE_TO_VALUE: Record<string, string> = {
+  "01": "JK", "02": "HP", "03": "PB", "04": "CH", "05": "UK",
+  "06": "HR", "07": "DL", "08": "RJ", "09": "UP", "10": "BR",
+  "11": "SK", "12": "AR", "13": "NL", "14": "MN", "15": "MZ",
+  "16": "TR", "17": "ML", "18": "AS", "19": "WB", "20": "JH",
+  "21": "OD", "22": "CT", "23": "MP", "24": "GJ", "25": "DN",
+  "26": "DN", "27": "MH", "28": "AP", "29": "KA", "30": "GA",
+  "31": "LA", "32": "KL", "33": "TN", "34": "PY", "35": "AN",
+  "36": "TG", "37": "AP",
+};
+
+const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
 const INDIAN_STATES = [
   { value: "AN", label: "Andaman and Nicobar Islands" },
@@ -65,7 +82,10 @@ export default function TaxSettingsPage() {
     gstin: "",
     pan: "",
     filing_frequency: "monthly",
-    place_of_supply: "MH",
+    // place_of_supply is no longer user-editable — it is derived from the
+    // first two digits of GSTIN at save time. Keeping the key in state so
+    // we can still display it and send the correct value to the backend.
+    place_of_supply: "",
     enable_tds: false,
     tds_tan: "",
     default_tds_section: "",
@@ -77,13 +97,20 @@ export default function TaxSettingsPage() {
       .then((res) => {
         const d = res.data;
         if (d) {
+          const gstin = String(d.gstin || "").toUpperCase();
+          // If the backend has a stale or wrong place_of_supply (e.g. the
+          // historic hardcoded "MH"), prefer the one derived from GSTIN so
+          // CGST/SGST vs IGST stays consistent with the registration.
+          const derived = gstin.length >= 2
+            ? GST_STATE_CODE_TO_VALUE[gstin.slice(0, 2)] || ""
+            : "";
           setForm((prev) => ({
             ...prev,
             gst_registration_type: String(d.gst_registration_type || prev.gst_registration_type),
-            gstin: String(d.gstin || ""),
+            gstin,
             pan: String(d.pan || ""),
             filing_frequency: String(d.filing_frequency || prev.filing_frequency),
-            place_of_supply: String(d.place_of_supply || prev.place_of_supply),
+            place_of_supply: derived || String(d.place_of_supply || ""),
             enable_tds: Boolean(d.enable_tds),
             tds_tan: String(d.tds_tan || ""),
             default_tds_section: String(d.default_tds_section || ""),
@@ -93,6 +120,19 @@ export default function TaxSettingsPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // Always recompute Place of Supply from the live GSTIN so the badge and
+  // the inter-state hint stay in sync as the user types or pastes a GSTIN.
+  const derivedPlaceOfSupply = useMemo(() => {
+    const g = (form.gstin || "").toUpperCase();
+    if (g.length < 2) return "";
+    return GST_STATE_CODE_TO_VALUE[g.slice(0, 2)] || "";
+  }, [form.gstin]);
+
+  const isGstinValid = useMemo(
+    () => GSTIN_REGEX.test((form.gstin || "").toUpperCase()),
+    [form.gstin],
+  );
 
   const updateField = (field: string, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -108,7 +148,10 @@ export default function TaxSettingsPage() {
         pan: form.pan || undefined,
         gst_registration_type: form.gst_registration_type,
         filing_frequency: form.filing_frequency,
-        place_of_supply: form.place_of_supply,
+        // Always send the GSTIN-derived value, never the form state — this
+        // is the bug fix: previously the dropdown allowed the user to save
+        // a place_of_supply that contradicted their GSTIN.
+        place_of_supply: derivedPlaceOfSupply || undefined,
         enable_tds: form.enable_tds,
         tds_tan: form.tds_tan || undefined,
         default_tds_section: form.default_tds_section || undefined,
@@ -162,9 +205,20 @@ export default function TaxSettingsPage() {
           <Input
             label="GSTIN"
             value={form.gstin}
-            onChange={(e) => updateField("gstin", e.target.value)}
+            onChange={(e) =>
+              updateField(
+                "gstin",
+                e.target.value.toUpperCase().replace(/\s/g, "").slice(0, 15),
+              )
+            }
             placeholder="e.g., 27AABCK1234A1Z5"
             hint="15-character GST Identification Number"
+            maxLength={15}
+            error={
+              form.gstin && !isGstinValid
+                ? "Invalid GSTIN format"
+                : undefined
+            }
             disabled={form.gst_registration_type === "unregistered"}
           />
           <Input
@@ -192,13 +246,40 @@ export default function TaxSettingsPage() {
             onChange={(v) => updateField("filing_frequency", v)}
             disabled={form.gst_registration_type === "unregistered"}
           />
-          <Select
-            label="Place of Supply (State)"
-            options={INDIAN_STATES}
-            value={form.place_of_supply}
-            onChange={(v) => updateField("place_of_supply", v)}
-            searchable
-          />
+          {/* Place of Supply is now read-only and auto-derived from GSTIN
+              chars 1-2. Earlier this was an editable dropdown defaulting
+              to "MH" which caused every GST calc to be wrong when the
+              company GSTIN wasn't a Maharashtra one. */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Place of Supply (State)
+              <span
+                className="ml-1 text-gray-400 cursor-help"
+                title="Auto-derived from the first two digits of your GSTIN. Edit GSTIN to change."
+              >
+                ⓘ
+              </span>
+            </label>
+            <div className="flex items-center gap-2 h-10 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm">
+              {derivedPlaceOfSupply ? (
+                <>
+                  <span className="font-mono text-xs text-gray-500 bg-white border border-gray-200 rounded px-1.5 py-0.5">
+                    {(form.gstin || "").slice(0, 2) || "—"}
+                  </span>
+                  <span className="font-medium text-gray-900">
+                    {INDIAN_STATES.find(
+                      (s) => s.value === derivedPlaceOfSupply,
+                    )?.label || derivedPlaceOfSupply}
+                  </span>
+                </>
+              ) : (
+                <span className="text-gray-500 inline-flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5" />
+                  Enter a valid GSTIN to auto-detect
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="mt-6 p-4 bg-primary-50 rounded-lg border border-primary-100">
@@ -206,11 +287,23 @@ export default function TaxSettingsPage() {
             Inter-state vs Intra-state Tax
           </h4>
           <p className="text-sm text-primary-700">
-            For intra-state supply (within{" "}
-            {INDIAN_STATES.find((s) => s.value === form.place_of_supply)
-              ?.label || "your state"}
-            ), invoices will show CGST + SGST. For inter-state supply, IGST will
-            be applied automatically based on the place of supply.
+            {derivedPlaceOfSupply ? (
+              <>
+                Place of Supply is{" "}
+                <strong>
+                  {INDIAN_STATES.find((s) => s.value === derivedPlaceOfSupply)
+                    ?.label || derivedPlaceOfSupply}
+                </strong>{" "}
+                (from GSTIN). Intra-state invoices will use CGST + SGST;
+                inter-state will use IGST. The split is decided automatically
+                per invoice based on the customer&apos;s state.
+              </>
+            ) : (
+              <>
+                Enter a valid GSTIN above to enable automatic CGST/SGST vs
+                IGST classification on invoices.
+              </>
+            )}
           </p>
         </div>
       </Card>
