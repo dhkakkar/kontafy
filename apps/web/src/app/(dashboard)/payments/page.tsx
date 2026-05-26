@@ -84,6 +84,14 @@ export default function PaymentsPage() {
   const [formReference, setFormReference] = useState("");
   const [formNotes, setFormNotes] = useState("");
 
+  // Inline "Add new contact" modal so users don't have to leave the
+  // Record Payment flow to create a missing customer/vendor.
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [newContactName, setNewContactName] = useState("");
+  const [newContactType, setNewContactType] = useState("customer");
+  const [newContactPhone, setNewContactPhone] = useState("");
+  const [newContactEmail, setNewContactEmail] = useState("");
+
   const { data: payments = [], isLoading, error } = useQuery<Payment[]>({
     queryKey: ["payments", activeTab, searchQuery],
     queryFn: async () => {
@@ -120,6 +128,32 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       setShowModal(false);
       resetForm();
+    },
+  });
+
+  const createContactMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<ApiResponse<{ id: string; name: string }>>(
+        "/bill/contacts",
+        {
+          name: newContactName,
+          type: newContactType,
+          phone: newContactPhone || undefined,
+          email: newContactEmail || undefined,
+        },
+      );
+      return res.data;
+    },
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ["contacts-list"] });
+      // Auto-select the newly created contact so the user can carry on
+      // recording the payment without re-opening the dropdown.
+      if (created?.id) setFormContactId(created.id);
+      setShowAddContact(false);
+      setNewContactName("");
+      setNewContactType("customer");
+      setNewContactPhone("");
+      setNewContactEmail("");
     },
   });
 
@@ -375,14 +409,33 @@ export default function PaymentsPage() {
             value={formType}
             onChange={setFormType}
           />
-          <Select
-            label="Contact"
-            options={contacts.map((c) => ({ value: c.id, label: c.name }))}
-            value={formContactId}
-            onChange={setFormContactId}
-            searchable
-            placeholder="Select contact"
-          />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Contact
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  // Default the new contact's type to match the payment
+                  // direction (received → customer, made → vendor).
+                  setNewContactType(formType === "made" ? "vendor" : "customer");
+                  setShowAddContact(true);
+                }}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-900"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add new
+              </button>
+            </div>
+            <Select
+              options={contacts.map((c) => ({ value: c.id, label: c.name }))}
+              value={formContactId}
+              onChange={setFormContactId}
+              searchable
+              placeholder="Select contact"
+            />
+          </div>
           <Input
             label="Amount"
             type="number"
@@ -434,6 +487,62 @@ export default function PaymentsPage() {
             disabled={!formAmount || !formMethod}
           >
             Record Payment
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Inline create-contact modal opened from the Record Payment form */}
+      <Modal
+        open={showAddContact}
+        onClose={() => setShowAddContact(false)}
+        title="Add New Contact"
+        description="Create a customer or vendor without leaving this payment"
+        size="md"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2">
+            <Input
+              label="Name"
+              value={newContactName}
+              onChange={(e) => setNewContactName(e.target.value)}
+              placeholder="Contact name"
+            />
+          </div>
+          <Select
+            label="Type"
+            options={[
+              { value: "customer", label: "Customer" },
+              { value: "vendor", label: "Vendor" },
+            ]}
+            value={newContactType}
+            onChange={setNewContactType}
+          />
+          <Input
+            label="Phone"
+            value={newContactPhone}
+            onChange={(e) => setNewContactPhone(e.target.value)}
+            placeholder="Optional"
+          />
+          <div className="md:col-span-2">
+            <Input
+              label="Email"
+              type="email"
+              value={newContactEmail}
+              onChange={(e) => setNewContactEmail(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 pt-6">
+          <Button variant="outline" onClick={() => setShowAddContact(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => createContactMutation.mutate()}
+            loading={createContactMutation.isPending}
+            disabled={!newContactName.trim()}
+          >
+            Save Contact
           </Button>
         </div>
       </Modal>
