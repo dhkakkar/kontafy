@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -116,7 +117,13 @@ export class SettingsService {
       where: { id: orgId },
       data: {
         ...columns,
-        ...(nextSettings ? { settings: nextSettings } : {}),
+        // Prisma's JSON column expects InputJsonValue, which is a narrowed
+        // structural type that doesn't accept `Record<string, unknown>`.
+        // Our shape is plain JSON (no Decimal/Date instances inside) so
+        // casting here is sound.
+        ...(nextSettings
+          ? { settings: nextSettings as Prisma.InputJsonValue }
+          : {}),
         updated_at: new Date(),
       },
     });
