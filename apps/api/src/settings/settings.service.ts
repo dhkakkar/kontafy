@@ -64,14 +64,59 @@ export class SettingsService {
       fiscal_year_start?: number;
       business_type?: string;
       industry?: string;
+      currency?: string;
+      tan?: string;
+      website?: string;
+      date_of_incorporation?: string;
+      gst_registration_date?: string;
+      books_begin_from?: string;
     },
   ) {
     await this.verifyMembership(orgId, userId);
 
+    // Split incoming fields into proper schema columns vs. settings JSON.
+    // TAN/website/dates don't have dedicated columns yet, so they ride on
+    // the existing Organization.settings Json under a "profile" namespace —
+    // this avoids a Prisma migration against prod Neon for a UI-only field.
+    const {
+      tan,
+      website,
+      date_of_incorporation,
+      gst_registration_date,
+      books_begin_from,
+      ...columns
+    } = data;
+
+    const profileExtras: Record<string, unknown> = {};
+    if (tan !== undefined) profileExtras.tan = tan || null;
+    if (website !== undefined) profileExtras.website = website || null;
+    if (date_of_incorporation !== undefined)
+      profileExtras.date_of_incorporation = date_of_incorporation || null;
+    if (gst_registration_date !== undefined)
+      profileExtras.gst_registration_date = gst_registration_date || null;
+    if (books_begin_from !== undefined)
+      profileExtras.books_begin_from = books_begin_from || null;
+
+    let nextSettings: Record<string, unknown> | undefined;
+    if (Object.keys(profileExtras).length > 0) {
+      const existing = await this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { settings: true },
+      });
+      const prevSettings = (existing?.settings as Record<string, unknown>) || {};
+      const prevProfile =
+        (prevSettings.profile as Record<string, unknown>) || {};
+      nextSettings = {
+        ...prevSettings,
+        profile: { ...prevProfile, ...profileExtras },
+      };
+    }
+
     const org = await this.prisma.organization.update({
       where: { id: orgId },
       data: {
-        ...data,
+        ...columns,
+        ...(nextSettings ? { settings: nextSettings } : {}),
         updated_at: new Date(),
       },
     });

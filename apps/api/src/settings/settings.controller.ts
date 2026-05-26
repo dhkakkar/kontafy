@@ -57,6 +57,15 @@ export class SettingsController {
       fiscal_year_start?: number;
       business_type?: string;
       industry?: string;
+      currency?: string;
+      // Identity metadata that doesn't justify dedicated schema columns yet
+      // — TAN, dates and website are persisted in the existing
+      // Organization.settings JSON blob under a `profile` namespace.
+      tan?: string;
+      website?: string;
+      date_of_incorporation?: string;
+      gst_registration_date?: string;
+      books_begin_from?: string;
     },
   ) {
     return this.settingsService.updateOrganization(orgId, userId, body);
