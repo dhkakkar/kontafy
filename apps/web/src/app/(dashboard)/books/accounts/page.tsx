@@ -18,6 +18,8 @@ import {
   FolderOpen,
   FileText,
   Loader2,
+  Lock,
+  Sparkles,
 } from "lucide-react";
 
 interface Account {
@@ -89,13 +91,23 @@ function AccountRow({
           </div>
         </td>
         <td className="py-3 px-4">
-          <span
-            className={`text-sm ${
-              hasChildren ? "font-semibold text-gray-900" : "text-gray-700"
-            }`}
-          >
-            {account.name}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`text-sm ${
+                hasChildren ? "font-semibold text-gray-900" : "text-gray-700"
+              }`}
+            >
+              {account.name}
+            </span>
+            {account.is_system && (
+              <span
+                title="System account — cannot be deleted"
+                className="text-gray-400"
+              >
+                <Lock className="h-3 w-3" />
+              </span>
+            )}
+          </div>
         </td>
         <td className="py-3 px-4">
           {!hasChildren && (
@@ -168,6 +180,18 @@ export default function ChartOfAccountsPage() {
     },
   });
 
+  // Seed default chart from the empty state. The endpoint is idempotent —
+  // if the org already has accounts it returns { created: 0 } and we just
+  // refetch.
+  const seedDefaultMutation = useMutation({
+    mutationFn: async () =>
+      api.post<{ data: { created: number } }>("/books/accounts/seed-default"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-flat"] });
+    },
+  });
+
   // Filter accounts by search
   const filteredAccounts = searchQuery
     ? accounts.filter((a) => {
@@ -217,6 +241,42 @@ export default function ChartOfAccountsPage() {
         ) : error ? (
           <div className="py-12 text-center text-danger-600">
             Failed to load chart of accounts. Please try again.
+          </div>
+        ) : accounts.length === 0 ? (
+          <div className="py-16 px-6 text-center">
+            <div className="mx-auto h-12 w-12 rounded-full bg-primary-50 flex items-center justify-center mb-4">
+              <Sparkles className="h-6 w-6 text-primary-800" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              No accounts yet
+            </h3>
+            <p className="text-sm text-gray-500 max-w-md mx-auto mb-6">
+              Get started with the built-in services chart of accounts — about
+              70 pre-configured ledgers covering Assets, Liabilities, Equity,
+              Income and Expenses. You can rename or add to anything afterwards.
+            </p>
+            {seedDefaultMutation.isError && (
+              <p className="text-sm text-danger-600 mb-4">
+                {(seedDefaultMutation.error as any)?.message ||
+                  "Failed to seed default chart"}
+              </p>
+            )}
+            <div className="flex items-center justify-center gap-3">
+              <Button
+                icon={<Sparkles className="h-4 w-4" />}
+                onClick={() => seedDefaultMutation.mutate()}
+                loading={seedDefaultMutation.isPending}
+              >
+                Load Default Template
+              </Button>
+              <Button
+                variant="outline"
+                icon={<Plus className="h-4 w-4" />}
+                onClick={() => setShowModal(true)}
+              >
+                Start from Scratch
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">

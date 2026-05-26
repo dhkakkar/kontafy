@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery } from '@nestjs/swagger';
 import { AccountsService } from './accounts.service';
+import { OrganizationService } from '../../organization/organization.service';
 import { OrgId } from '../../common/decorators/org-id.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -18,7 +19,24 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @ApiSecurity('org-id')
 @Controller('books/accounts')
 export class AccountsController {
-  constructor(private readonly accountsService: AccountsService) {}
+  constructor(
+    private readonly accountsService: AccountsService,
+    private readonly organizationService: OrganizationService,
+  ) {}
+
+  // Lets a regular org member trigger the default-chart seed from the
+  // /books/accounts page's empty state. This is the same seed that runs
+  // automatically at org creation — exposed here as an idempotent "Load
+  // Template" action for orgs that landed on an empty COA (e.g. older
+  // orgs whose initial seed failed inside Neon's PgBouncer txn budget).
+  @Post('seed-default')
+  @ApiOperation({
+    summary:
+      'Seed the default chart of accounts if this organization has none yet (idempotent)',
+  })
+  async seedDefault(@OrgId() orgId: string) {
+    return this.organizationService.seedDefaultAccounts(orgId);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Get chart of accounts (flat list)' })
