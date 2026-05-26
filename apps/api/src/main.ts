@@ -112,18 +112,31 @@ async function bootstrap() {
     .addTag('Health', 'Health check')
     .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  });
+  // SwaggerModule.createDocument() hangs indefinitely on this codebase
+  // when run inside the prod container — observed silently blocking
+  // between "useGlobalInterceptors" and app.listen() with no error or
+  // log output, leaving the API unable to bind port 5002. /docs is not
+  // needed in production, so the doc generation is gated behind a
+  // non-production NODE_ENV. Set ENABLE_SWAGGER=1 to force it on in
+  // prod for debugging.
+  const enableSwagger =
+    process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === '1';
+  if (enableSwagger) {
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+    });
+  }
 
   const port = configService.get<number>('PORT', 5002);
   await app.listen(port);
 
   logger.info(`Kontafy API running on http://localhost:${port}`);
-  logger.info(`Swagger docs at http://localhost:${port}/docs`);
+  if (enableSwagger) {
+    logger.info(`Swagger docs at http://localhost:${port}/docs`);
+  }
 }
 
 bootstrap();

@@ -14,21 +14,35 @@ import { OpenAiService } from './openai.service';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
-        // Prefer REDIS_URL (what docker-compose sets) so we connect via
-        // the compose service name; fall back to discrete host/port for
-        // local dev. We cap retries so a wrong host fails fast and
-        // onModuleInit catches the error and proceeds rather than
-        // hanging Nest boot indefinitely.
-        const url = configService.get<string>('REDIS_URL');
-        const base = url
-          ? { url, maxRetriesPerRequest: 3 }
-          : {
-              host: configService.get<string>('REDIS_HOST', 'redis'),
-              port: configService.get<number>('REDIS_PORT', 6379),
-              password: configService.get<string>('REDIS_PASSWORD', undefined),
-              maxRetriesPerRequest: 3,
-            };
-        return { connection: base } as any;
+        // Resolve host/port from REDIS_URL first because that's what
+        // docker-compose sets; fall back to REDIS_HOST/PORT for local
+        // dev. ioredis's connection options take host/port (not a `url`
+        // field), so we parse the URL ourselves. Cap maxRetriesPerRequest
+        // so a misconfigured Redis fails fast — without this, ioredis
+        // retries forever and Nest's onModuleInit hangs past
+        // 'Database connection established', never reaching app.listen().
+        const redisUrl = configService.get<string>('REDIS_URL');
+        let host = configService.get<string>('REDIS_HOST', 'redis');
+        let port = configService.get<number>('REDIS_PORT', 6379);
+        let password = configService.get<string>('REDIS_PASSWORD');
+        if (redisUrl) {
+          try {
+            const u = new URL(redisUrl);
+            if (u.hostname) host = u.hostname;
+            if (u.port) port = Number(u.port);
+            if (u.password) password = u.password;
+          } catch {
+            // Malformed REDIS_URL — stick with the host/port defaults.
+          }
+        }
+        return {
+          connection: {
+            host,
+            port,
+            password: password || undefined,
+            maxRetriesPerRequest: 3,
+          },
+        } as any;
       },
       inject: [ConfigService],
     }),
