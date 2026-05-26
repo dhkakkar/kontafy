@@ -13,14 +13,23 @@ import { OpenAiService } from './openai.service';
     ConfigModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get<string>('REDIS_HOST', 'localhost'),
-          port: configService.get<number>('REDIS_PORT', 6379),
-          password: configService.get<string>('REDIS_PASSWORD', undefined),
-          maxRetriesPerRequest: null,
-        },
-      } as any),
+      useFactory: (configService: ConfigService) => {
+        // Prefer REDIS_URL (what docker-compose sets) so we connect via
+        // the compose service name; fall back to discrete host/port for
+        // local dev. We cap retries so a wrong host fails fast and
+        // onModuleInit catches the error and proceeds rather than
+        // hanging Nest boot indefinitely.
+        const url = configService.get<string>('REDIS_URL');
+        const base = url
+          ? { url, maxRetriesPerRequest: 3 }
+          : {
+              host: configService.get<string>('REDIS_HOST', 'redis'),
+              port: configService.get<number>('REDIS_PORT', 6379),
+              password: configService.get<string>('REDIS_PASSWORD', undefined),
+              maxRetriesPerRequest: 3,
+            };
+        return { connection: base } as any;
+      },
       inject: [ConfigService],
     }),
     BullModule.registerQueue({
