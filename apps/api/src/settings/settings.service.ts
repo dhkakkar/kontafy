@@ -543,6 +543,192 @@ export class SettingsService {
   }
 
   // ───────────────────────────────────────────────────────
+  // Capital Structure
+  // ───────────────────────────────────────────────────────
+  // Stored in Organization.settings.capital so we can roll out the page
+  // without a schema migration. Phase 2 will hook Paid-Up Capital writes
+  // to the COA "Share Capital" ledger; for now the data is captured here
+  // and read back unmodified.
+
+  async getCapitalStructure(orgId: string, userId: string) {
+    await this.verifyMembership(orgId, userId);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { settings: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+    const settings = (org.settings as Record<string, any>) || {};
+    const cap = (settings.capital as Record<string, any>) || {};
+    return {
+      authorized_capital: Number(cap.authorized_capital) || 0,
+      authorized_shares: Number(cap.authorized_shares) || 0,
+      face_value: Number(cap.face_value) || 10,
+      paid_up_capital: Number(cap.paid_up_capital) || 0,
+      issued_shares: Number(cap.issued_shares) || 0,
+      share_type: cap.share_type || 'equity',
+      capital_events: Array.isArray(cap.capital_events) ? cap.capital_events : [],
+    };
+  }
+
+  async updateCapitalStructure(
+    orgId: string,
+    userId: string,
+    data: {
+      authorized_capital?: number;
+      authorized_shares?: number;
+      face_value?: number;
+      paid_up_capital?: number;
+      issued_shares?: number;
+      share_type?: string;
+    },
+  ) {
+    await this.verifyMembership(orgId, userId);
+
+    // Hard rule: Paid-up cannot exceed Authorized. Issuing more shares than
+    // authorized requires increasing Authorized Capital first per MCA rules.
+    const authorized = Number(data.authorized_capital) || 0;
+    const paidUp = Number(data.paid_up_capital) || 0;
+    if (authorized > 0 && paidUp > authorized) {
+      throw new BadRequestException(
+        'Paid-up capital cannot exceed authorized capital',
+      );
+    }
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { settings: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const settings = (org.settings as Record<string, any>) || {};
+    const prevCap = (settings.capital as Record<string, any>) || {};
+    const nextCap = {
+      ...prevCap,
+      authorized_capital: authorized,
+      authorized_shares: Number(data.authorized_shares) || 0,
+      face_value: Number(data.face_value) || 10,
+      paid_up_capital: paidUp,
+      issued_shares: Number(data.issued_shares) || 0,
+      share_type: data.share_type || 'equity',
+      // capital_events stays as-is; Phase 2 will append entries on changes.
+      capital_events: Array.isArray(prevCap.capital_events)
+        ? prevCap.capital_events
+        : [],
+    };
+
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        settings: { ...settings, capital: nextCap } as Prisma.InputJsonValue,
+        updated_at: new Date(),
+      },
+    });
+
+    return this.getCapitalStructure(orgId, userId);
+  }
+
+  // ───────────────────────────────────────────────────────
+  // Directors / Signatories
+  // ───────────────────────────────────────────────────────
+  // Directors are stored as an array under Organization.settings.directors
+  // — same JSON-blob pattern as bank_accounts. The array is replaced
+  // wholesale on each PATCH so the frontend owns ordering and identity.
+
+  async getDirectors(orgId: string, userId: string) {
+    await this.verifyMembership(orgId, userId);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { settings: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+    const settings = (org.settings as Record<string, any>) || {};
+    const directors = Array.isArray(settings.directors) ? settings.directors : [];
+    return { directors };
+  }
+
+  async updateDirectors(
+    orgId: string,
+    userId: string,
+    directors: Array<Record<string, any>>,
+  ) {
+    await this.verifyMembership(orgId, userId);
+    if (!Array.isArray(directors)) {
+      throw new BadRequestException('directors must be an array');
+    }
+
+    // DIN uniqueness across the array. Empty DINs are allowed (rare cases
+    // like newly-appointed directors awaiting DIN allotment) so we only
+    // collide on actual values.
+    const dinSeen = new Set<string>();
+    for (const d of directors) {
+      const din = (d?.din || '').trim();
+      if (!din) continue;
+      if (dinSeen.has(din)) {
+        throw new BadRequestException(`Duplicate DIN: ${din}`);
+      }
+      dinSeen.add(din);
+    }
+
+    // Resignation date must not be before appointment date.
+    for (const d of directors) {
+      if (d?.appointed_on && d?.resigned_on && d.resigned_on < d.appointed_on) {
+        throw new BadRequestException(
+          `Resignation date cannot be before appointment date for ${d.full_name || 'director'}`,
+        );
+      }
+    }
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { settings: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+    const settings = (org.settings as Record<string, any>) || {};
+
+    const cleaned = directors.map((d, idx) => ({
+      id:
+        d.id ||
+        `dir-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+      full_name: (d.full_name || '').trim(),
+      father_or_spouse_name: (d.father_or_spouse_name || '').trim(),
+      din: (d.din || '').trim(),
+      pan: (d.pan || '').trim().toUpperCase(),
+      aadhaar_last4: (d.aadhaar_last4 || '').trim().slice(0, 4),
+      date_of_birth: d.date_of_birth || null,
+      email: (d.email || '').trim(),
+      phone: (d.phone || '').trim(),
+      designation: d.designation || 'director',
+      appointed_on: d.appointed_on || null,
+      resigned_on: d.resigned_on || null,
+      // Status is derived from resigned_on but stored explicitly so callers
+      // can override (e.g. "disqualified") without losing the resignation date.
+      status: d.status || (d.resigned_on ? 'resigned' : 'active'),
+      dir3_kyc_filed_on: d.dir3_kyc_filed_on || null,
+      dir3_kyc_due_on: d.dir3_kyc_due_on || null,
+      dsc_valid_until: d.dsc_valid_until || null,
+      can_sign_cheques: d.can_sign_cheques || 'no',
+      co_signatory_threshold: Number(d.co_signatory_threshold) || 0,
+      can_sign_invoices: !!d.can_sign_invoices,
+      bank_authority_type: d.bank_authority_type || 'sole',
+      permanent_address: (d.permanent_address || '').trim(),
+      current_address: (d.current_address || '').trim(),
+    }));
+
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        settings: {
+          ...settings,
+          directors: cleaned,
+        } as Prisma.InputJsonValue,
+        updated_at: new Date(),
+      },
+    });
+
+    return { directors: cleaned };
+  }
+
+  // ───────────────────────────────────────────────────────
   // Tax / GST Settings
   // ───────────────────────────────────────────────────────
 

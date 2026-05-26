@@ -193,6 +193,68 @@ export class SettingsController {
   }
 
   // ───────────────────────────────────────────────────────
+  // Capital Structure
+  // ───────────────────────────────────────────────────────
+
+  @Get('capital')
+  @ApiOperation({ summary: 'Get authorized / paid-up capital structure' })
+  @ApiSecurity('org-id')
+  async getCapitalStructure(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.settingsService.getCapitalStructure(orgId, userId);
+  }
+
+  @Patch('capital')
+  @UseGuards(RoleGuard)
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: 'Update authorized / paid-up capital structure' })
+  @ApiSecurity('org-id')
+  async updateCapitalStructure(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+    @Body()
+    body: {
+      authorized_capital?: number;
+      authorized_shares?: number;
+      face_value?: number;
+      paid_up_capital?: number;
+      issued_shares?: number;
+      share_type?: string;
+    },
+  ) {
+    return this.settingsService.updateCapitalStructure(orgId, userId, body);
+  }
+
+  // ───────────────────────────────────────────────────────
+  // Directors / Signatories
+  // ───────────────────────────────────────────────────────
+
+  @Get('directors')
+  @ApiOperation({ summary: 'List directors / signatories' })
+  @ApiSecurity('org-id')
+  async getDirectors(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.settingsService.getDirectors(orgId, userId);
+  }
+
+  @Patch('directors')
+  @UseGuards(RoleGuard)
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: 'Replace the directors list (whole-array PATCH)' })
+  @ApiSecurity('org-id')
+  async updateDirectors(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+    @Body() body: { directors: Array<Record<string, any>> },
+  ) {
+    return this.settingsService.updateDirectors(orgId, userId, body?.directors || []);
+  }
+
+  // ───────────────────────────────────────────────────────
   // Tax / GST Settings
   // ───────────────────────────────────────────────────────
 
