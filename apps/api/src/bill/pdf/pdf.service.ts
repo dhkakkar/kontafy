@@ -221,29 +221,60 @@ export class PdfService implements OnModuleDestroy {
     const shippingAddr = typeof contact.shipping_address === 'string'
       ? JSON.parse(contact.shipping_address) : (contact.shipping_address || {});
 
-    // Parse org settings for bank details. Settings stores them as flat
-    // keys (bank_name, bank_account_number, bank_ifsc, bank_branch); the
-    // PDF template wants a nested bank_details object. Map the flat
-    // schema into the shape the template expects, and only emit the
-    // block when at least one field is filled in so an unconfigured org
-    // doesn't render an empty "Bank Details" panel.
+    // Resolve bank details for the PDF. We support three layouts in
+    // settings: the new `bank_accounts` array (pick the entry marked
+    // primary, else the first), the mid-life `bank_details` nested
+    // object, and the legacy flat `bank_name` / `bank_account_number`
+    // keys. Account numbers are masked to "XXXX XXXX 9012" unless the
+    // bank entry explicitly opts in to show_full_number — privacy by
+    // default since invoices are emailed/printed externally.
     const settings = typeof org.settings === 'string' ? JSON.parse(org.settings) : (org.settings || {});
-    const flatBank = {
-      bank_name: settings.bank_name || settings.bank_details?.bank_name || '',
-      account_name:
-        settings.bank_account_name ||
-        settings.bank_details?.account_name ||
-        org.legal_name ||
-        org.name ||
-        '',
-      account_number:
-        settings.bank_account_number ||
-        settings.bank_details?.account_number ||
-        '',
-      ifsc: settings.bank_ifsc || settings.bank_details?.ifsc || '',
-      branch: settings.bank_branch || settings.bank_details?.branch || '',
-      upi_id: settings.bank_upi_id || settings.bank_details?.upi_id || '',
+
+    const maskAccount = (acct: string): string => {
+      const digits = (acct || '').replace(/\s+/g, '');
+      if (digits.length <= 4) return digits;
+      const last4 = digits.slice(-4);
+      const masked = 'X'.repeat(Math.max(0, digits.length - 4));
+      // Group in fours for readability: "XXXX XXXX 9012"
+      const all = masked + last4;
+      return all.replace(/(.{4})/g, '$1 ').trim();
     };
+
+    let primaryBank: Record<string, any> | null = null;
+    if (Array.isArray(settings.bank_accounts) && settings.bank_accounts.length > 0) {
+      primaryBank =
+        settings.bank_accounts.find((b: any) => b?.is_primary) ||
+        settings.bank_accounts[0];
+    }
+
+    const flatBank = primaryBank
+      ? {
+          bank_name: primaryBank.bank_name || '',
+          account_name:
+            primaryBank.account_name || org.legal_name || org.name || '',
+          account_number: primaryBank.show_full_number
+            ? primaryBank.account_number || ''
+            : maskAccount(primaryBank.account_number || ''),
+          ifsc: primaryBank.ifsc || '',
+          branch: primaryBank.branch || '',
+          upi_id: primaryBank.upi_id || '',
+        }
+      : {
+          bank_name: settings.bank_name || settings.bank_details?.bank_name || '',
+          account_name:
+            settings.bank_account_name ||
+            settings.bank_details?.account_name ||
+            org.legal_name ||
+            org.name ||
+            '',
+          account_number:
+            settings.bank_account_number ||
+            settings.bank_details?.account_number ||
+            '',
+          ifsc: settings.bank_ifsc || settings.bank_details?.ifsc || '',
+          branch: settings.bank_branch || settings.bank_details?.branch || '',
+          upi_id: settings.bank_upi_id || settings.bank_details?.upi_id || '',
+        };
     const hasBankInfo =
       !!flatBank.bank_name ||
       !!flatBank.account_number ||

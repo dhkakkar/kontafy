@@ -335,6 +335,65 @@ export class SettingsService {
   // Invoice Configuration
   // ───────────────────────────────────────────────────────
 
+  /**
+   * Convert whatever bank data lives in settings into a stable array shape
+   * for the client. Settings histories include three formats:
+   *   1. New: settings.bank_accounts = [ {id, bank_name, ...} ]
+   *   2. Mid: settings.bank_details = { bank_name, account_number, ifsc, ... }
+   *   3. Old: settings.bank_name / .bank_account_number / .bank_ifsc / .bank_branch
+   * If only formats 2 or 3 are present we synthesize a single primary
+   * entry so the multi-bank UI has something to render.
+   */
+  private extractBankAccounts(
+    settings: Record<string, any>,
+  ): Array<Record<string, any>> {
+    if (Array.isArray(settings.bank_accounts) && settings.bank_accounts.length > 0) {
+      // Ensure exactly one is_primary even if older saved data forgot it
+      const accounts = settings.bank_accounts.map(
+        (b: Record<string, any>, idx: number) => ({
+          id: b.id || `bank-${idx + 1}`,
+          bank_name: b.bank_name || '',
+          account_name: b.account_name || '',
+          account_number: b.account_number || '',
+          ifsc: b.ifsc || '',
+          branch: b.branch || '',
+          account_type: b.account_type || 'current',
+          upi_id: b.upi_id || '',
+          swift_code: b.swift_code || '',
+          is_primary: !!b.is_primary,
+          show_full_number: !!b.show_full_number,
+        }),
+      );
+      if (!accounts.some((b: any) => b.is_primary)) accounts[0].is_primary = true;
+      return accounts;
+    }
+
+    const legacyName =
+      settings.bank_name || settings.bank_details?.bank_name || '';
+    const legacyAcct =
+      settings.bank_account_number || settings.bank_details?.account_number || '';
+    const legacyIfsc =
+      settings.bank_ifsc || settings.bank_details?.ifsc || '';
+    if (!legacyName && !legacyAcct && !legacyIfsc) return [];
+
+    return [
+      {
+        id: 'bank-1',
+        bank_name: legacyName,
+        account_name:
+          settings.bank_account_name || settings.bank_details?.account_name || '',
+        account_number: legacyAcct,
+        ifsc: legacyIfsc,
+        branch: settings.bank_branch || settings.bank_details?.branch || '',
+        account_type: 'current',
+        upi_id: settings.bank_upi_id || settings.bank_details?.upi_id || '',
+        swift_code: '',
+        is_primary: true,
+        show_full_number: false,
+      },
+    ];
+  }
+
   async getInvoiceConfig(orgId: string, userId: string) {
     await this.verifyMembership(orgId, userId);
 
@@ -348,6 +407,7 @@ export class SettingsService {
     }
 
     const settings = (org.settings as Record<string, any>) || {};
+    const bank_accounts = this.extractBankAccounts(settings);
 
     return {
       invoice_prefix: settings.invoice_prefix || 'INV-',
@@ -355,6 +415,9 @@ export class SettingsService {
       default_payment_terms: settings.default_payment_terms || 30,
       default_terms_conditions: settings.default_terms_conditions || '',
       default_notes: settings.default_notes || '',
+      bank_accounts,
+      // Legacy flat fields, retained so older PDF code paths keep working
+      // until everything is moved over to bank_accounts.
       bank_name: settings.bank_name || '',
       bank_account_number: settings.bank_account_number || '',
       bank_ifsc: settings.bank_ifsc || '',
@@ -375,6 +438,19 @@ export class SettingsService {
       bank_account_number?: string;
       bank_ifsc?: string;
       bank_branch?: string;
+      bank_accounts?: Array<{
+        id?: string;
+        bank_name: string;
+        account_name?: string;
+        account_number: string;
+        ifsc: string;
+        branch?: string;
+        account_type?: string;
+        upi_id?: string;
+        swift_code?: string;
+        is_primary?: boolean;
+        show_full_number?: boolean;
+      }>;
     },
   ) {
     await this.verifyMembership(orgId, userId);
@@ -389,12 +465,76 @@ export class SettingsService {
     }
 
     const currentSettings = (org.settings as Record<string, any>) || {};
-    const updatedSettings = { ...currentSettings, ...data };
 
-    const updated = await this.prisma.organization.update({
+    // Normalise bank_accounts before persisting: enforce exactly one primary,
+    // strip empties, and mirror the primary's identity into the flat fields
+    // so the existing PDF rendering path doesn't go blank for clients that
+    // upgrade UI before we update the template reader.
+    let nextBankAccounts: Array<Record<string, any>> | undefined;
+    let mirroredFlat: Record<string, string> | undefined;
+    if (Array.isArray(data.bank_accounts)) {
+      const cleaned = data.bank_accounts
+        .filter(
+          (b) =>
+            b && (b.bank_name?.trim() || b.account_number?.trim() || b.ifsc?.trim()),
+        )
+        .map((b, idx) => ({
+          id: b.id || `bank-${Date.now()}-${idx}`,
+          bank_name: (b.bank_name || '').trim(),
+          account_name: (b.account_name || '').trim(),
+          account_number: (b.account_number || '').trim(),
+          ifsc: (b.ifsc || '').trim().toUpperCase(),
+          branch: (b.branch || '').trim(),
+          account_type: b.account_type || 'current',
+          upi_id: (b.upi_id || '').trim(),
+          swift_code: (b.swift_code || '').trim().toUpperCase(),
+          is_primary: !!b.is_primary,
+          show_full_number: !!b.show_full_number,
+        }));
+
+      if (cleaned.length > 0) {
+        // Force exactly one primary: first explicitly-marked wins, else first row.
+        const firstPrimaryIdx = cleaned.findIndex((b) => b.is_primary);
+        const winner = firstPrimaryIdx === -1 ? 0 : firstPrimaryIdx;
+        cleaned.forEach((b, i) => (b.is_primary = i === winner));
+
+        const primary = cleaned[winner];
+        mirroredFlat = {
+          bank_name: primary.bank_name,
+          bank_account_name: primary.account_name,
+          bank_account_number: primary.account_number,
+          bank_ifsc: primary.ifsc,
+          bank_branch: primary.branch,
+          bank_upi_id: primary.upi_id,
+        };
+      } else {
+        // Empty array → wipe flat fields too so the PDF doesn't show stale info.
+        mirroredFlat = {
+          bank_name: '',
+          bank_account_name: '',
+          bank_account_number: '',
+          bank_ifsc: '',
+          bank_branch: '',
+          bank_upi_id: '',
+        };
+      }
+      nextBankAccounts = cleaned;
+    }
+
+    const { bank_accounts: _ignore, ...flatInputs } = data;
+    const updatedSettings: Record<string, any> = {
+      ...currentSettings,
+      ...flatInputs,
+      ...(nextBankAccounts !== undefined
+        ? { bank_accounts: nextBankAccounts }
+        : {}),
+      ...(mirroredFlat || {}),
+    };
+
+    await this.prisma.organization.update({
       where: { id: orgId },
       data: {
-        settings: updatedSettings,
+        settings: updatedSettings as Prisma.InputJsonValue,
         updated_at: new Date(),
       },
     });

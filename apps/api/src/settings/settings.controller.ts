@@ -165,10 +165,28 @@ export class SettingsController {
       default_payment_terms?: number;
       default_terms_conditions?: string;
       default_notes?: string;
+      // Legacy flat single-bank fields, kept for backward compatibility
+      // with older clients and the PDF template fallback path.
       bank_name?: string;
       bank_account_number?: string;
       bank_ifsc?: string;
       bank_branch?: string;
+      // New multi-bank array. When provided, the service writes the
+      // array plus mirrors the primary entry into the flat fields so
+      // existing PDF templates that read the old keys continue to work.
+      bank_accounts?: Array<{
+        id?: string;
+        bank_name: string;
+        account_name?: string;
+        account_number: string;
+        ifsc: string;
+        branch?: string;
+        account_type?: string;
+        upi_id?: string;
+        swift_code?: string;
+        is_primary?: boolean;
+        show_full_number?: boolean;
+      }>;
     },
   ) {
     return this.settingsService.updateInvoiceConfig(orgId, userId, body);
