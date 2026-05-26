@@ -44,9 +44,14 @@ interface Payment {
   invoice_number?: string;
   amount: number;
   method: string;
-  type: "received" | "made";
+  // Backend stores "received" / "paid" but legacy rows used "receive" / "pay";
+  // "made" is the UI tab label, never a DB value.
+  type: "received" | "receive" | "paid" | "pay" | "made";
   reference?: string | null;
 }
+
+const isReceivedType = (t: string) => t === "received" || t === "receive";
+const isMadeType = (t: string) => t === "paid" || t === "pay" || t === "made";
 
 interface ApiResponse<T> {
   data: T;
@@ -128,17 +133,20 @@ export default function PaymentsPage() {
     setFormNotes("");
   };
 
+  // Amounts come back from the API as Decimal-serialised strings; coerce
+  // before reducing or `sum + p.amount` concatenates ("0" + "9000" + ...)
+  // and totals show as 90,00,90,00,20,000 instead of 38,000.
   const totalReceived = payments
-    .filter((p) => p.type === "received")
-    .reduce((sum, p) => sum + p.amount, 0);
+    .filter((p) => isReceivedType(p.type))
+    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const totalMade = payments
-    .filter((p) => p.type === "made")
-    .reduce((sum, p) => sum + p.amount, 0);
+    .filter((p) => isMadeType(p.type))
+    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
   const tabs = [
     { value: "all", label: "All", count: payments.length },
-    { value: "received", label: "Received", count: payments.filter((p) => p.type === "received").length },
-    { value: "made", label: "Made", count: payments.filter((p) => p.type === "made").length },
+    { value: "received", label: "Received", count: payments.filter((p) => isReceivedType(p.type)).length },
+    { value: "made", label: "Made", count: payments.filter((p) => isMadeType(p.type)).length },
   ];
 
   const columns = useMemo(
@@ -170,12 +178,12 @@ export default function PaymentsPage() {
           return (
             <span
               className={`font-semibold ${
-                row.type === "received"
+                isReceivedType(row.type)
                   ? "text-success-700"
                   : "text-warning-700"
               }`}
             >
-              {row.type === "received" ? "+" : "-"}{" "}
+              {isReceivedType(row.type) ? "+" : "-"}{" "}
               {formatCurrency(info.getValue())}
             </span>
           );
