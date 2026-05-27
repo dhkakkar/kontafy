@@ -706,6 +706,127 @@ export class AccountsService {
    * balance never leaves stale duplicates.
    */
   /**
+   * Create (or reuse) a sub-ledger for a newly-created Contact and, if an
+   * opening balance was supplied, post the contra journal against the
+   * suspense account. Lives on AccountsService so the chart-of-accounts
+   * code stays in one place and ContactsService doesn't grow its own
+   * Prisma writes to the Account table.
+   *
+   * Parent resolution:
+   *   - customer / both → 1103 Accounts Receivable, child is asset (Dr)
+   *   - vendor          → 2101 Accounts Payable, child is liability (Cr)
+   *
+   * Sub-ledger codes use a "1103.001" / "2101.001" convention — the
+   * three-digit suffix is the next free integer scanning siblings under
+   * the same parent. Account.code is a free-form string, so the dot is
+   * allowed and the default-chart's 4-digit numeric codes stay untouched.
+   *
+   * Idempotent for re-runs: if a sub-ledger with the same name + parent
+   * already exists we reuse it rather than create a duplicate (the
+   * caller's contact-creation transaction may retry on transient
+   * failures and we don't want orphan rows).
+   */
+  async createContactSubLedger(
+    orgId: string,
+    contactType: 'customer' | 'vendor' | 'both',
+    displayName: string,
+    openingBalance?: number,
+    openingDate?: string,
+  ): Promise<{ id: string; code: string; name: string } | null> {
+    if (!displayName?.trim()) return null;
+    const isCustomerSide = contactType === 'customer' || contactType === 'both';
+    const parentCode = isCustomerSide ? '1103' : '2101';
+    const childType = isCustomerSide ? 'asset' : 'liability';
+    const childSubType = isCustomerSide ? 'current_asset' : 'current_liability';
+
+    const parent = await this.prisma.account.findFirst({
+      where: { org_id: orgId, code: parentCode },
+      select: { id: true, code: true },
+    });
+    if (!parent) {
+      // The default chart wasn't seeded — surface this as a warn-log
+      // rather than a hard fail so the contact still saves.
+      this.logger.warn(
+        `Skipped sub-ledger creation for "${displayName}": parent account ${parentCode} not found. Seed the default chart first.`,
+      );
+      return null;
+    }
+
+    const trimmedName = displayName.trim().slice(0, 100);
+
+    // Reuse a matching sub-ledger if one already exists. Match by
+    // (case-insensitive name + parent) — we don't have a FK column from
+    // Contact yet so the name is the de-facto link.
+    const existing = await this.prisma.account.findFirst({
+      where: {
+        org_id: orgId,
+        parent_id: parent.id,
+        name: { equals: trimmedName, mode: 'insensitive' },
+      },
+      select: { id: true, code: true, name: true },
+    });
+    let child = existing;
+
+    if (!child) {
+      // Find next free numeric suffix under this parent. Sub-codes look
+      // like "1103.NNN" — scan siblings and grab max(NNN)+1.
+      const siblings = await this.prisma.account.findMany({
+        where: {
+          org_id: orgId,
+          parent_id: parent.id,
+          code: { startsWith: `${parent.code}.` },
+        },
+        select: { code: true },
+      });
+      let maxSuffix = 0;
+      for (const s of siblings) {
+        const tail = s.code.slice(parent.code.length + 1);
+        const n = parseInt(tail, 10);
+        if (Number.isFinite(n) && n > maxSuffix) maxSuffix = n;
+      }
+      const nextCode = `${parent.code}.${String(maxSuffix + 1).padStart(3, '0')}`;
+
+      child = await this.prisma.account.create({
+        data: {
+          org_id: orgId,
+          code: nextCode,
+          name: trimmedName,
+          type: childType,
+          sub_type: childSubType,
+          parent_id: parent.id,
+          is_system: false,
+          is_active: true,
+          // Always 0 — the OB journal posted below is the source of truth.
+          opening_balance: 0,
+        },
+        select: { id: true, code: true, name: true },
+      });
+    }
+
+    const amount = this.roundMoney(Number(openingBalance) || 0);
+    if (amount > 0) {
+      const drCr: 'Dr' | 'Cr' = isCustomerSide ? 'Dr' : 'Cr';
+      try {
+        await this.postOpeningBalanceJournal(
+          orgId,
+          child.id,
+          amount,
+          drCr,
+          openingDate,
+        );
+      } catch (err) {
+        // Don't roll back the sub-ledger creation — the user can re-enter
+        // the opening from the bulk OB page if posting failed.
+        this.logger.warn(
+          `Sub-ledger ${child.code} created but opening-balance journal failed: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return child;
+  }
+
+  /**
    * Defensive paisa-level rounding. Every money value that flows into the
    * DB goes through this so even a stray float-precision artifact from
    * upstream JS arithmetic can't land in a Decimal column with sub-paisa

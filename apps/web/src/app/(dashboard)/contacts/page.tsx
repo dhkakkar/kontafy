@@ -162,6 +162,12 @@ function ContactsPage() {
 
   const [formOpeningBalance, setFormOpeningBalance] = useState("");
   const [formBalanceType, setFormBalanceType] = useState("");
+  // Date the opening balance was outstanding as of — defaults to today
+  // so users who skip it still get a sensible JE date. The backend
+  // posts the opening-balance journal on this date.
+  const [formOpeningDate, setFormOpeningDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
   const [formCreditPeriod, setFormCreditPeriod] = useState("");
   const [formCreditLimit, setFormCreditLimit] = useState("");
   const [formContactPerson, setFormContactPerson] = useState("");
@@ -329,6 +335,9 @@ function ContactsPage() {
         },
         opening_balance: formOpeningBalance ? Number(formOpeningBalance) : undefined,
         balance_type: formBalanceType || undefined,
+        // Backend uses this as the journal-entry date when posting the
+        // opening balance against the auto-created sub-ledger.
+        opening_date: formOpeningBalance ? formOpeningDate : undefined,
         payment_terms: formCreditPeriod ? Number(formCreditPeriod) : undefined,
         credit_limit: formCreditLimit ? Number(formCreditLimit) : undefined,
         contact_person: formContactPerson || undefined,
@@ -874,7 +883,7 @@ function ContactsPage() {
             placeholder="0.00"
             value={formOpeningBalance}
             onChange={(e) => setFormOpeningBalance(e.target.value)}
-            hint="Outstanding amount as of today"
+            hint="Outstanding amount when you started using Kontafy. A sub-ledger is auto-created under Sundry Debtors / Creditors with this opening."
           />
           <Select
             label="To Collect / To Pay"
@@ -885,6 +894,15 @@ function ContactsPage() {
             value={formBalanceType}
             onChange={setFormBalanceType}
             placeholder="Select balance type"
+          />
+          <Input
+            label="Opening Balance As On"
+            type="date"
+            value={formOpeningDate}
+            onChange={(e) => setFormOpeningDate(e.target.value)}
+            max={new Date().toISOString().slice(0, 10)}
+            hint="Used as the journal entry date for the opening balance"
+            disabled={!formOpeningBalance}
           />
 
           {/* Credit Period & Credit Limit */}

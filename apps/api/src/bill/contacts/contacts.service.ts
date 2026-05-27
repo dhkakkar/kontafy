@@ -5,13 +5,20 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccountsService } from '../../books/accounts/accounts.service';
 import { validateGstin } from '../../common/utils/gst.util';
 
 @Injectable()
 export class ContactsService {
   private readonly logger = new Logger(ContactsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Used post-create to auto-spin a sub-ledger under 1103 / 2101 and
+    // post the opening-balance journal so the contact's outstanding
+    // balance shows up in the Trial Balance from day one.
+    private readonly accountsService: AccountsService,
+  ) {}
 
   /**
    * List contacts with filtering, search, and pagination.
@@ -108,6 +115,7 @@ export class ContactsService {
       payment_terms?: number;
       credit_limit?: number;
       opening_balance?: number;
+      opening_date?: string;
       notes?: string;
     },
   ) {
@@ -177,6 +185,30 @@ export class ContactsService {
         is_active: true,
       },
     });
+
+    // Auto-create a sub-ledger under 1103/2101 and post the opening-
+    // balance journal. Done outside the contact-create call (not in a
+    // transaction) so a downstream COA hiccup doesn't roll back the
+    // contact — the user can fix the opening from the bulk OB page if
+    // posting fails. Best-effort, warn-logged on failure.
+    try {
+      const contactType =
+        (data.type === 'vendor' ? 'vendor' : data.type === 'both' ? 'both' : 'customer') as
+          | 'customer'
+          | 'vendor'
+          | 'both';
+      await this.accountsService.createContactSubLedger(
+        orgId,
+        contactType,
+        data.company_name?.trim() || data.name.trim(),
+        Number(data.opening_balance) || 0,
+        data.opening_date,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Contact ${contact.id} created but sub-ledger auto-creation failed: ${(err as Error).message}`,
+      );
+    }
 
     return contact;
   }

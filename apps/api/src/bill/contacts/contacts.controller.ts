@@ -62,6 +62,10 @@ export class ContactsController {
       payment_terms?: number;
       credit_limit?: number;
       opening_balance?: number;
+      // When set, the service posts an opening-balance journal dated
+      // here against the auto-created sub-ledger. Defaults to today on
+      // the backend if omitted.
+      opening_date?: string;
       notes?: string;
     },
   ) {

@@ -23,9 +23,13 @@ import { DeliveryChallansController } from './delivery-challans/delivery-challan
 import { DeliveryChallansService } from './delivery-challans/delivery-challans.service';
 import { PdfModule } from './pdf/pdf.module';
 import { JournalPostingModule } from '../books/journal-posting/journal-posting.module';
+import { BooksModule } from '../books/books.module';
 
 @Module({
-  imports: [PdfModule, JournalPostingModule],
+  // BooksModule exports AccountsService — contacts use it to auto-create
+  // a sub-ledger (under 1103 / 2101) and post an opening-balance journal
+  // at the same time the Contact row is written.
+  imports: [PdfModule, JournalPostingModule, BooksModule],
   controllers: [
     InvoicesController,
     ContactsController,
