@@ -134,6 +134,31 @@ function AccountRow({
   );
 }
 
+// Suggest the next available 4-digit code in a given type's range, based on
+// the codes already present in the org. The default chart uses 1xxx for
+// assets, 2xxx liabilities, 3xxx equity, 4xxx income, 5xxx expense, so we
+// look for the highest code in that band and return the next one.
+function suggestNextCode(
+  type: string,
+  flatAccounts: { code: string }[],
+): string {
+  const bandStart: Record<string, number> = {
+    asset: 1000,
+    liability: 2000,
+    equity: 3000,
+    income: 4000,
+    expense: 5000,
+  };
+  const start = bandStart[type];
+  if (!start) return "";
+  const end = start + 999;
+  const inBand = flatAccounts
+    .map((a) => parseInt(a.code, 10))
+    .filter((n) => Number.isFinite(n) && n >= start && n <= end);
+  const next = inBand.length === 0 ? start + 1 : Math.max(...inBand) + 1;
+  return next > end ? "" : String(next);
+}
+
 export default function ChartOfAccountsPage() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -142,6 +167,12 @@ export default function ChartOfAccountsPage() {
   const [newAccountCode, setNewAccountCode] = useState("");
   const [newAccountType, setNewAccountType] = useState("");
   const [newAccountParent, setNewAccountParent] = useState("");
+  // Field-level errors set by the create mutation's onError handler. Keyed
+  // by field name (`code`, `name`, `parent_id`, `type`) so each input can
+  // pull its own message. A generic error not tied to a field goes in
+  // formError and is shown above the action buttons as a toast-style line.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState("");
 
   const { data: accounts = [], isLoading, error } = useQuery<Account[]>({
     queryKey: ["accounts-tree"],
@@ -160,11 +191,25 @@ export default function ChartOfAccountsPage() {
     },
   });
 
+  const resetCreateForm = () => {
+    setNewAccountName("");
+    setNewAccountCode("");
+    setNewAccountType("");
+    setNewAccountParent("");
+    setFieldErrors({});
+    setFormError("");
+  };
+
+  const closeCreateModal = () => {
+    setShowModal(false);
+    resetCreateForm();
+  };
+
   const createMutation = useMutation({
     mutationFn: async () => {
       return api.post("/books/accounts", {
-        name: newAccountName,
-        code: newAccountCode,
+        name: newAccountName.trim(),
+        code: newAccountCode.trim(),
         type: newAccountType,
         parent_id: newAccountParent || undefined,
       });
@@ -172,11 +217,21 @@ export default function ChartOfAccountsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts-tree"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-flat"] });
-      setShowModal(false);
-      setNewAccountName("");
-      setNewAccountCode("");
-      setNewAccountType("");
-      setNewAccountParent("");
+      closeCreateModal();
+    },
+    onError: (err: any) => {
+      // The API client attaches `field` (from error.details.field) and a
+      // human message. If we know which field failed, render the error
+      // inline under that input; otherwise surface it above the buttons.
+      setFieldErrors({});
+      const field = err?.field as string | undefined;
+      const message = err?.message || "Failed to create account";
+      if (field) {
+        setFieldErrors({ [field]: message });
+        setFormError("");
+      } else {
+        setFormError(message);
+      }
     },
   });
 
@@ -310,54 +365,141 @@ export default function ChartOfAccountsPage() {
       {/* Add Account Modal */}
       <Modal
         open={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={closeCreateModal}
         title="Add New Account"
         description="Create a new account in your chart of accounts"
       >
         <div className="space-y-4">
           <Input
-            label="Account Code"
+            label="Account Code *"
             value={newAccountCode}
-            onChange={(e) => setNewAccountCode(e.target.value)}
-            placeholder="e.g., 1106"
+            onChange={(e) => {
+              setNewAccountCode(e.target.value);
+              // Clear the per-field server error as soon as the user edits
+              // the input, otherwise the message lingers after they've
+              // already typed a fresh value.
+              if (fieldErrors.code) {
+                setFieldErrors((p) => ({ ...p, code: "" }));
+              }
+            }}
+            placeholder={
+              newAccountType
+                ? `e.g., ${suggestNextCode(newAccountType, flatAccounts) || "1106"}`
+                : "e.g., 1106"
+            }
+            error={
+              fieldErrors.code ||
+              // Live duplicate hint computed from the already-fetched flat
+              // list — saves a round-trip and gives instant feedback as the
+              // user types. The server still re-checks on submit.
+              (newAccountCode.trim() &&
+              flatAccounts.some(
+                (a) => a.code === newAccountCode.trim(),
+              )
+                ? (() => {
+                    const dup = flatAccounts.find(
+                      (a) => a.code === newAccountCode.trim(),
+                    );
+                    return dup
+                      ? `Code ${dup.code} is already used by "${dup.name}"`
+                      : undefined;
+                  })()
+                : undefined) ||
+              undefined
+            }
           />
           <Input
-            label="Account Name"
+            label="Account Name *"
             value={newAccountName}
-            onChange={(e) => setNewAccountName(e.target.value)}
+            onChange={(e) => {
+              setNewAccountName(e.target.value);
+              if (fieldErrors.name) {
+                setFieldErrors((p) => ({ ...p, name: "" }));
+              }
+            }}
             placeholder="e.g., Prepaid Expenses"
+            error={fieldErrors.name || undefined}
           />
-          <Select
-            label="Account Type"
-            value={newAccountType}
-            onChange={setNewAccountType}
-            options={[
-              { value: "asset", label: "Asset" },
-              { value: "liability", label: "Liability" },
-              { value: "equity", label: "Equity" },
-              { value: "income", label: "Income" },
-              { value: "expense", label: "Expense" },
-            ]}
-            placeholder="Select type"
-          />
-          <Select
-            label="Parent Account"
-            value={newAccountParent}
-            onChange={setNewAccountParent}
-            options={flatAccounts
-              .filter((a) => a.children && a.children.length > 0 || !a.parent_id)
-              .map((a) => ({ value: a.id, label: `${a.code} - ${a.name}` }))}
-            searchable
-            placeholder="Select parent (optional)"
-          />
+          <div>
+            <Select
+              label="Account Type *"
+              value={newAccountType}
+              onChange={(v) => {
+                setNewAccountType(v);
+                // Auto-fill the code with the next available number in that
+                // type's range, but only if the user hasn't already typed
+                // a code — never overwrite their input.
+                if (!newAccountCode.trim()) {
+                  const suggested = suggestNextCode(v, flatAccounts);
+                  if (suggested) setNewAccountCode(suggested);
+                }
+                if (fieldErrors.type) {
+                  setFieldErrors((p) => ({ ...p, type: "" }));
+                }
+              }}
+              options={[
+                { value: "asset", label: "Asset (1xxx)" },
+                { value: "liability", label: "Liability (2xxx)" },
+                { value: "equity", label: "Equity (3xxx)" },
+                { value: "income", label: "Income (4xxx)" },
+                { value: "expense", label: "Expense (5xxx)" },
+              ]}
+              placeholder="Select type"
+            />
+            {fieldErrors.type && (
+              <p className="mt-1 text-sm font-medium text-danger-600">
+                {fieldErrors.type}
+              </p>
+            )}
+          </div>
+          <div>
+            <Select
+              label="Parent Account"
+              value={newAccountParent}
+              onChange={(v) => {
+                setNewAccountParent(v);
+                if (fieldErrors.parent_id) {
+                  setFieldErrors((p) => ({ ...p, parent_id: "" }));
+                }
+              }}
+              options={flatAccounts
+                .filter(
+                  (a) =>
+                    (a.children && a.children.length > 0) || !a.parent_id,
+                )
+                .map((a) => ({ value: a.id, label: `${a.code} - ${a.name}` }))}
+              searchable
+              placeholder="Select parent (optional)"
+            />
+            {fieldErrors.parent_id && (
+              <p className="mt-1 text-sm font-medium text-danger-600">
+                {fieldErrors.parent_id}
+              </p>
+            )}
+          </div>
+          {formError && (
+            <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
+              {formError}
+            </div>
+          )}
           <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={() => setShowModal(false)}>
+            <Button variant="outline" onClick={closeCreateModal}>
               Cancel
             </Button>
             <Button
               onClick={() => createMutation.mutate()}
               loading={createMutation.isPending}
-              disabled={!newAccountName || !newAccountCode || !newAccountType}
+              disabled={
+                !newAccountName.trim() ||
+                !newAccountCode.trim() ||
+                !newAccountType ||
+                // Block submit while a live duplicate hint is showing —
+                // server would reject it anyway, but skipping the round-trip
+                // is faster.
+                flatAccounts.some(
+                  (a) => a.code === newAccountCode.trim(),
+                )
+              }
             >
               Create Account
             </Button>

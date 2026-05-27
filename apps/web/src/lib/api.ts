@@ -72,13 +72,29 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({
+      const payload = await response.json().catch(() => ({
         message: "An error occurred",
       }));
-      // API returns { success: false, error: { code, message, ... } }
-      const errorMessage =
-        error?.error?.message || error?.message || `HTTP ${response.status}`;
-      throw new Error(errorMessage);
+      // API returns { success: false, error: { code, message, details, ... } }
+      // We need callers to be able to render inline field errors, so attach
+      // the structured `code` and `details` (notably `details.field`) to the
+      // Error instance — without this, fields like the COA add-account
+      // modal can only show a generic toast and look silent on duplicate
+      // code / name conflicts.
+      const apiError = payload?.error || {};
+      const message =
+        apiError.message || payload?.message || `HTTP ${response.status}`;
+      const err = new Error(message) as Error & {
+        status?: number;
+        code?: string;
+        details?: any;
+        field?: string;
+      };
+      err.status = response.status;
+      err.code = apiError.code;
+      err.details = apiError.details;
+      err.field = apiError.details?.field;
+      throw err;
     }
 
     if (response.status === 204) {

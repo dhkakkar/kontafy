@@ -64,37 +64,94 @@ export class AccountsService {
       description?: string;
     },
   ) {
-    // Validate account type
+    // The GlobalExceptionFilter maps HttpException payloads into
+    // { code: resp.error, message: resp.message, details: resp.details }.
+    // So to surface a field-level error to the client we set `error` (the
+    // machine code), `message` (human text), and `details: { field }`. The
+    // frontend reads `details.field` to render inline errors on the right
+    // input — without this, the modal had no way to tell which field was
+    // bad and the whole thing looked like a silent save failure.
+
     const validTypes = ['asset', 'liability', 'equity', 'income', 'expense'];
     if (!validTypes.includes(data.type)) {
-      throw new BadRequestException(
-        `Invalid account type. Must be one of: ${validTypes.join(', ')}`,
-      );
+      throw new BadRequestException({
+        error: 'INVALID_TYPE',
+        message: `Invalid account type. Must be one of: ${validTypes.join(', ')}`,
+        details: { field: 'type' },
+      });
     }
 
-    // Check for duplicate code within org
-    const existing = await this.prisma.account.findFirst({
-      where: { org_id: orgId, code: data.code },
+    const code = (data.code || '').trim();
+    const name = (data.name || '').trim();
+    if (!code) {
+      throw new BadRequestException({
+        error: 'REQUIRED',
+        message: 'Account code is required',
+        details: { field: 'code' },
+      });
+    }
+    if (!name) {
+      throw new BadRequestException({
+        error: 'REQUIRED',
+        message: 'Account name is required',
+        details: { field: 'name' },
+      });
+    }
+
+    const existingByCode = await this.prisma.account.findFirst({
+      where: { org_id: orgId, code },
+      select: { id: true, code: true, name: true },
     });
-    if (existing) {
-      throw new ConflictException(`Account code "${data.code}" already exists`);
+    if (existingByCode) {
+      throw new ConflictException({
+        error: 'DUPLICATE_CODE',
+        message: `Code ${code} is already used by "${existingByCode.name}". Try a different code.`,
+        details: {
+          field: 'code',
+          existing: { code: existingByCode.code, name: existingByCode.name },
+        },
+      });
     }
 
-    // Validate parent if provided
+    // Case-insensitive name uniqueness. Without this, two ledgers with
+    // identical display names (e.g. "Bank Charges" twice with different
+    // codes) can both exist and confuse every ledger picker downstream.
+    const existingByName = await this.prisma.account.findFirst({
+      where: {
+        org_id: orgId,
+        name: { equals: name, mode: 'insensitive' },
+      },
+      select: { id: true, code: true, name: true },
+    });
+    if (existingByName) {
+      throw new ConflictException({
+        error: 'DUPLICATE_NAME',
+        message: `An account named "${existingByName.name}" already exists (code ${existingByName.code}).`,
+        details: {
+          field: 'name',
+          existing: { code: existingByName.code, name: existingByName.name },
+        },
+      });
+    }
+
     if (data.parent_id) {
       const parent = await this.prisma.account.findFirst({
         where: { id: data.parent_id, org_id: orgId },
       });
       if (!parent) {
-        throw new NotFoundException('Parent account not found');
+        throw new BadRequestException({
+          error: 'INVALID_PARENT',
+          message: 'Parent account not found',
+          details: { field: 'parent_id' },
+        });
       }
     }
 
     const account = await this.prisma.account.create({
       data: {
         org_id: orgId,
-        code: data.code,
-        name: data.name,
+        code,
+        name,
         type: data.type,
         sub_type: data.sub_type,
         parent_id: data.parent_id,
