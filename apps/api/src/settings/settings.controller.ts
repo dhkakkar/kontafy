@@ -186,6 +186,13 @@ export class SettingsController {
         swift_code?: string;
         is_primary?: boolean;
         show_full_number?: boolean;
+        // Optional opening balance — when > 0 a 1102.NNN sub-ledger is
+        // auto-created (or reused) under "Bank Accounts" and a journal
+        // entry is posted against the suspense account.
+        opening_balance?: number;
+        opening_dr_cr?: 'Dr' | 'Cr';
+        opening_date?: string;
+        account_id?: string | null;
       }>;
     },
   ) {

@@ -827,6 +827,125 @@ export class AccountsService {
   }
 
   /**
+   * Sister of createContactSubLedger but for bank accounts (parent 1102
+   * Bank Accounts, child is always asset). Used by SettingsService when
+   * the Invoice Config bank list is saved with opening balances.
+   *
+   * If existingAccountId is provided, we reuse that account (re-posting
+   * the opening journal cleanly replaces any prior one). Otherwise we
+   * scan siblings under 1102 for the next free "1102.NNN" code and
+   * create a fresh sub-ledger.
+   */
+  async createBankSubLedger(
+    orgId: string,
+    bankName: string,
+    accountNumberLast4: string | undefined,
+    openingBalance?: number,
+    drCr: 'Dr' | 'Cr' = 'Dr',
+    openingDate?: string,
+    existingAccountId?: string,
+  ): Promise<{ id: string; code: string; name: string } | null> {
+    const cleanName = bankName?.trim();
+    if (!cleanName) return null;
+    const parent = await this.prisma.account.findFirst({
+      where: { org_id: orgId, code: '1102' },
+      select: { id: true, code: true },
+    });
+    if (!parent) {
+      this.logger.warn(
+        `Skipped bank sub-ledger for "${cleanName}": parent 1102 Bank Accounts not seeded.`,
+      );
+      return null;
+    }
+
+    // Display name: "ICICI Bank - 9012" if we have a tail, else just the
+    // bank name. This matches how invoice PDFs already render banks.
+    const displayName = accountNumberLast4
+      ? `${cleanName} - ${accountNumberLast4}`
+      : cleanName;
+
+    let child: { id: string; code: string; name: string } | null = null;
+
+    if (existingAccountId) {
+      const found = await this.prisma.account.findFirst({
+        where: { id: existingAccountId, org_id: orgId },
+        select: { id: true, code: true, name: true },
+      });
+      if (found) {
+        child = found;
+        // Keep the ledger name in sync if the bank record was renamed
+        // (e.g. user fixed a typo). Only update name, leave code alone.
+        if (found.name !== displayName) {
+          await this.prisma.account.update({
+            where: { id: found.id },
+            data: { name: displayName },
+          });
+          child = { ...child, name: displayName };
+        }
+      }
+    }
+
+    if (!child) {
+      const siblings = await this.prisma.account.findMany({
+        where: {
+          org_id: orgId,
+          parent_id: parent.id,
+          code: { startsWith: `${parent.code}.` },
+        },
+        select: { code: true },
+      });
+      let maxSuffix = 0;
+      for (const s of siblings) {
+        const n = parseInt(s.code.slice(parent.code.length + 1), 10);
+        if (Number.isFinite(n) && n > maxSuffix) maxSuffix = n;
+      }
+      const nextCode = `${parent.code}.${String(maxSuffix + 1).padStart(3, '0')}`;
+
+      child = await this.prisma.account.create({
+        data: {
+          org_id: orgId,
+          code: nextCode,
+          name: displayName.slice(0, 100),
+          type: 'asset',
+          sub_type: 'current_asset',
+          parent_id: parent.id,
+          is_system: false,
+          is_active: true,
+          opening_balance: 0,
+        },
+        select: { id: true, code: true, name: true },
+      });
+    }
+
+    const amount = this.roundMoney(Number(openingBalance) || 0);
+    if (amount > 0) {
+      try {
+        await this.postOpeningBalanceJournal(
+          orgId,
+          child.id,
+          amount,
+          drCr,
+          openingDate,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Bank sub-ledger ${child.code} created but opening-balance journal failed: ${(err as Error).message}`,
+        );
+      }
+    } else {
+      // amount === 0 → clear any prior OB journal so editing a bank's
+      // opening down to 0 doesn't leave a ghost entry on the books.
+      try {
+        await this.postOpeningBalanceJournal(orgId, child.id, 0, drCr, openingDate);
+      } catch {
+        // best-effort
+      }
+    }
+
+    return child;
+  }
+
+  /**
    * Defensive paisa-level rounding. Every money value that flows into the
    * DB goes through this so even a stray float-precision artifact from
    * upstream JS arithmetic can't land in a Decimal column with sub-paisa

@@ -47,6 +47,16 @@ interface BankAccount {
   swift_code: string;
   is_primary: boolean;
   show_full_number: boolean;
+  // Opening balance — kept as a string for the input so the field
+  // can be empty (vs an explicit "0") and so we don't lose precision
+  // via Number() on partial keystrokes.
+  opening_balance: string;
+  opening_dr_cr: "Dr" | "Cr";
+  opening_date: string;
+  // Backend-assigned account_id of the auto-created 1102.NNN
+  // sub-ledger. Read-only on the frontend; lets us show "linked to
+  // Sub-ledger 1102.001" once the bank has been saved at least once.
+  account_id: string | null;
 }
 
 function newBank(): BankAccount {
@@ -62,6 +72,10 @@ function newBank(): BankAccount {
     swift_code: "",
     is_primary: false,
     show_full_number: false,
+    opening_balance: "",
+    opening_dr_cr: "Dr",
+    opening_date: new Date().toISOString().slice(0, 10),
+    account_id: null,
   };
 }
 
@@ -126,6 +140,16 @@ export default function InvoiceConfigPage() {
               swift_code: (b.swift_code || "").toUpperCase(),
               is_primary: !!b.is_primary,
               show_full_number: !!b.show_full_number,
+              opening_balance:
+                Number(b.opening_balance) > 0
+                  ? String(b.opening_balance)
+                  : "",
+              opening_dr_cr: (b.opening_dr_cr === "Cr" ? "Cr" : "Dr") as
+                | "Dr"
+                | "Cr",
+              opening_date:
+                b.opening_date || new Date().toISOString().slice(0, 10),
+              account_id: b.account_id || null,
             }))
           : [];
         setBanks(loaded);
@@ -242,6 +266,10 @@ export default function InvoiceConfigPage() {
           swift_code: b.swift_code,
           is_primary: b.is_primary,
           show_full_number: b.show_full_number,
+          opening_balance: Number(b.opening_balance) || 0,
+          opening_dr_cr: b.opening_dr_cr,
+          opening_date: b.opening_date || undefined,
+          account_id: b.account_id || undefined,
         })),
       });
       setSuccess(true);
@@ -543,7 +571,18 @@ export default function InvoiceConfigPage() {
                       label="Account Type"
                       options={ACCOUNT_TYPES}
                       value={bank.account_type}
-                      onChange={(v) => updateBank(bank.id, { account_type: v })}
+                      onChange={(v) => {
+                        // OD / CC behave as a liability when negative
+                        // so default the opening Dr/Cr toggle to Cr;
+                        // current / savings / foreign default Dr. Only
+                        // flip the side, never the entered amount.
+                        const drCr: "Dr" | "Cr" =
+                          v === "od" || v === "cc" ? "Cr" : "Dr";
+                        updateBank(bank.id, {
+                          account_type: v,
+                          opening_dr_cr: drCr,
+                        });
+                      }}
                     />
                     <Input
                       label="UPI ID (VPA)"
@@ -584,6 +623,84 @@ export default function InvoiceConfigPage() {
                         (default masks all but last 4 digits)
                       </span>
                     </label>
+
+                    {/* ── Opening Balance ───────────────────────── */}
+                    <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+                      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Opening Balance
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <Input
+                          label="Amount (₹)"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={bank.opening_balance}
+                          onChange={(e) =>
+                            updateBank(bank.id, {
+                              opening_balance: e.target.value,
+                            })
+                          }
+                          placeholder="0.00"
+                        />
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                            Dr / Cr
+                          </label>
+                          <div className="flex h-10 rounded-lg border border-gray-300 bg-white overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateBank(bank.id, { opening_dr_cr: "Dr" })
+                              }
+                              className={`flex-1 text-sm font-medium transition-colors ${
+                                bank.opening_dr_cr === "Dr"
+                                  ? "bg-primary-800 text-white"
+                                  : "text-gray-700 hover:bg-gray-50"
+                              }`}
+                            >
+                              Dr
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateBank(bank.id, { opening_dr_cr: "Cr" })
+                              }
+                              className={`flex-1 text-sm font-medium border-l border-gray-300 transition-colors ${
+                                bank.opening_dr_cr === "Cr"
+                                  ? "bg-primary-800 text-white"
+                                  : "text-gray-700 hover:bg-gray-50"
+                              }`}
+                            >
+                              Cr
+                            </button>
+                          </div>
+                        </div>
+                        <Input
+                          label="As On Date"
+                          type="date"
+                          value={bank.opening_date}
+                          onChange={(e) =>
+                            updateBank(bank.id, {
+                              opening_date: e.target.value,
+                            })
+                          }
+                          max={new Date().toISOString().slice(0, 10)}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        A sub-ledger under{" "}
+                        <span className="font-medium">1102 Bank Accounts</span>{" "}
+                        is auto-created and linked to this bank on save. Dr is
+                        the normal side for current/savings; OD &amp; CC
+                        accounts default to Cr (acts as liability).
+                        {bank.account_id && (
+                          <span className="ml-1 text-success-700">
+                            Linked ✓
+                          </span>
+                        )}
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>

@@ -9,6 +9,7 @@ import {
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccountsService } from '../books/accounts/accounts.service';
 
 @Injectable()
 export class SettingsService {
@@ -19,7 +20,13 @@ export class SettingsService {
   private readonly keyPrefix = 'kontafy/logos';
   private readonly publicBaseUrl = 'https://pub-3c9b20f24ae34d4d935610c014f9ba51.r2.dev';
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    // Used when saving Invoice Config bank accounts — each row can
+    // optionally carry an opening balance which we mirror into a
+    // 1102.NNN sub-ledger via AccountsService.createBankSubLedger.
+    private readonly accountsService: AccountsService,
+  ) {
     this.s3 = new S3Client({
       region: 'auto',
       endpoint: 'https://08c5215e60e39dc2fbb3fb67ae7359a5.r2.cloudflarestorage.com',
@@ -438,6 +445,13 @@ export class SettingsService {
           swift_code: b.swift_code || '',
           is_primary: !!b.is_primary,
           show_full_number: !!b.show_full_number,
+          // Opening-balance fields. account_id is set by the backend
+          // once we auto-create the 1102.NNN sub-ledger, so the page
+          // can show "linked to Sub-ledger X" once it exists.
+          opening_balance: Number(b.opening_balance) || 0,
+          opening_dr_cr: b.opening_dr_cr || 'Dr',
+          opening_date: b.opening_date || null,
+          account_id: b.account_id || null,
         }),
       );
       if (!accounts.some((b: any) => b.is_primary)) accounts[0].is_primary = true;
@@ -526,6 +540,10 @@ export class SettingsService {
         swift_code?: string;
         is_primary?: boolean;
         show_full_number?: boolean;
+        opening_balance?: number;
+        opening_dr_cr?: 'Dr' | 'Cr';
+        opening_date?: string;
+        account_id?: string | null;
       }>;
     },
   ) {
@@ -566,6 +584,18 @@ export class SettingsService {
           swift_code: (b.swift_code || '').trim().toUpperCase(),
           is_primary: !!b.is_primary,
           show_full_number: !!b.show_full_number,
+          // Opening balance fields. Default Dr/Cr by account type:
+          // OD / CC accounts behave as liabilities when negative so we
+          // default them to Cr; current / savings / foreign default Dr.
+          opening_balance: Math.max(0, Number(b.opening_balance) || 0),
+          opening_dr_cr:
+            (b.opening_dr_cr === 'Cr' || b.opening_dr_cr === 'Dr'
+              ? b.opening_dr_cr
+              : b.account_type === 'od' || b.account_type === 'cc'
+                ? 'Cr'
+                : 'Dr') as 'Dr' | 'Cr',
+          opening_date: b.opening_date || null,
+          account_id: b.account_id || null,
         }));
 
       if (cleaned.length > 0) {
@@ -595,6 +625,34 @@ export class SettingsService {
         };
       }
       nextBankAccounts = cleaned;
+    }
+
+    // Auto-create / refresh the matching 1102.NNN sub-ledger per bank.
+    // Done before the settings.update so we can capture the new
+    // account_id back into the JSON payload — that way the next page
+    // load knows which sub-ledger each bank is bound to and can call
+    // createBankSubLedger() with existingAccountId on subsequent edits
+    // (preventing duplicate ledgers when banks are renamed).
+    if (nextBankAccounts) {
+      for (const b of nextBankAccounts) {
+        try {
+          const last4 = b.account_number ? b.account_number.slice(-4) : undefined;
+          const ledger = await this.accountsService.createBankSubLedger(
+            orgId,
+            b.bank_name || 'Bank',
+            last4,
+            b.opening_balance,
+            b.opening_dr_cr,
+            b.opening_date,
+            b.account_id || undefined,
+          );
+          if (ledger) b.account_id = ledger.id;
+        } catch (err) {
+          this.logger.warn(
+            `Bank "${b.bank_name}" saved but sub-ledger sync failed: ${(err as Error).message}`,
+          );
+        }
+      }
     }
 
     const { bank_accounts: _ignore, ...flatInputs } = data;
