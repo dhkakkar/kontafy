@@ -21,6 +21,7 @@ import {
   Lock,
   Sparkles,
   Download,
+  Pencil,
 } from "lucide-react";
 
 interface Account {
@@ -52,9 +53,11 @@ const typeColors: Record<string, string> = {
 function AccountRow({
   account,
   level = 0,
+  onEdit,
 }: {
   account: Account;
   level?: number;
+  onEdit: (a: Account) => void;
 }) {
   const [expanded, setExpanded] = useState(level < 1);
   const hasChildren = account.children && account.children.length > 0;
@@ -62,7 +65,7 @@ function AccountRow({
   return (
     <>
       <tr
-        className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors cursor-pointer"
+        className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors cursor-pointer group"
         onClick={() => hasChildren && setExpanded(!expanded)}
       >
         <td className="py-3 px-4">
@@ -126,10 +129,30 @@ function AccountRow({
             {formatCurrency(account.balance ?? account.opening_balance ?? 0)}
           </span>
         </td>
+        <td className="py-3 px-2 w-10">
+          <button
+            type="button"
+            onClick={(e) => {
+              // Stop the row's expand/collapse click — pencil should only edit.
+              e.stopPropagation();
+              onEdit(account);
+            }}
+            className="h-7 w-7 inline-flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-primary-700 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            title="Edit account"
+            aria-label="Edit account"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </td>
       </tr>
       {expanded &&
         account.children?.map((child) => (
-          <AccountRow key={child.id} account={child} level={level + 1} />
+          <AccountRow
+            key={child.id}
+            account={child}
+            level={level + 1}
+            onEdit={onEdit}
+          />
         ))}
     </>
   );
@@ -252,6 +275,96 @@ export default function ChartOfAccountsPage() {
         setFormError("");
       } else {
         setFormError(message);
+      }
+    },
+  });
+
+  // ── Edit-account state ──────────────────────────────────────
+  // The pencil button on each row opens this modal. Backend enforces what
+  // can change on system accounts (name + description + opening only);
+  // we mirror that here by disabling code / type / parent inputs for
+  // is_system rows.
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCode, setEditCode] = useState("");
+  const [editParent, setEditParent] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editIsActive, setEditIsActive] = useState(true);
+  const [editOpening, setEditOpening] = useState("");
+  const [editDrCr, setEditDrCr] = useState<"Dr" | "Cr">("Dr");
+  const [editOpeningDate, setEditOpeningDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+  const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>(
+    {},
+  );
+  const [editFormError, setEditFormError] = useState("");
+
+  const openEditModal = (a: Account) => {
+    setEditingAccount(a);
+    setEditName(a.name);
+    setEditCode(a.code);
+    setEditParent(a.parent_id || "");
+    setEditDescription("");
+    setEditIsActive(a.is_active !== false);
+    const ob = Number(a.opening_balance) || 0;
+    setEditOpening(ob > 0 ? String(ob) : "");
+    setEditDrCr(
+      a.type === "asset" || a.type === "expense" ? "Dr" : "Cr",
+    );
+    setEditOpeningDate(new Date().toISOString().slice(0, 10));
+    setEditFieldErrors({});
+    setEditFormError("");
+  };
+
+  const closeEditModal = () => {
+    setEditingAccount(null);
+    setEditFieldErrors({});
+    setEditFormError("");
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingAccount) throw new Error("No account selected");
+      const opening = Number(editOpening) || 0;
+      const body: Record<string, unknown> = {
+        name: editName.trim(),
+        description: editDescription.trim() || undefined,
+        is_active: editIsActive,
+      };
+      // Only send code/parent when the account isn't system-locked and
+      // the value actually changed — keeps the PATCH payload minimal and
+      // avoids accidentally triggering the backend's code-uniqueness
+      // check on a no-op edit.
+      if (!editingAccount.is_system) {
+        if (editCode.trim() !== editingAccount.code) body.code = editCode.trim();
+        if ((editParent || null) !== (editingAccount.parent_id || null))
+          body.parent_id = editParent || null;
+      }
+      // Always send opening_balance when the user touched it (even 0, so
+      // we can clear a previously-set opening). The backend deletes the
+      // prior OB journal on every opening_balance write.
+      if (editOpening !== "") {
+        body.opening_balance = opening;
+        body.opening_dr_cr = editDrCr;
+        body.opening_date = editOpeningDate;
+      }
+      return api.patch(`/books/accounts/${editingAccount.id}`, body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-flat"] });
+      closeEditModal();
+    },
+    onError: (err: any) => {
+      setEditFieldErrors({});
+      const field = err?.field as string | undefined;
+      const message = err?.message || "Failed to update account";
+      if (field) {
+        setEditFieldErrors({ [field]: message });
+        setEditFormError("");
+      } else {
+        setEditFormError(message);
       }
     },
   });
@@ -429,11 +542,16 @@ export default function ChartOfAccountsPage() {
                   <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
                     Balance
                   </th>
+                  <th className="py-3 px-2 w-10" />
                 </tr>
               </thead>
               <tbody>
                 {filteredAccounts.map((account) => (
-                  <AccountRow key={account.id} account={account} />
+                  <AccountRow
+                    key={account.id}
+                    account={account}
+                    onEdit={(a) => openEditModal(a)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -650,6 +768,161 @@ export default function ChartOfAccountsPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Edit Account Modal — opens from the pencil icon on each row */}
+      <Modal
+        open={!!editingAccount}
+        onClose={closeEditModal}
+        title="Edit Account"
+        description={
+          editingAccount?.is_system
+            ? "System account — only name, description, status and opening balance can be changed."
+            : "Update account details, opening balance, and status."
+        }
+      >
+        {editingAccount && (
+          <div className="space-y-4">
+            <Input
+              label="Account Code *"
+              value={editCode}
+              onChange={(e) => {
+                setEditCode(e.target.value);
+                if (editFieldErrors.code)
+                  setEditFieldErrors((p) => ({ ...p, code: "" }));
+              }}
+              disabled={editingAccount.is_system}
+              error={editFieldErrors.code || undefined}
+              maxLength={6}
+            />
+            <Input
+              label="Account Name *"
+              value={editName}
+              onChange={(e) => {
+                setEditName(e.target.value);
+                if (editFieldErrors.name)
+                  setEditFieldErrors((p) => ({ ...p, name: "" }));
+              }}
+              error={editFieldErrors.name || undefined}
+            />
+            <div>
+              <Select
+                label="Parent Account"
+                value={editParent}
+                onChange={(v) => {
+                  setEditParent(v);
+                  if (editFieldErrors.parent_id)
+                    setEditFieldErrors((p) => ({ ...p, parent_id: "" }));
+                }}
+                disabled={editingAccount.is_system}
+                options={flatAccounts
+                  .filter(
+                    (a) =>
+                      // Block self-as-parent and disallow circular parenting
+                      // by hiding the editing account from the list.
+                      a.id !== editingAccount.id &&
+                      ((a.children && a.children.length > 0) || !a.parent_id),
+                  )
+                  .map((a) => ({ value: a.id, label: `${a.code} - ${a.name}` }))}
+                searchable
+                placeholder="No parent (top-level)"
+              />
+              {editFieldErrors.parent_id && (
+                <p className="mt-1 text-sm font-medium text-danger-600">
+                  {editFieldErrors.parent_id}
+                </p>
+              )}
+            </div>
+
+            {/* Opening Balance */}
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Opening Balance
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Input
+                  label="Amount (₹)"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={editOpening}
+                  onChange={(e) => setEditOpening(e.target.value)}
+                  placeholder="0.00"
+                  error={editFieldErrors.opening_balance || undefined}
+                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Dr / Cr
+                  </label>
+                  <div className="flex h-10 rounded-lg border border-gray-300 bg-white overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setEditDrCr("Dr")}
+                      className={`flex-1 text-sm font-medium transition-colors ${
+                        editDrCr === "Dr"
+                          ? "bg-primary-800 text-white"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      Dr
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditDrCr("Cr")}
+                      className={`flex-1 text-sm font-medium border-l border-gray-300 transition-colors ${
+                        editDrCr === "Cr"
+                          ? "bg-primary-800 text-white"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      Cr
+                    </button>
+                  </div>
+                </div>
+                <Input
+                  label="As On Date"
+                  type="date"
+                  value={editOpeningDate}
+                  onChange={(e) => setEditOpeningDate(e.target.value)}
+                  max={new Date().toISOString().slice(0, 10)}
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                Changing the amount replaces the prior opening-balance journal
+                entry. Set to 0 to remove the opening balance.
+              </p>
+            </div>
+
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={editIsActive}
+                onChange={(e) => setEditIsActive(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              Active (uncheck to hide from new transactions)
+            </label>
+
+            {editFormError && (
+              <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
+                {editFormError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="outline" onClick={closeEditModal}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => updateMutation.mutate()}
+                loading={updateMutation.isPending}
+                disabled={!editName.trim() || !editCode.trim()}
+              >
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
