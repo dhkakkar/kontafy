@@ -58,6 +58,39 @@ export class AccountsController {
     return this.accountsService.getTree(orgId);
   }
 
+  @Get('opening-balances')
+  @ApiOperation({
+    summary:
+      'List all accounts with their current opening balance (sourced from posted OB journals) for the bulk-edit page',
+  })
+  async listOpeningBalances(@OrgId() orgId: string) {
+    return this.accountsService.listOpeningBalances(orgId);
+  }
+
+  @Post('opening-balances/bulk')
+  @ApiOperation({
+    summary:
+      'Replace opening balances for many accounts in one call. Validates sum(debit) === sum(credit) before posting.',
+  })
+  async saveOpeningBalancesBulk(
+    @OrgId() orgId: string,
+    @Body()
+    body: {
+      books_begin_from?: string;
+      entries: Array<{
+        account_id: string;
+        debit?: number;
+        credit?: number;
+      }>;
+    },
+  ) {
+    return this.accountsService.saveOpeningBalancesBulk(
+      orgId,
+      body?.entries || [],
+      body?.books_begin_from,
+    );
+  }
+
   @Get('export')
   @ApiOperation({ summary: 'Export chart of accounts as a styled XLSX file' })
   @ApiQuery({ name: 'type', required: false, description: 'Filter by account type' })

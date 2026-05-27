@@ -53,6 +53,7 @@ const businessNavItems: NavItem[] = [
     icon: <BookOpen className="h-5 w-5" />,
     children: [
       { label: "Chart of Accounts", href: "/books/accounts" },
+      { label: "Opening Balances", href: "/books/opening-balances" },
       { label: "Journal Entries", href: "/books/journal" },
       { label: "Ledger", href: "/books/ledger" },
       { label: "Reports", href: "/books/reports" },

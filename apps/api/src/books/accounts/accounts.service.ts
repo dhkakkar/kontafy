@@ -836,4 +836,218 @@ export class AccountsService {
       select: { id: true, code: true },
     });
   }
+
+  // ──────────────────────────────────────────────────────────
+  // Bulk opening-balances page
+  // ──────────────────────────────────────────────────────────
+
+  /**
+   * Returns every account in the org plus the current opening balance
+   * (debit + credit) sourced from the posted OB journal lines. The page
+   * uses this to pre-fill its editable table on load.
+   *
+   * 3099 (suspense) is included with is_suspense=true so the page can
+   * render it as a read-only running indicator instead of an editable
+   * row.
+   */
+  async listOpeningBalances(orgId: string) {
+    const accounts = await this.prisma.account.findMany({
+      where: { org_id: orgId },
+      orderBy: [{ code: 'asc' }],
+    });
+
+    // Aggregate journal_lines for every OB entry in one shot rather than
+    // per-account — keeps the call to a single round-trip even with 100+
+    // ledgers.
+    const obLines = await this.prisma.journalLine.findMany({
+      where: {
+        entry: {
+          org_id: orgId,
+          reference_type: 'opening_balance',
+          is_posted: true,
+        },
+      },
+      select: { account_id: true, debit: true, credit: true },
+    });
+    const totals = new Map<string, { debit: number; credit: number }>();
+    for (const l of obLines) {
+      const t = totals.get(l.account_id) || { debit: 0, credit: 0 };
+      t.debit += Number(l.debit || 0);
+      t.credit += Number(l.credit || 0);
+      totals.set(l.account_id, t);
+    }
+
+    const SUSPENSE_CODE = '3099';
+    let suspenseId: string | null = null;
+    let totalDebit = 0;
+    let totalCredit = 0;
+    const out = accounts.map((a) => {
+      const t = totals.get(a.id) || { debit: 0, credit: 0 };
+      // Net the two so the row shows one side at a time (a journal that
+      // moved both directions over edits would otherwise display weirdly).
+      const debit = Math.max(0, t.debit - t.credit);
+      const credit = Math.max(0, t.credit - t.debit);
+      if (a.code === SUSPENSE_CODE) suspenseId = a.id;
+      if (a.code !== SUSPENSE_CODE) {
+        totalDebit += debit;
+        totalCredit += credit;
+      }
+      return {
+        id: a.id,
+        code: a.code,
+        name: a.name,
+        type: a.type,
+        sub_type: a.sub_type,
+        parent_id: a.parent_id,
+        is_system: a.is_system,
+        is_active: a.is_active,
+        is_suspense: a.code === SUSPENSE_CODE,
+        current_debit: Number(debit.toFixed(2)),
+        current_credit: Number(credit.toFixed(2)),
+      };
+    });
+
+    // The org's Books-Begin-From date lives in settings.profile (Phase 2
+    // of Org Profile). Fall back to today so the page is still usable
+    // before that's set.
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { settings: true },
+    });
+    const settings = (org?.settings as Record<string, any>) || {};
+    const profile = (settings.profile as Record<string, any>) || {};
+    const booksBeginFrom = profile.books_begin_from || null;
+
+    const difference = Number((totalDebit - totalCredit).toFixed(2));
+    return {
+      accounts: out,
+      books_begin_from: booksBeginFrom,
+      suspense_account_id: suspenseId,
+      totals: {
+        debit: Number(totalDebit.toFixed(2)),
+        credit: Number(totalCredit.toFixed(2)),
+        difference,
+        is_balanced: Math.abs(difference) < 0.01,
+      },
+    };
+  }
+
+  /**
+   * Bulk-save opening balances. Validates Dr == Cr across all entries
+   * (excluding suspense, which is auto-managed) before touching anything.
+   * Then runs postOpeningBalanceJournal() per entry — which replaces any
+   * prior OB journal for that account, so this is idempotent and safe to
+   * re-run.
+   *
+   * Best-effort per row: if a single account fails (e.g. the account was
+   * deleted between page load and save), the rest still post and the
+   * response reports counts + failures.
+   */
+  async saveOpeningBalancesBulk(
+    orgId: string,
+    entries: Array<{
+      account_id: string;
+      debit?: number;
+      credit?: number;
+    }>,
+    booksBeginFrom?: string,
+  ) {
+    if (!Array.isArray(entries)) {
+      throw new BadRequestException({
+        error: 'INVALID_PAYLOAD',
+        message: 'entries must be an array',
+      });
+    }
+
+    // Block writes to the suspense account — it's strictly a contra
+    // bucket; if a row's account is 3099 we silently drop it. (The page
+    // shouldn't even let the user type there, but defence in depth.)
+    const suspense = await this.prisma.account.findFirst({
+      where: { org_id: orgId, code: '3099' },
+      select: { id: true },
+    });
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+    const cleaned: Array<{
+      account_id: string;
+      amount: number;
+      drCr: 'Dr' | 'Cr';
+    }> = [];
+    for (const e of entries) {
+      if (!e?.account_id) continue;
+      if (suspense && e.account_id === suspense.id) continue;
+      const debit = Number(e.debit) || 0;
+      const credit = Number(e.credit) || 0;
+      if (debit < 0 || credit < 0) {
+        throw new BadRequestException({
+          error: 'INVALID_AMOUNT',
+          message: 'Opening amounts cannot be negative',
+        });
+      }
+      if (debit > 0 && credit > 0) {
+        throw new BadRequestException({
+          error: 'BOTH_SIDES',
+          message: 'A row cannot have both debit and credit. Pick one side.',
+        });
+      }
+      totalDebit += debit;
+      totalCredit += credit;
+      // Track only non-zero rows for journal posting; zero rows still
+      // pass through deleteOpeningBalanceJournal below so an "amount went
+      // to 0" edit clears the prior entry.
+      if (debit > 0) {
+        cleaned.push({ account_id: e.account_id, amount: debit, drCr: 'Dr' });
+      } else if (credit > 0) {
+        cleaned.push({ account_id: e.account_id, amount: credit, drCr: 'Cr' });
+      } else {
+        cleaned.push({ account_id: e.account_id, amount: 0, drCr: 'Dr' });
+      }
+    }
+
+    const difference = Math.abs(totalDebit - totalCredit);
+    if (difference > 0.01) {
+      throw new BadRequestException({
+        error: 'UNBALANCED',
+        message: `Trial balance is off by ${difference.toFixed(2)}. Debits (${totalDebit.toFixed(2)}) must equal credits (${totalCredit.toFixed(2)}) before saving.`,
+        details: {
+          field: 'totals',
+          debit: totalDebit,
+          credit: totalCredit,
+          difference: totalDebit - totalCredit,
+        },
+      });
+    }
+
+    let posted = 0;
+    const failures: Array<{ account_id: string; reason: string }> = [];
+    for (const row of cleaned) {
+      try {
+        await this.postOpeningBalanceJournal(
+          orgId,
+          row.account_id,
+          row.amount,
+          row.drCr,
+          booksBeginFrom,
+        );
+        posted++;
+      } catch (err) {
+        failures.push({
+          account_id: row.account_id,
+          reason: (err as Error).message,
+        });
+      }
+    }
+
+    return {
+      posted,
+      failures,
+      totals: {
+        debit: Number(totalDebit.toFixed(2)),
+        credit: Number(totalCredit.toFixed(2)),
+        difference: 0,
+        is_balanced: true,
+      },
+    };
+  }
 }
