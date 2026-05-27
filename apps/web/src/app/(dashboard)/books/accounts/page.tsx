@@ -261,16 +261,24 @@ export default function ChartOfAccountsPage() {
         "/books/accounts/export",
         params,
       );
+      // Belt-and-braces: if the server's Content-Disposition didn't make
+      // it through CORS the api client falls back to "download.bin". Force
+      // an .xlsx extension here since we know what this endpoint returns
+      // — otherwise the file lands without an Excel association.
+      const safeName =
+        filename && /\.(xlsx|csv|pdf)$/i.test(filename)
+          ? filename
+          : `ChartOfAccounts_${new Date().toISOString().slice(0, 10)}.xlsx`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename;
+      a.download = safeName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       // Revoke after a tick so Safari/iOS picks the blob up reliably.
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      return filename;
+      return safeName;
     },
     onError: (err: any) => {
       setExportError(err?.message || "Export failed. Please try again.");

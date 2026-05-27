@@ -59,6 +59,11 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Org-Id'],
+    // Browsers hide all non-safelisted response headers from JS unless we
+    // expose them explicitly. Without Content-Disposition here, the XLSX
+    // export endpoint's filename was unreadable on the client and downloads
+    // landed as "download.bin" instead of "ChartOfAccounts_…xlsx".
+    exposedHeaders: ['Content-Disposition'],
   });
 
   // Global pipes
