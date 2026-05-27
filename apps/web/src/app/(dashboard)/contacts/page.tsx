@@ -14,6 +14,7 @@ import { ActionMenu } from "@/components/ui/action-menu";
 import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { createClient } from "@/lib/auth/client";
+import { GstinPanField } from "@/components/forms/gstin-pan-field";
 import {
   Plus,
   Search,
@@ -793,31 +794,39 @@ function ContactsPage() {
           />
           <Input label="Email" type="email" placeholder="email@company.com" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} />
           <Input label="Phone" placeholder="+91 XXXXX XXXXX" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} />
-          <div>
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <Input
-                  label="GSTIN"
-                  placeholder="15-character GSTIN"
-                  value={formGstin}
-                  onChange={(e) => { setFormGstin(e.target.value); setGstinError(""); }}
-                  hint={gstinError || undefined}
-                  error={gstinError || undefined}
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGstinLookup}
-                disabled={gstinLoading || !formGstin.trim()}
-                icon={gstinLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                className="mb-[2px]"
-              >
-                {gstinLoading ? "Fetching..." : "Get Details"}
-              </Button>
-            </div>
+          <div className="md:col-span-2">
+            <GstinPanField
+              gstin={formGstin}
+              pan={formPan}
+              onGstinChange={(g) => {
+                setFormGstin(g);
+                setGstinError("");
+              }}
+              onPanChange={setFormPan}
+              gstinRightSlot={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGstinLookup}
+                  disabled={gstinLoading || !formGstin.trim()}
+                  icon={
+                    gstinLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )
+                  }
+                >
+                  {gstinLoading ? "Fetching..." : "Get Details"}
+                </Button>
+              }
+            />
+            {gstinError && (
+              <p className="mt-1 text-sm font-medium text-danger-600">
+                {gstinError}
+              </p>
+            )}
           </div>
-          <Input label="PAN" placeholder="ABCDE1234F" value={formPan} onChange={(e) => setFormPan(e.target.value)} />
 
           {/* Billing Address */}
           <div className="md:col-span-2 border-t border-gray-200 pt-4 mt-2">

@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountsService } from '../../books/accounts/accounts.service';
-import { validateGstin } from '../../common/utils/gst.util';
+import {
+  validateGstin,
+  extractPanFromGstin,
+  panMatchesGstin,
+  isValidPan,
+} from '../../common/utils/gst.util';
 
 @Injectable()
 export class ContactsService {
@@ -157,12 +162,35 @@ export class ContactsService {
       }
     }
 
-    // Validate PAN format if provided
+    // Validate PAN format if provided. We also auto-fill PAN from GSTIN
+    // when it's missing, and reject mismatches between user-typed PAN
+    // and the PAN embedded in the GSTIN — those mean someone fat-fingered
+    // one of the two (legal issue: PAN/GSTIN linkage is part of the
+    // registration).
     if (data.pan) {
-      const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
-      if (!panPattern.test(data.pan)) {
-        throw new BadRequestException('Invalid PAN format. Expected: ABCDE1234F');
+      const upperPan = data.pan.trim().toUpperCase();
+      if (!isValidPan(upperPan)) {
+        throw new BadRequestException({
+          error: 'INVALID_PAN',
+          message: 'Invalid PAN format. Expected: ABCDE1234F',
+          details: { field: 'pan' },
+        });
       }
+      data.pan = upperPan;
+      if (data.gstin && !panMatchesGstin(upperPan, data.gstin)) {
+        const embedded = extractPanFromGstin(data.gstin);
+        throw new BadRequestException({
+          error: 'PAN_GSTIN_MISMATCH',
+          message: embedded
+            ? `PAN ${upperPan} does not match the PAN embedded in GSTIN (expected ${embedded}).`
+            : `PAN does not match the GSTIN.`,
+          details: { field: 'pan' },
+        });
+      }
+    } else if (data.gstin) {
+      // No PAN supplied — derive it from the GSTIN we already validated above.
+      const embedded = extractPanFromGstin(data.gstin);
+      if (embedded) data.pan = embedded;
     }
 
     const contact = await this.prisma.contact.create({

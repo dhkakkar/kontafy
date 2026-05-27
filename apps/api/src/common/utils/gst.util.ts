@@ -183,29 +183,100 @@ export function aggregateInvoiceGst(
 }
 
 /**
+ * GST state code → human-readable name. Used to look up the place-of-supply
+ * state from the first two characters of a GSTIN. Kept here (not the
+ * frontend) so backend validation messages and any future MCA/GSTN export
+ * speak the same language.
+ */
+export const GSTIN_STATE_NAMES: Record<string, string> = {
+  '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab',
+  '04': 'Chandigarh', '05': 'Uttarakhand', '06': 'Haryana',
+  '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh',
+  '10': 'Bihar', '11': 'Sikkim', '12': 'Arunachal Pradesh',
+  '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram',
+  '16': 'Tripura', '17': 'Meghalaya', '18': 'Assam',
+  '19': 'West Bengal', '20': 'Jharkhand', '21': 'Odisha',
+  '22': 'Chhattisgarh', '23': 'Madhya Pradesh', '24': 'Gujarat',
+  '25': 'Daman & Diu', '26': 'Dadra & Nagar Haveli', '27': 'Maharashtra',
+  '28': 'Andhra Pradesh (Old)', '29': 'Karnataka', '30': 'Goa',
+  '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu',
+  '34': 'Puducherry', '35': 'Andaman & Nicobar', '36': 'Telangana',
+  '37': 'Andhra Pradesh', '38': 'Ladakh',
+  '97': 'Other Territory', '99': 'Centre Jurisdiction',
+};
+
+export const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+export const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+
+/**
  * Validate a GSTIN (GST Identification Number).
  * Format: 2-digit state code + 10-digit PAN + 1 entity code + 1 Z + 1 checksum
  */
-export function validateGstin(gstin: string): { valid: boolean; stateCode?: string; pan?: string; error?: string } {
+export function validateGstin(gstin: string): {
+  valid: boolean;
+  stateCode?: string;
+  stateName?: string;
+  pan?: string;
+  entityCode?: string;
+  checksum?: string;
+  error?: string;
+} {
   if (!gstin || gstin.length !== 15) {
     return { valid: false, error: 'GSTIN must be 15 characters' };
   }
 
-  const pattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-  if (!pattern.test(gstin)) {
+  const cleaned = gstin.trim().toUpperCase();
+  if (!GSTIN_REGEX.test(cleaned)) {
     return { valid: false, error: 'Invalid GSTIN format' };
   }
 
-  const stateCode = gstin.substring(0, 2);
-  const pan = gstin.substring(2, 12);
+  const stateCode = cleaned.substring(0, 2);
+  const pan = cleaned.substring(2, 12);
 
-  // Validate state code (01-38)
-  const stateNum = parseInt(stateCode, 10);
-  if (stateNum < 1 || stateNum > 38) {
-    return { valid: false, error: 'Invalid state code in GSTIN' };
+  const stateName = GSTIN_STATE_NAMES[stateCode];
+  if (!stateName) {
+    return { valid: false, error: `Unknown state code ${stateCode} in GSTIN` };
   }
 
-  return { valid: true, stateCode, pan };
+  return {
+    valid: true,
+    stateCode,
+    stateName,
+    pan,
+    entityCode: cleaned.substring(12, 13),
+    checksum: cleaned.substring(14, 15),
+  };
+}
+
+/**
+ * Pull the embedded PAN (chars 3-12) from a GSTIN. Returns null on
+ * invalid input. Used by service layers to auto-fill PAN when only
+ * GSTIN was provided, or to validate that a user-entered PAN matches.
+ */
+export function extractPanFromGstin(gstin: string): string | null {
+  const parsed = validateGstin(gstin);
+  return parsed.valid ? parsed.pan! : null;
+}
+
+/** Standalone PAN format check — independent of any GSTIN. */
+export function isValidPan(pan: string): boolean {
+  if (!pan) return false;
+  return PAN_REGEX.test(pan.trim().toUpperCase());
+}
+
+/**
+ * Verify that a user-entered PAN matches the PAN embedded inside a GSTIN.
+ * Returns true when either side is missing — only flags real mismatches
+ * (so callers can use this without short-circuiting on optional fields).
+ */
+export function panMatchesGstin(
+  pan: string | null | undefined,
+  gstin: string | null | undefined,
+): boolean {
+  if (!pan || !gstin) return true;
+  const embedded = extractPanFromGstin(gstin);
+  if (!embedded) return true; // GSTIN is invalid; let the GSTIN validator complain
+  return pan.trim().toUpperCase() === embedded;
 }
 
 /**
