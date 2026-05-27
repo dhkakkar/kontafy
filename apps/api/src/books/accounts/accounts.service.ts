@@ -5,6 +5,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -326,5 +327,275 @@ export class AccountsService {
     }
 
     return roots;
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // Excel export
+  // ──────────────────────────────────────────────────────────
+
+  /**
+   * Build a styled .xlsx representation of the chart of accounts. Returns a
+   * Buffer + a sanitized filename — the controller wires the response
+   * headers. Two sheets: the main "Chart of Accounts" table and a "Summary"
+   * tab with by-type / by-status counts so the CA reviewing the file gets
+   * the totals up front.
+   */
+  async exportXlsx(
+    orgId: string,
+    filters: {
+      type?: string;
+      search?: string;
+      includeInactive: boolean;
+      includeSystem: boolean;
+    },
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { name: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const where: any = { org_id: orgId };
+    if (filters.type && filters.type !== 'all') where.type = filters.type;
+    if (!filters.includeInactive) where.is_active = true;
+    if (!filters.includeSystem) where.is_system = false;
+    if (filters.search) {
+      where.OR = [
+        { code: { contains: filters.search, mode: 'insensitive' } },
+        { name: { contains: filters.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const accounts = await this.prisma.account.findMany({
+      where,
+      orderBy: [{ code: 'asc' }],
+    });
+
+    // Build a map for parent-code lookups so we can render the parent column
+    // without a second query. We may have parents that were filtered out of
+    // `accounts`; fetch them on demand for those cases.
+    const parentIds = Array.from(
+      new Set(
+        accounts
+          .map((a) => a.parent_id)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const parents = parentIds.length
+      ? await this.prisma.account.findMany({
+          where: { id: { in: parentIds } },
+          select: { id: true, code: true, name: true },
+        })
+      : [];
+    const parentMap = new Map(parents.map((p) => [p.id, p]));
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Kontafy';
+    wb.created = new Date();
+
+    const main = wb.addWorksheet('Chart of Accounts', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+
+    const headers = [
+      { header: 'S.No', key: 'sno', width: 6 },
+      { header: 'A/c Code', key: 'code', width: 12 },
+      { header: 'Account Type', key: 'type', width: 14 },
+      { header: 'Account Name', key: 'name', width: 35 },
+      { header: 'Group / Category', key: 'sub_type', width: 25 },
+      { header: 'Parent Account', key: 'parent', width: 25 },
+      { header: 'Opening Balance (₹)', key: 'opening', width: 18 },
+      { header: 'Dr/Cr', key: 'drcr', width: 8 },
+      { header: 'Current Balance (₹)', key: 'balance', width: 18 },
+      { header: 'Status', key: 'status', width: 10 },
+      { header: 'System Locked', key: 'locked', width: 14 },
+      { header: 'Notes', key: 'notes', width: 30 },
+    ];
+    main.columns = headers as any;
+
+    // Header row formatting — dark blue background, white bold, centered.
+    const headerRow = main.getRow(1);
+    headerRow.height = 22;
+    headerRow.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1F4E78' },
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF888888' } },
+        bottom: { style: 'thin', color: { argb: 'FF888888' } },
+        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+      };
+    });
+
+    // Auto-filter on the header row so the user can filter in Excel directly.
+    main.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: headers.length },
+    };
+
+    // Type → tint colour for the Account Type cell.
+    const typeColors: Record<string, string> = {
+      asset: 'FFDDEBF7',
+      liability: 'FFFCE4D6',
+      equity: 'FFE2EFDA',
+      income: 'FFFFF2CC',
+      expense: 'FFF8CBAD',
+    };
+    // For asset/expense accounts, a positive opening_balance is a debit;
+    // for liability/equity/income it's a credit. Matches Trial Balance
+    // convention used elsewhere in the app.
+    const isDebitNormal = (type: string) =>
+      type === 'asset' || type === 'expense';
+
+    accounts.forEach((a, idx) => {
+      const parent = a.parent_id ? parentMap.get(a.parent_id) : null;
+      const opening = Number(a.opening_balance || 0);
+      const row = main.addRow({
+        sno: idx + 1,
+        code: a.code,
+        type: a.type.charAt(0).toUpperCase() + a.type.slice(1),
+        name: a.name,
+        sub_type: a.sub_type || '',
+        parent: parent ? `${parent.code} - ${parent.name}` : '',
+        opening,
+        drcr: isDebitNormal(a.type) ? 'Dr' : 'Cr',
+        // Current balance isn't denormalised on the Account row; without
+        // running the trial-balance roll-up here we'd be guessing, so we
+        // ship opening only and leave the column blank. (Future: pass
+        // tree balances in.)
+        balance: '',
+        status: a.is_active ? 'Active' : 'Inactive',
+        locked: a.is_system ? 'Yes' : 'No',
+        notes: a.description || '',
+      });
+
+      row.font = { name: 'Arial', size: 10 };
+      row.height = 18;
+
+      // Type cell colour-band.
+      const typeCell = row.getCell('type');
+      typeCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: typeColors[a.type] || 'FFFFFFFF' },
+      };
+      typeCell.alignment = { horizontal: 'center' };
+
+      // Code cell — bold dark blue.
+      const codeCell = row.getCell('code');
+      codeCell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF1F4E78' } };
+
+      // Money formatting on opening + current balance.
+      row.getCell('opening').numFmt = '#,##0.00';
+      row.getCell('opening').alignment = { horizontal: 'right' };
+      row.getCell('balance').numFmt = '#,##0.00';
+      row.getCell('balance').alignment = { horizontal: 'right' };
+      row.getCell('drcr').alignment = { horizontal: 'center' };
+
+      // System-locked rows: subtle gray banding so they're visually distinct.
+      if (a.is_system) {
+        row.eachCell((cell, colNumber) => {
+          // Don't overwrite the colour-banded type cell.
+          if (colNumber === 3) return;
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF5F5F5' },
+          };
+        });
+      }
+    });
+
+    // ── Summary sheet ───────────────────────────────────────
+    const summary = wb.addWorksheet('Summary');
+    summary.columns = [
+      { header: '', key: 'label', width: 36 },
+      { header: '', key: 'value', width: 28 },
+    ];
+
+    const totalRow = (label: string, value: string | number) => {
+      const r = summary.addRow({ label, value });
+      r.getCell('label').font = { name: 'Arial', size: 10, bold: true };
+      r.getCell('value').font = { name: 'Arial', size: 10 };
+      r.getCell('value').alignment = { horizontal: 'right' };
+    };
+    const sectionHeader = (label: string) => {
+      const r = summary.addRow({ label, value: '' });
+      r.getCell('label').font = {
+        name: 'Arial',
+        size: 11,
+        bold: true,
+        color: { argb: 'FFFFFFFF' },
+      };
+      r.getCell('label').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1F4E78' },
+      };
+      r.getCell('value').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1F4E78' },
+      };
+    };
+
+    const title = summary.addRow({
+      label: 'Chart of Accounts Summary',
+      value: '',
+    });
+    title.getCell('label').font = { name: 'Arial', size: 14, bold: true };
+    summary.addRow({});
+    totalRow('Organization', org.name);
+    totalRow(
+      'Exported on',
+      new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+    );
+    totalRow('Total Accounts', accounts.length);
+    if (filters.type && filters.type !== 'all') {
+      totalRow('Filter (type)', filters.type);
+    }
+    if (filters.search) {
+      totalRow('Filter (search)', filters.search);
+    }
+    summary.addRow({});
+    sectionHeader('By Account Type');
+    const byType = new Map<string, number>();
+    for (const a of accounts) {
+      byType.set(a.type, (byType.get(a.type) || 0) + 1);
+    }
+    for (const t of ['asset', 'liability', 'equity', 'income', 'expense']) {
+      const c = byType.get(t) || 0;
+      if (c > 0) totalRow(t.charAt(0).toUpperCase() + t.slice(1), `${c} ledgers`);
+    }
+    summary.addRow({});
+    sectionHeader('Status');
+    const sys = accounts.filter((a) => a.is_system).length;
+    const active = accounts.filter((a) => a.is_active).length;
+    totalRow('System-Locked', `${sys} ledgers`);
+    totalRow('User-Created', `${accounts.length - sys} ledgers`);
+    totalRow('Active', `${active} ledgers`);
+    totalRow('Inactive', `${accounts.length - active} ledgers`);
+
+    const arrayBuffer = await wb.xlsx.writeBuffer();
+    const buffer = Buffer.from(arrayBuffer as ArrayBuffer);
+
+    // Filename: ChartOfAccounts_{OrgName}_{YYYY-MM-DD}.xlsx — strip
+    // non-word characters from the org name so the OS doesn't reject the
+    // download, and use the IST date so it matches what the user sees.
+    const safeOrg = (org.name || 'Org')
+      .replace(/[^A-Za-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 60) || 'Org';
+    const today = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'Asia/Kolkata',
+    });
+    const filename = `ChartOfAccounts_${safeOrg}_${today}.xlsx`;
+
+    return { buffer, filename };
   }
 }

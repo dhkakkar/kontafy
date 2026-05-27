@@ -20,6 +20,7 @@ import {
   Loader2,
   Lock,
   Sparkles,
+  Download,
 } from "lucide-react";
 
 interface Account {
@@ -247,6 +248,37 @@ export default function ChartOfAccountsPage() {
     },
   });
 
+  // Excel export. Wired through api.download so auth headers stay in one
+  // place; we feed the returned blob into a temporary anchor to trigger
+  // the browser's save-as. The search filter is forwarded so what you see
+  // in the table matches what you get in the file.
+  const [exportError, setExportError] = useState("");
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const params: Record<string, string> = {};
+      if (searchQuery.trim()) params.search = searchQuery.trim();
+      const { blob, filename } = await api.download(
+        "/books/accounts/export",
+        params,
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoke after a tick so Safari/iOS picks the blob up reliably.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return filename;
+    },
+    onError: (err: any) => {
+      setExportError(err?.message || "Export failed. Please try again.");
+      // Auto-clear after a few seconds so the banner doesn't linger.
+      setTimeout(() => setExportError(""), 5000);
+    },
+  });
+
   // Filter accounts by search
   const filteredAccounts = searchQuery
     ? accounts.filter((a) => {
@@ -270,13 +302,32 @@ export default function ChartOfAccountsPage() {
             Manage your account structure
           </p>
         </div>
-        <Button
-          icon={<Plus className="h-4 w-4" />}
-          onClick={() => setShowModal(true)}
-        >
-          Add Account
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            icon={<Download className="h-4 w-4" />}
+            onClick={() => exportMutation.mutate()}
+            loading={exportMutation.isPending}
+            // Don't try to export from the empty state — backend would
+            // happily ship an empty workbook but it's a confusing UX.
+            disabled={accounts.length === 0}
+            title="Download Chart of Accounts as Excel"
+          >
+            {exportMutation.isPending ? "Exporting..." : "Export to Excel"}
+          </Button>
+          <Button
+            icon={<Plus className="h-4 w-4" />}
+            onClick={() => setShowModal(true)}
+          >
+            Add Account
+          </Button>
+        </div>
       </div>
+      {exportError && (
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
+          {exportError}
+        </div>
+      )}
 
       <Card padding="none">
         <div className="p-4 border-b border-gray-200">

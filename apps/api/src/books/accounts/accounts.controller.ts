@@ -7,8 +7,10 @@ import {
   Body,
   Param,
   Query,
+  Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery } from '@nestjs/swagger';
+import { Response } from 'express';
 import { AccountsService } from './accounts.service';
 import { OrganizationService } from '../../organization/organization.service';
 import { OrgId } from '../../common/decorators/org-id.decorator';
@@ -54,6 +56,51 @@ export class AccountsController {
   @ApiOperation({ summary: 'Get accounts as a hierarchical tree' })
   async getTree(@OrgId() orgId: string) {
     return this.accountsService.getTree(orgId);
+  }
+
+  @Get('export')
+  @ApiOperation({ summary: 'Export chart of accounts as a styled XLSX file' })
+  @ApiQuery({ name: 'type', required: false, description: 'Filter by account type' })
+  @ApiQuery({ name: 'search', required: false, description: 'Filter by code or name substring' })
+  @ApiQuery({
+    name: 'include_inactive',
+    required: false,
+    type: Boolean,
+    description: 'Include is_active=false rows (default false)',
+  })
+  @ApiQuery({
+    name: 'include_system',
+    required: false,
+    type: Boolean,
+    description: 'Include is_system=true rows (default true)',
+  })
+  async exportXlsx(
+    @OrgId() orgId: string,
+    @Res() res: Response,
+    @Query('type') type?: string,
+    @Query('search') search?: string,
+    @Query('include_inactive') includeInactive?: string,
+    @Query('include_system') includeSystem?: string,
+  ) {
+    const { buffer, filename } = await this.accountsService.exportXlsx(orgId, {
+      type,
+      search,
+      // Query params arrive as strings; treat anything other than 'false'
+      // as truthy for include_system (default ON), and anything other than
+      // 'true' as falsy for include_inactive (default OFF).
+      includeInactive: includeInactive === 'true',
+      includeSystem: includeSystem !== 'false',
+    });
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(buffer);
   }
 
   @Get(':id')

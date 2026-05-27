@@ -132,6 +132,48 @@ class ApiClient {
   delete<T>(path: string): Promise<T> {
     return this.request<T>(path, { method: "DELETE" });
   }
+
+  /**
+   * Fetch a binary response (xlsx, pdf, csv...) and return it as a Blob plus
+   * the server-supplied filename. Callers feed the blob into a temporary
+   * anchor to trigger the browser download.
+   *
+   * Kept separate from `request()` because that path always JSON-decodes the
+   * response and would mangle a binary payload.
+   */
+  async download(
+    path: string,
+    params?: Record<string, string>,
+  ): Promise<{ blob: Blob; filename: string }> {
+    const url = this.buildUrl(path, params);
+    const authHeaders = await this.getAuthHeaders();
+    // Strip the JSON Content-Type from auth headers since this is a GET.
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries(authHeaders as Record<string, string>)) {
+      if (k.toLowerCase() !== "content-type") headers[k] = v;
+    }
+
+    const response = await fetch(url, { method: "GET", headers });
+    if (!response.ok) {
+      // Try to parse a JSON error body (the API uses the same shape on every
+      // failed request) so the caller can show a useful message.
+      const payload = await response.json().catch(() => ({
+        message: "Download failed",
+      }));
+      const apiError = payload?.error || {};
+      throw new Error(
+        apiError.message || payload?.message || `HTTP ${response.status}`,
+      );
+    }
+
+    // The backend sets Content-Disposition with the suggested filename. Pull
+    // it out so the saved file matches what the API picked.
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/.exec(disposition);
+    const filename = match ? decodeURIComponent(match[1]) : "download.bin";
+    const blob = await response.blob();
+    return { blob, filename };
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);
