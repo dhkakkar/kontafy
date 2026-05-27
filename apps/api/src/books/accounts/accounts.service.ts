@@ -62,6 +62,8 @@ export class AccountsService {
       sub_type?: string;
       parent_id?: string;
       opening_balance?: number;
+      opening_dr_cr?: 'Dr' | 'Cr';
+      opening_date?: string;
       description?: string;
     },
   ) {
