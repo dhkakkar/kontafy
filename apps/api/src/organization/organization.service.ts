@@ -30,8 +30,13 @@ export class OrganizationService {
       email?: string;
     },
   ) {
+    // The org + owner-membership write is small enough to keep inside a
+    // transaction. The chart-of-accounts seed is intentionally pulled OUT
+    // — its ~50 sequential round-trips exceed Neon's PgBouncer
+    // per-transaction budget when run inside $transaction. The COA seed
+    // is idempotent (skipDuplicates + parent re-linking), so a retry on
+    // partial progress is safe.
     const org = await this.prisma.$transaction(async (tx) => {
-      // Create the organization
       const organization = await tx.organization.create({
         data: {
           name: data.name,
@@ -49,8 +54,6 @@ export class OrganizationService {
           settings: {},
         },
       });
-
-      // Add creator as owner
       await tx.orgMember.create({
         data: {
           org_id: organization.id,
@@ -60,12 +63,19 @@ export class OrganizationService {
           invited_by: userId,
         },
       });
-
-      // Create default chart of accounts
-      await this.createDefaultAccounts(tx, organization.id);
-
       return organization;
     });
+
+    // Seed COA outside the transaction. We don't fail the whole org
+    // creation if seeding has a transient issue — the user can re-trigger
+    // it from the Chart of Accounts page's empty state.
+    try {
+      await this.createDefaultAccounts(this.prisma, org.id);
+    } catch (err) {
+      this.logger.warn(
+        `Default COA seed failed for new org ${org.id}: ${(err as Error).message}. User can retry from /books/accounts.`,
+      );
+    }
 
     return org;
   }
@@ -252,7 +262,13 @@ export class OrganizationService {
   /**
    * Seed the default Indian chart of accounts for an organization that
    * doesn't have any accounts yet. Safe to call multiple times — it's a
-   * no-op when the org already has accounts. Runs as a single transaction.
+   * no-op when the org already has accounts.
+   *
+   * Intentionally NOT wrapped in $transaction. The seed does ~50 small
+   * write round-trips (1 createMany + 1 findMany + ~50 updateManys for
+   * parent links), which blows Neon's PgBouncer per-transaction budget.
+   * Since createMany uses skipDuplicates and parent linking is
+   * idempotent, partial-progress reruns are safe.
    */
   async seedDefaultAccounts(orgId: string): Promise<{ created: number }> {
     const existing = await this.prisma.account.count({
@@ -261,9 +277,7 @@ export class OrganizationService {
     if (existing > 0) {
       return { created: 0 };
     }
-    await this.prisma.$transaction(async (tx) => {
-      await this.createDefaultAccounts(tx, orgId);
-    });
+    await this.createDefaultAccounts(this.prisma, orgId);
     const created = await this.prisma.account.count({
       where: { org_id: orgId },
     });
