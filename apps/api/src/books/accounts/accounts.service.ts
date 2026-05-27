@@ -168,7 +168,10 @@ export class AccountsService {
         type: data.type,
         sub_type: data.sub_type,
         parent_id: data.parent_id,
-        opening_balance: openingAmount,
+        // Always 0 here — the opening journal posted below is the
+        // authoritative source. See postOpeningBalanceJournal() for why
+        // we don't keep a denormalised copy on the row.
+        opening_balance: 0,
         description: data.description,
         is_system: false,
         is_active: true,
@@ -262,17 +265,17 @@ export class AccountsService {
       }
     }
 
-    // Separate opening-balance fields from the regular column writes —
-    // those go to a journal entry, not the Account row's opening_balance
-    // column (which we still keep in sync as a denormalised snapshot).
+    // Opening-balance fields go through a journal entry, not the
+    // Account.opening_balance column. The tree-balance computation in
+    // getTree() sums BOTH the column AND the posted journal lines, so
+    // writing to both double-counts every opening balance. We let
+    // postOpeningBalanceJournal() be the single source of truth and
+    // zero the column whenever it runs.
     const { opening_balance, opening_dr_cr, opening_date, ...columnData } = data;
 
     const updated = await this.prisma.account.update({
       where: { id },
-      data: {
-        ...columnData,
-        ...(opening_balance !== undefined ? { opening_balance } : {}),
-      },
+      data: columnData,
     });
 
     if (opening_balance !== undefined) {
@@ -713,6 +716,13 @@ export class AccountsService {
       // Nothing to post; still wipe any prior OB journal for this account
       // so an "amount went from 50000 to 0" edit doesn't leave a ghost.
       await this.deleteOpeningBalanceJournal(orgId, accountId);
+      // And clear the legacy column too — the Tax / Capital-Structure flow
+      // historically wrote here directly without a journal, so we can't
+      // assume it's already 0.
+      await this.prisma.account.update({
+        where: { id: accountId },
+        data: { opening_balance: 0 },
+      });
       return;
     }
 
@@ -762,6 +772,14 @@ export class AccountsService {
         { entry_id: entry.id, ...accountLine },
         { entry_id: entry.id, ...suspenseLine },
       ],
+    });
+    // Zero the legacy column so the tree-balance computation in
+    // getTree() doesn't add it on top of the journal lines (would
+    // double-count). The Capital-Structure sync writes this column
+    // directly; once the user uses the Edit modal we take over.
+    await this.prisma.account.update({
+      where: { id: accountId },
+      data: { opening_balance: 0 },
     });
   }
 
