@@ -120,7 +120,13 @@ export class AccountsController {
       type: string;
       sub_type?: string;
       parent_id?: string;
+      // Opening balance is signed by `opening_dr_cr` ('Dr' | 'Cr'). The
+      // service posts a balanced journal entry against the suspense
+      // account (code 3099) when opening_balance != 0, so the Trial
+      // Balance reflects this from day one.
       opening_balance?: number;
+      opening_dr_cr?: 'Dr' | 'Cr';
+      opening_date?: string;
       description?: string;
     },
   ) {
@@ -139,6 +145,9 @@ export class AccountsController {
       sub_type?: string;
       description?: string;
       is_active?: boolean;
+      opening_balance?: number;
+      opening_dr_cr?: 'Dr' | 'Cr';
+      opening_date?: string;
     },
   ) {
     return this.accountsService.update(orgId, id, body);

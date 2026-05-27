@@ -408,6 +408,11 @@ const DEFAULT_SERVICES_CHART: DefaultAccount[] = [
   { code: '3003', name: 'Retained Earnings', type: 'equity', sub_type: 'retained_earnings', parent_code: '3000', is_system: true },
   { code: '3004', name: 'Reserves & Surplus', type: 'equity', sub_type: 'retained_earnings', parent_code: '3000', is_system: true },
   { code: '3005', name: 'Current Year P&L', type: 'equity', sub_type: 'retained_earnings', parent_code: '3000', is_system: true },
+  // Suspense ledger used as the contra side of opening-balance journal
+  // entries. When the user enters all opening balances correctly the net
+  // movement here is zero; a non-zero balance means the opening trial is
+  // unbalanced and signals missing entries.
+  { code: '3099', name: 'Opening Balance Adjustment', type: 'equity', sub_type: 'capital', parent_code: '3000', is_system: true },
 
   // ── INCOME ────────────────────────────────────────────────────
   { code: '4000', name: 'Income', type: 'income', sub_type: null, is_system: true },

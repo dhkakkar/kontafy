@@ -168,6 +168,13 @@ export default function ChartOfAccountsPage() {
   const [newAccountCode, setNewAccountCode] = useState("");
   const [newAccountType, setNewAccountType] = useState("");
   const [newAccountParent, setNewAccountParent] = useState("");
+  // Opening-balance state — the backend posts a balanced journal entry
+  // against the 3099 suspense account when amount > 0.
+  const [newAccountOpening, setNewAccountOpening] = useState("");
+  const [newAccountDrCr, setNewAccountDrCr] = useState<"Dr" | "Cr">("Dr");
+  const [newAccountOpeningDate, setNewAccountOpeningDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
   // Field-level errors set by the create mutation's onError handler. Keyed
   // by field name (`code`, `name`, `parent_id`, `type`) so each input can
   // pull its own message. A generic error not tied to a field goes in
@@ -197,6 +204,9 @@ export default function ChartOfAccountsPage() {
     setNewAccountCode("");
     setNewAccountType("");
     setNewAccountParent("");
+    setNewAccountOpening("");
+    setNewAccountDrCr("Dr");
+    setNewAccountOpeningDate(new Date().toISOString().slice(0, 10));
     setFieldErrors({});
     setFormError("");
   };
@@ -208,11 +218,21 @@ export default function ChartOfAccountsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const opening = Number(newAccountOpening) || 0;
       return api.post("/books/accounts", {
         name: newAccountName.trim(),
         code: newAccountCode.trim(),
         type: newAccountType,
         parent_id: newAccountParent || undefined,
+        // Only send opening-balance fields when amount > 0 so we don't
+        // overwrite the default 0 server-side.
+        ...(opening > 0
+          ? {
+              opening_balance: opening,
+              opening_dr_cr: newAccountDrCr,
+              opening_date: newAccountOpeningDate,
+            }
+          : {}),
       });
     },
     onSuccess: () => {
@@ -492,6 +512,12 @@ export default function ChartOfAccountsPage() {
                   const suggested = suggestNextCode(v, flatAccounts);
                   if (suggested) setNewAccountCode(suggested);
                 }
+                // Default the opening-balance Dr/Cr toggle to match the
+                // type's normal side: asset/expense → Dr, others → Cr.
+                // The user can still flip it (e.g. for a bank OD account).
+                setNewAccountDrCr(
+                  v === "asset" || v === "expense" ? "Dr" : "Cr",
+                );
                 if (fieldErrors.type) {
                   setFieldErrors((p) => ({ ...p, type: "" }));
                 }
@@ -536,6 +562,66 @@ export default function ChartOfAccountsPage() {
               </p>
             )}
           </div>
+          {/* ── Opening Balance (Optional) ────────────────────── */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              Opening Balance (optional)
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input
+                label="Amount (₹)"
+                type="number"
+                min={0}
+                step="0.01"
+                value={newAccountOpening}
+                onChange={(e) => setNewAccountOpening(e.target.value)}
+                placeholder="0.00"
+              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Dr / Cr
+                </label>
+                <div className="flex h-10 rounded-lg border border-gray-300 bg-white overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setNewAccountDrCr("Dr")}
+                    className={`flex-1 text-sm font-medium transition-colors ${
+                      newAccountDrCr === "Dr"
+                        ? "bg-primary-800 text-white"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    Dr
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewAccountDrCr("Cr")}
+                    className={`flex-1 text-sm font-medium border-l border-gray-300 transition-colors ${
+                      newAccountDrCr === "Cr"
+                        ? "bg-primary-800 text-white"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    Cr
+                  </button>
+                </div>
+              </div>
+              <Input
+                label="As On Date"
+                type="date"
+                value={newAccountOpeningDate}
+                onChange={(e) => setNewAccountOpeningDate(e.target.value)}
+                max={new Date().toISOString().slice(0, 10)}
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              When set, a balanced journal entry is posted against the
+              <span className="font-medium"> Opening Balance Adjustment </span>
+              suspense ledger so the Trial Balance reflects it from day one.
+              Leave at 0 to skip.
+            </p>
+          </div>
+
           {formError && (
             <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
               {formError}

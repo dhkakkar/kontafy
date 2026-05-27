@@ -148,6 +148,16 @@ export class AccountsService {
       }
     }
 
+    const openingAmount = Number(data.opening_balance) || 0;
+    if (openingAmount < 0) {
+      throw new BadRequestException({
+        error: 'INVALID_OPENING_BALANCE',
+        message:
+          'Opening balance cannot be negative. Use the Dr/Cr toggle to set direction.',
+        details: { field: 'opening_balance' },
+      });
+    }
+
     const account = await this.prisma.account.create({
       data: {
         org_id: orgId,
@@ -156,12 +166,36 @@ export class AccountsService {
         type: data.type,
         sub_type: data.sub_type,
         parent_id: data.parent_id,
-        opening_balance: data.opening_balance || 0,
+        opening_balance: openingAmount,
         description: data.description,
         is_system: false,
         is_active: true,
       },
     });
+
+    // If the user entered a non-zero opening balance, post the contra
+    // journal against the suspense account (3099) so the Trial Balance
+    // reflects it immediately. Done outside the create() transaction so a
+    // posting failure doesn't lose the account — instead we warn-log and
+    // the user can retry from the bulk OB screen (Phase 2).
+    if (openingAmount > 0) {
+      const drCr =
+        data.opening_dr_cr ||
+        (data.type === 'asset' || data.type === 'expense' ? 'Dr' : 'Cr');
+      try {
+        await this.postOpeningBalanceJournal(
+          orgId,
+          account.id,
+          openingAmount,
+          drCr,
+          data.opening_date,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Account ${code} created but opening-balance journal failed: ${(err as Error).message}`,
+        );
+      }
+    }
 
     return account;
   }
@@ -178,6 +212,9 @@ export class AccountsService {
       sub_type?: string;
       description?: string;
       is_active?: boolean;
+      opening_balance?: number;
+      opening_dr_cr?: 'Dr' | 'Cr';
+      opening_date?: string;
     },
   ) {
     const account = await this.prisma.account.findFirst({
@@ -188,9 +225,17 @@ export class AccountsService {
       throw new NotFoundException('Account not found');
     }
 
-    // System accounts: only name and description can be updated
+    // System accounts: name, description, and opening_balance can be
+    // updated (Owner's Capital opening is the obvious use case). Code /
+    // type / structure stays locked.
     if (account.is_system) {
-      const allowedKeys = ['name', 'description'];
+      const allowedKeys = [
+        'name',
+        'description',
+        'opening_balance',
+        'opening_dr_cr',
+        'opening_date',
+      ];
       const attemptedKeys = Object.keys(data).filter(
         (k) => data[k as keyof typeof data] !== undefined,
       );
@@ -212,10 +257,47 @@ export class AccountsService {
       }
     }
 
-    return this.prisma.account.update({
+    // Separate opening-balance fields from the regular column writes —
+    // those go to a journal entry, not the Account row's opening_balance
+    // column (which we still keep in sync as a denormalised snapshot).
+    const { opening_balance, opening_dr_cr, opening_date, ...columnData } = data;
+
+    const updated = await this.prisma.account.update({
       where: { id },
-      data,
+      data: {
+        ...columnData,
+        ...(opening_balance !== undefined ? { opening_balance } : {}),
+      },
     });
+
+    if (opening_balance !== undefined) {
+      const amount = Number(opening_balance) || 0;
+      if (amount < 0) {
+        throw new BadRequestException({
+          error: 'INVALID_OPENING_BALANCE',
+          message: 'Opening balance cannot be negative.',
+          details: { field: 'opening_balance' },
+        });
+      }
+      const drCr =
+        opening_dr_cr ||
+        (account.type === 'asset' || account.type === 'expense' ? 'Dr' : 'Cr');
+      try {
+        await this.postOpeningBalanceJournal(
+          orgId,
+          id,
+          amount,
+          drCr,
+          opening_date,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Opening-balance journal sync failed for account ${account.code}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return updated;
   }
 
   /**
@@ -597,5 +679,138 @@ export class AccountsService {
     const filename = `ChartOfAccounts_${safeOrg}_${today}.xlsx`;
 
     return { buffer, filename };
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // Opening balance journal
+  // ──────────────────────────────────────────────────────────
+
+  /**
+   * Create or replace the opening-balance journal for a single account.
+   * The contra side always lands on the suspense ledger (code 3099); when
+   * every account's opening is entered the suspense balance net-zeros, so
+   * a non-zero 3099 balance flags an unbalanced opening trial. We also
+   * keep Account.opening_balance in sync as a denormalised snapshot for
+   * faster Balance Sheet / Trial Balance reads.
+   *
+   * Idempotent: any prior journal tagged reference_type='opening_balance'
+   * + reference_id=accountId is removed first, so editing an opening
+   * balance never leaves stale duplicates.
+   */
+  private async postOpeningBalanceJournal(
+    orgId: string,
+    accountId: string,
+    amount: number,
+    drCr: 'Dr' | 'Cr',
+    dateIso?: string,
+  ) {
+    if (amount <= 0) {
+      // Nothing to post; still wipe any prior OB journal for this account
+      // so an "amount went from 50000 to 0" edit doesn't leave a ghost.
+      await this.deleteOpeningBalanceJournal(orgId, accountId);
+      return;
+    }
+
+    const suspense = await this.ensureSuspenseAccount(orgId);
+    if (suspense.id === accountId) {
+      throw new BadRequestException(
+        'Opening balance cannot be posted against the suspense account itself',
+      );
+    }
+
+    const date = dateIso ? new Date(dateIso) : new Date();
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException({
+        error: 'INVALID_DATE',
+        message: 'Invalid opening balance date',
+        details: { field: 'opening_date' },
+      });
+    }
+
+    // Remove any prior OB journal for this account so we don't double-post.
+    await this.deleteOpeningBalanceJournal(orgId, accountId);
+
+    // Build the two balanced lines. Dr on the account means the suspense
+    // side is Cr (and vice versa) — standard double-entry.
+    const accountLine =
+      drCr === 'Dr'
+        ? { account_id: accountId, debit: amount, credit: 0 }
+        : { account_id: accountId, debit: 0, credit: amount };
+    const suspenseLine =
+      drCr === 'Dr'
+        ? { account_id: suspense.id, debit: 0, credit: amount }
+        : { account_id: suspense.id, debit: amount, credit: 0 };
+
+    const entry = await this.prisma.journalEntry.create({
+      data: {
+        org_id: orgId,
+        date,
+        narration: 'Opening Balance',
+        reference: `OB-${date.toISOString().slice(0, 10)}`,
+        reference_type: 'opening_balance',
+        reference_id: accountId,
+        is_posted: true,
+      },
+    });
+    await this.prisma.journalLine.createMany({
+      data: [
+        { entry_id: entry.id, ...accountLine },
+        { entry_id: entry.id, ...suspenseLine },
+      ],
+    });
+  }
+
+  /**
+   * Remove any opening-balance journal previously posted for an account.
+   * Used both when the amount changes (replace-and-recreate) and when
+   * it's zeroed out.
+   */
+  private async deleteOpeningBalanceJournal(orgId: string, accountId: string) {
+    const prior = await this.prisma.journalEntry.findMany({
+      where: {
+        org_id: orgId,
+        reference_type: 'opening_balance',
+        reference_id: accountId,
+      },
+      select: { id: true },
+    });
+    if (prior.length === 0) return;
+    const ids = prior.map((p) => p.id);
+    await this.prisma.journalLine.deleteMany({ where: { entry_id: { in: ids } } });
+    await this.prisma.journalEntry.deleteMany({ where: { id: { in: ids } } });
+  }
+
+  /**
+   * Resolve the suspense account (code 3099). Created on demand for orgs
+   * whose chart was seeded before this account was added to the default
+   * template — keeps the feature working without a forced re-seed.
+   */
+  private async ensureSuspenseAccount(orgId: string) {
+    const existing = await this.prisma.account.findFirst({
+      where: { org_id: orgId, code: '3099' },
+      select: { id: true, code: true },
+    });
+    if (existing) return existing;
+
+    // Find the Equity group (3000) to parent the new account under, if it
+    // exists; otherwise leave parent_id null.
+    const equityParent = await this.prisma.account.findFirst({
+      where: { org_id: orgId, code: '3000' },
+      select: { id: true },
+    });
+    return this.prisma.account.create({
+      data: {
+        org_id: orgId,
+        code: '3099',
+        name: 'Opening Balance Adjustment',
+        type: 'equity',
+        sub_type: 'capital',
+        parent_id: equityParent?.id || null,
+        is_system: true,
+        is_active: true,
+        opening_balance: 0,
+      },
+      select: { id: true, code: true },
+    });
   }
 }
