@@ -227,13 +227,16 @@ export class AccountsService {
       throw new NotFoundException('Account not found');
     }
 
-    // System accounts: name, description, and opening_balance can be
-    // updated (Owner's Capital opening is the obvious use case). Code /
-    // type / structure stays locked.
+    // System accounts: name, description, is_active, and opening balance
+    // can change. Code / type / parent / sub_type stay locked because
+    // they're load-bearing for journal-posting resolvers (e.g. 1101 Cash
+    // is looked up by code). is_active is fine to flip — it only hides
+    // the ledger from new transactions, doesn't destroy data.
     if (account.is_system) {
       const allowedKeys = [
         'name',
         'description',
+        'is_active',
         'opening_balance',
         'opening_dr_cr',
         'opening_date',
