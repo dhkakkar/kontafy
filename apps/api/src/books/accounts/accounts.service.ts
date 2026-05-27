@@ -705,13 +705,26 @@ export class AccountsService {
    * + reference_id=accountId is removed first, so editing an opening
    * balance never leaves stale duplicates.
    */
+  /**
+   * Defensive paisa-level rounding. Every money value that flows into the
+   * DB goes through this so even a stray float-precision artifact from
+   * upstream JS arithmetic can't land in a Decimal column with sub-paisa
+   * noise. Half-away-from-zero is the Indian accounting convention and
+   * matches what Math.round() does for positive amounts.
+   */
+  private roundMoney(n: number): number {
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100) / 100;
+  }
+
   private async postOpeningBalanceJournal(
     orgId: string,
     accountId: string,
-    amount: number,
+    rawAmount: number,
     drCr: 'Dr' | 'Cr',
     dateIso?: string,
   ) {
+    const amount = this.roundMoney(rawAmount);
     if (amount <= 0) {
       // Nothing to post; still wipe any prior OB journal for this account
       // so an "amount went from 50000 to 0" edit doesn't leave a ghost.
