@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
+import { UnitsController } from './units/units.controller';
+import { UnitsService } from './units/units.service';
 import { BooksModule } from '../books/books.module';
 
 @Module({
@@ -9,8 +11,8 @@ import { BooksModule } from '../books/books.module';
   // need it to auto-create a 1102.NNN sub-ledger per bank and post the
   // opening journal at save time.
   imports: [ConfigModule, BooksModule],
-  controllers: [SettingsController],
-  providers: [SettingsService],
-  exports: [SettingsService],
+  controllers: [SettingsController, UnitsController],
+  providers: [SettingsService, UnitsService],
+  exports: [SettingsService, UnitsService],
 })
 export class SettingsModule {}

@@ -127,6 +127,22 @@ export class ProductsService {
       }
     }
 
+    // Resolve unit_id → symbol for the legacy `unit` column. We keep
+    // both populated so old reports / invoice lines that read the
+    // string keep rendering; new writes go through unit_id.
+    // Services default track_inventory=false irrespective of payload
+    // because the inventory subsystem assumes a physical SKU.
+    let resolvedUnitSymbol = data.unit;
+    if (data.unit_id) {
+      const u = await this.prisma.unitOfMeasurement.findFirst({
+        where: { id: data.unit_id, org_id: orgId },
+        select: { symbol: true },
+      });
+      if (u) resolvedUnitSymbol = u.symbol;
+    }
+    const trackInventory =
+      data.type === 'services' ? false : data.track_inventory;
+
     const product = await this.prisma.product.create({
       data: {
         org_id: orgId,
@@ -135,11 +151,12 @@ export class ProductsService {
         description: data.description,
         type: data.type,
         hsn_code: data.hsn_code,
-        unit: data.unit,
+        unit: resolvedUnitSymbol,
+        unit_id: data.unit_id,
         purchase_price: data.purchase_price,
         selling_price: data.selling_price,
         tax_rate: data.tax_rate,
-        track_inventory: data.track_inventory,
+        track_inventory: trackInventory,
         reorder_level: data.reorder_level,
         image_url: data.image_url,
         is_active: true,
@@ -172,9 +189,24 @@ export class ProductsService {
       }
     }
 
+    // Mirror unit_id → unit symbol so the legacy column stays in sync
+    // (some reports still read it). If only unit_id is sent, resolve
+    // and write the symbol back; if only unit, leave unit_id untouched.
+    const patch: Record<string, any> = { ...data };
+    if (data.unit_id) {
+      const u = await this.prisma.unitOfMeasurement.findFirst({
+        where: { id: data.unit_id, org_id: orgId },
+        select: { symbol: true },
+      });
+      if (u) patch.unit = u.symbol;
+    }
+    if (data.type === 'services') {
+      patch.track_inventory = false;
+    }
+
     return this.prisma.product.update({
       where: { id },
-      data,
+      data: patch,
     });
   }
 

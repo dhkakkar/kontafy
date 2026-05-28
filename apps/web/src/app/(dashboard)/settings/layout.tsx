@@ -20,6 +20,7 @@ import {
   CreditCard,
   Wallet,
   UserCog,
+  Ruler,
 } from "lucide-react";
 
 // Business types where Capital Structure and Directors apply. Anything
@@ -93,6 +94,12 @@ function buildNav(businessType: string): NavItem[] {
       href: "/settings/tax",
       icon: Landmark,
       description: "GST registration and TDS",
+    },
+    {
+      label: "Units of Measurement",
+      href: "/settings/units",
+      icon: Ruler,
+      description: "Manage UOM list with GST UQC codes",
     },
     {
       label: "Integrations",

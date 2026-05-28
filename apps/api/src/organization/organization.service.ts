@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { DEFAULT_UNITS } from '../settings/units/uqc-codes';
 
 @Injectable()
 export class OrganizationService {
@@ -74,6 +75,31 @@ export class OrganizationService {
     } catch (err) {
       this.logger.warn(
         `Default COA seed failed for new org ${org.id}: ${(err as Error).message}. User can retry from /books/accounts.`,
+      );
+    }
+
+    // Seed the default Unit-of-Measurement list. Same pattern as COA:
+    // outside the transaction, idempotent, swallowed on failure (the
+    // units endpoint lazy-seeds on first GET so the user is never
+    // stuck with an empty dropdown). createMany skipDuplicates handles
+    // any partial-progress retry.
+    try {
+      await this.prisma.unitOfMeasurement.createMany({
+        data: DEFAULT_UNITS.map((u) => ({
+          org_id: org.id,
+          name: u.name,
+          symbol: u.symbol,
+          uqc_code: u.uqc_code,
+          category: u.category,
+          decimals: u.decimals,
+          is_system: true,
+          is_active: true,
+        })),
+        skipDuplicates: true,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Default unit seed failed for new org ${org.id}: ${(err as Error).message}. User can retry from /settings/units.`,
       );
     }
 
