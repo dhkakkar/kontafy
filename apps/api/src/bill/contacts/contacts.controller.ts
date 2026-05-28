@@ -67,6 +67,10 @@ export class ContactsController {
       // the backend if omitted.
       opening_date?: string;
       notes?: string;
+      // Structured extras: TDS config, MSME registration, GST treatment
+      // override, default ledger linkage. Persisted in Contact.metadata
+      // JSON column so callers don't need a schema change per field.
+      metadata?: Record<string, any>;
     },
   ) {
     return this.contactsService.create(orgId, body);

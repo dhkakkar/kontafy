@@ -122,6 +122,7 @@ export class ContactsService {
       opening_balance?: number;
       opening_date?: string;
       notes?: string;
+      metadata?: Record<string, any>;
     },
   ) {
     // Validate type
@@ -193,6 +194,46 @@ export class ContactsService {
       if (embedded) data.pan = embedded;
     }
 
+    // Opening-balance date guards. Block dates in the future (no
+    // back-dated journals from the future) and dates before the org's
+    // declared books_begin_from — that would back-date a journal into
+    // a period the rest of the system says we don't have books for.
+    if (data.opening_date) {
+      const opening = new Date(data.opening_date);
+      if (Number.isNaN(opening.getTime())) {
+        throw new BadRequestException({
+          error: 'INVALID_DATE',
+          message: 'opening_date must be a valid date',
+          details: { field: 'opening_date' },
+        });
+      }
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      if (opening > today) {
+        throw new BadRequestException({
+          error: 'OPENING_DATE_FUTURE',
+          message: 'Opening date cannot be in the future',
+          details: { field: 'opening_date' },
+        });
+      }
+      const org = await this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { settings: true },
+      });
+      const profile =
+        ((org?.settings as Record<string, any>)?.profile as
+          | Record<string, any>
+          | undefined) || {};
+      const booksBegin = profile.books_begin_from;
+      if (booksBegin && new Date(booksBegin) > opening) {
+        throw new BadRequestException({
+          error: 'OPENING_DATE_BEFORE_BOOKS_BEGIN',
+          message: `Opening date cannot be before the books-begin-from date (${booksBegin}).`,
+          details: { field: 'opening_date' },
+        });
+      }
+    }
+
     const contact = await this.prisma.contact.create({
       data: {
         org_id: orgId,
@@ -210,28 +251,52 @@ export class ContactsService {
         credit_limit: data.credit_limit,
         opening_balance: data.opening_balance || 0,
         notes: data.notes,
+        metadata: (data.metadata || {}) as any,
         is_active: true,
       },
     });
 
-    // Auto-create a sub-ledger under 1103/2101 and post the opening-
+    // Auto-create sub-ledger(s) under 1103/2101 and post the opening-
     // balance journal. Done outside the contact-create call (not in a
     // transaction) so a downstream COA hiccup doesn't roll back the
     // contact — the user can fix the opening from the bulk OB page if
     // posting fails. Best-effort, warn-logged on failure.
+    //
+    // For type='both' we mint TWO sub-ledgers — one under 1103 (when
+    // we sell to this party) and one under 2101 (when we buy from them).
+    // The opening_balance applies to the customer side by default; if
+    // the user wants a separate payable opening they can set it from
+    // the bulk OB page against the vendor-side sub-ledger.
+    const displayName = data.company_name?.trim() || data.name.trim();
+    const opening = Number(data.opening_balance) || 0;
     try {
-      const contactType =
-        (data.type === 'vendor' ? 'vendor' : data.type === 'both' ? 'both' : 'customer') as
+      if (data.type === 'both') {
+        await this.accountsService.createContactSubLedger(
+          orgId,
+          'customer',
+          displayName,
+          opening,
+          data.opening_date,
+        );
+        await this.accountsService.createContactSubLedger(
+          orgId,
+          'vendor',
+          displayName,
+          0,
+          data.opening_date,
+        );
+      } else {
+        const contactType = (data.type === 'vendor' ? 'vendor' : 'customer') as
           | 'customer'
-          | 'vendor'
-          | 'both';
-      await this.accountsService.createContactSubLedger(
-        orgId,
-        contactType,
-        data.company_name?.trim() || data.name.trim(),
-        Number(data.opening_balance) || 0,
-        data.opening_date,
-      );
+          | 'vendor';
+        await this.accountsService.createContactSubLedger(
+          orgId,
+          contactType,
+          displayName,
+          opening,
+          data.opening_date,
+        );
+      }
     } catch (err) {
       this.logger.warn(
         `Contact ${contact.id} created but sub-ledger auto-creation failed: ${(err as Error).message}`,

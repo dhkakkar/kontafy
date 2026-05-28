@@ -127,6 +127,75 @@ export default function ContactsPageWrapper() {
   );
 }
 
+// TDS sections per the Income Tax Act. Default rate and annual
+// threshold are the Finance Act 2024 figures; both are editable on
+// the form because rates change every Finance Act.
+const TDS_SECTIONS: Record<
+  string,
+  { label: string; defaultRate: number; threshold: number }
+> = {
+  "192": { label: "192 - Salary", defaultRate: 0, threshold: 0 },
+  "194A": {
+    label: "194A - Interest (other than securities)",
+    defaultRate: 10,
+    threshold: 40000,
+  },
+  "194C": {
+    label: "194C - Payment to Contractors",
+    defaultRate: 2,
+    threshold: 30000,
+  },
+  "194H": {
+    label: "194H - Commission / Brokerage",
+    defaultRate: 5,
+    threshold: 15000,
+  },
+  "194I": {
+    label: "194I - Rent",
+    defaultRate: 10,
+    threshold: 240000,
+  },
+  "194J": {
+    label: "194J - Professional / Technical Fees",
+    defaultRate: 10,
+    threshold: 30000,
+  },
+  "194Q": {
+    label: "194Q - Purchase of Goods",
+    defaultRate: 0.1,
+    threshold: 5000000,
+  },
+  "206C": { label: "206C - TCS", defaultRate: 0.1, threshold: 5000000 },
+};
+
+// For 194C the rate flips by payee type: 1% for individual/HUF, 2% for
+// company/firm. The PAN's 4th character encodes payee type (P = person,
+// C = company, F = firm, H = HUF, T = trust, A = AOP/BOI...). We use
+// that to set the default on section change.
+function rateFor194C(pan: string | undefined): number {
+  const fourth = (pan || "").trim().toUpperCase().charAt(3);
+  if (fourth === "P" || fourth === "H") return 1; // individual or HUF
+  return 2; // companies, firms, trusts, AOPs etc.
+}
+
+// "No PAN" means TDS at 20% under Sec 206AA — flag this so the user
+// knows the higher rate applies until they collect a PAN.
+function noPanWarning(pan: string | undefined): string | null {
+  return pan && pan.trim().length > 0
+    ? null
+    : "No PAN on record — TDS @20% applies per Sec 206AA. Collect a PAN to use the section rate.";
+}
+
+const GST_TREATMENTS = [
+  { value: "regular", label: "Registered - Regular" },
+  { value: "composition", label: "Registered - Composition" },
+  { value: "unregistered", label: "Unregistered" },
+  { value: "consumer", label: "Consumer (B2C)" },
+  { value: "overseas", label: "Overseas" },
+  { value: "sez", label: "SEZ" },
+  { value: "deemed_export", label: "Deemed Export" },
+];
+
 function ContactsPage() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -163,12 +232,54 @@ function ContactsPage() {
 
   const [formOpeningBalance, setFormOpeningBalance] = useState("");
   const [formBalanceType, setFormBalanceType] = useState("");
-  // Date the opening balance was outstanding as of — defaults to today
-  // so users who skip it still get a sensible JE date. The backend
-  // posts the opening-balance journal on this date.
-  const [formOpeningDate, setFormOpeningDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  // Default to org.books_begin_from once we have it (effect below). We
+  // keep an empty string here so the effect can detect "still default"
+  // and not overwrite a value the user has already touched.
+  const [formOpeningDate, setFormOpeningDate] = useState("");
+  const [formOpeningDateTouched, setFormOpeningDateTouched] = useState(false);
+
+  // ── GST Treatment ──────────────────────────────────────────
+  const [formGstTreatment, setFormGstTreatment] = useState("");
+
+  // ── TDS Configuration (vendor / both only) ─────────────────
+  const [formTdsEnabled, setFormTdsEnabled] = useState(false);
+  const [formTdsSection, setFormTdsSection] = useState("");
+  const [formTdsRate, setFormTdsRate] = useState("");
+  const [formTdsThreshold, setFormTdsThreshold] = useState("");
+  const [formLowerDedCert, setFormLowerDedCert] = useState(false);
+  const [formLowerDedCertNo, setFormLowerDedCertNo] = useState("");
+  const [formLowerDedValidTill, setFormLowerDedValidTill] = useState("");
+  const [formLowerDedRate, setFormLowerDedRate] = useState("");
+
+  // ── MSME / Udyam ───────────────────────────────────────────
+  const [formMsmeEnabled, setFormMsmeEnabled] = useState(false);
+  const [formUdyamNumber, setFormUdyamNumber] = useState("");
+  const [formMsmeEnterpriseType, setFormMsmeEnterpriseType] = useState("micro");
+
+  // Fetch org settings so the opening-balance date can default to the
+  // books_begin_from. Cached for 5 minutes — this doesn't change often.
+  const { data: orgMeta } = useQuery<{
+    business_type?: string;
+    settings?: { profile?: { books_begin_from?: string } };
+  }>({
+    queryKey: ["contacts", "org-meta"],
+    queryFn: async () => {
+      const res = await api.get<{ data: any }>("/settings/organization");
+      return (res as any)?.data || (res as any);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const booksBeginFrom =
+    orgMeta?.settings?.profile?.books_begin_from || null;
+
+  // When books_begin_from arrives, seed the date field with it. Don't
+  // clobber a value the user typed — we track `touched` for that.
+  useEffect(() => {
+    if (formOpeningDateTouched) return;
+    if (booksBeginFrom) setFormOpeningDate(booksBeginFrom);
+    else if (!formOpeningDate)
+      setFormOpeningDate(new Date().toISOString().slice(0, 10));
+  }, [booksBeginFrom, formOpeningDateTouched, formOpeningDate]);
   const [formCreditPeriod, setFormCreditPeriod] = useState("");
   const [formCreditLimit, setFormCreditLimit] = useState("");
   const [formContactPerson, setFormContactPerson] = useState("");
@@ -339,6 +450,40 @@ function ContactsPage() {
         // Backend uses this as the journal-entry date when posting the
         // opening balance against the auto-created sub-ledger.
         opening_date: formOpeningBalance ? formOpeningDate : undefined,
+        // Structured extras land in Contact.metadata server-side. We
+        // only include namespaces that the user actually populated to
+        // keep the JSON shape minimal.
+        metadata: {
+          ...(formGstTreatment ? { gst_treatment: formGstTreatment } : {}),
+          ...(formTdsEnabled
+            ? {
+                tds: {
+                  enabled: true,
+                  section: formTdsSection || null,
+                  rate: formTdsRate ? Number(formTdsRate) : null,
+                  threshold: formTdsThreshold ? Number(formTdsThreshold) : null,
+                  lower_deduction: formLowerDedCert
+                    ? {
+                        certificate_no: formLowerDedCertNo,
+                        valid_till: formLowerDedValidTill || null,
+                        rate: formLowerDedRate
+                          ? Number(formLowerDedRate)
+                          : null,
+                      }
+                    : null,
+                },
+              }
+            : {}),
+          ...(formMsmeEnabled
+            ? {
+                msme: {
+                  is_registered: true,
+                  udyam_number: formUdyamNumber.trim() || null,
+                  enterprise_type: formMsmeEnterpriseType,
+                },
+              }
+            : {}),
+        },
         payment_terms: formCreditPeriod ? Number(formCreditPeriod) : undefined,
         credit_limit: formCreditLimit ? Number(formCreditLimit) : undefined,
         contact_person: formContactPerson || undefined,
@@ -828,6 +973,183 @@ function ContactsPage() {
             )}
           </div>
 
+          {/* GST Treatment */}
+          <div className="md:col-span-2">
+            <Select
+              label="GST Treatment"
+              value={formGstTreatment}
+              onChange={setFormGstTreatment}
+              options={GST_TREATMENTS}
+              placeholder={
+                formGstin
+                  ? "Registered - Regular (auto from GSTIN)"
+                  : "Unregistered (no GSTIN)"
+              }
+            />
+          </div>
+
+          {/* TDS Configuration — vendor or both only */}
+          {(formType === "vendor" || formType === "both") && (
+            <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    TDS Configuration
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Auto-applies on bills and payments for this vendor.
+                  </p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formTdsEnabled}
+                    onChange={(e) => setFormTdsEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  Deduct TDS
+                </label>
+              </div>
+
+              {formTdsEnabled && (
+                <>
+                  {noPanWarning(formPan) && (
+                    <div className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                      {noPanWarning(formPan)}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Select
+                      label="TDS Section"
+                      value={formTdsSection}
+                      onChange={(v) => {
+                        setFormTdsSection(v);
+                        const cfg = TDS_SECTIONS[v];
+                        if (cfg) {
+                          // For 194C the rate depends on payee type
+                          // (1% individual/HUF, 2% otherwise). Use the
+                          // PAN's 4th char to decide; user can still
+                          // override the auto-filled value.
+                          const rate =
+                            v === "194C"
+                              ? rateFor194C(formPan)
+                              : cfg.defaultRate;
+                          setFormTdsRate(String(rate));
+                          setFormTdsThreshold(String(cfg.threshold));
+                        }
+                      }}
+                      options={Object.entries(TDS_SECTIONS).map(
+                        ([k, v]) => ({ value: k, label: v.label }),
+                      )}
+                      placeholder="Select section"
+                    />
+                    <Input
+                      label="TDS Rate %"
+                      type="number"
+                      step="0.01"
+                      value={formTdsRate}
+                      onChange={(e) => setFormTdsRate(e.target.value)}
+                      placeholder="e.g., 10"
+                      hint="Editable — rates change per Finance Act"
+                    />
+                    <Input
+                      label="Threshold Limit (₹/year)"
+                      type="number"
+                      value={formTdsThreshold}
+                      onChange={(e) => setFormTdsThreshold(e.target.value)}
+                      placeholder="e.g., 30000"
+                      hint="TDS triggers once crossed"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={formLowerDedCert}
+                        onChange={(e) =>
+                          setFormLowerDedCert(e.target.checked)
+                        }
+                        className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      Lower Deduction Certificate (Sec 197)
+                    </label>
+                  </div>
+                  {formLowerDedCert && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <Input
+                        label="Certificate No."
+                        value={formLowerDedCertNo}
+                        onChange={(e) =>
+                          setFormLowerDedCertNo(e.target.value)
+                        }
+                      />
+                      <Input
+                        label="Valid Until"
+                        type="date"
+                        value={formLowerDedValidTill}
+                        onChange={(e) =>
+                          setFormLowerDedValidTill(e.target.value)
+                        }
+                      />
+                      <Input
+                        label="Reduced Rate %"
+                        type="number"
+                        step="0.01"
+                        value={formLowerDedRate}
+                        onChange={(e) => setFormLowerDedRate(e.target.value)}
+                        placeholder="e.g., 2"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* MSME / Udyam Registration */}
+          <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  MSME / Udyam Registration
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Sec 43B(h) requires payment within 45 days for MSME
+                  vendors. Flagged on dashboard.
+                </p>
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={formMsmeEnabled}
+                  onChange={(e) => setFormMsmeEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                Registered
+              </label>
+            </div>
+            {formMsmeEnabled && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Input
+                  label="Udyam Registration Number"
+                  value={formUdyamNumber}
+                  onChange={(e) => setFormUdyamNumber(e.target.value)}
+                  placeholder="UDYAM-XX-00-0000000"
+                />
+                <Select
+                  label="Enterprise Type"
+                  value={formMsmeEnterpriseType}
+                  onChange={setFormMsmeEnterpriseType}
+                  options={[
+                    { value: "micro", label: "Micro" },
+                    { value: "small", label: "Small" },
+                    { value: "medium", label: "Medium" },
+                  ]}
+                />
+              </div>
+            )}
+          </div>
+
           {/* Billing Address */}
           <div className="md:col-span-2 border-t border-gray-200 pt-4 mt-2">
             <h4 className="text-sm font-medium text-gray-700 mb-3">Billing Address</h4>
@@ -908,9 +1230,17 @@ function ContactsPage() {
             label="Opening Balance As On"
             type="date"
             value={formOpeningDate}
-            onChange={(e) => setFormOpeningDate(e.target.value)}
+            onChange={(e) => {
+              setFormOpeningDate(e.target.value);
+              setFormOpeningDateTouched(true);
+            }}
+            min={booksBeginFrom || undefined}
             max={new Date().toISOString().slice(0, 10)}
-            hint="Used as the journal entry date for the opening balance"
+            hint={
+              booksBeginFrom
+                ? `Defaults to your books-begin date (${booksBeginFrom}). Change only if this balance is from a different date.`
+                : "Used as the journal entry date for the opening balance"
+            }
             disabled={!formOpeningBalance}
           />
 

@@ -281,6 +281,11 @@ model Contact {
   credit_limit     Decimal? @db.Decimal(15, 2)
   opening_balance  Decimal  @default(0) @db.Decimal(15, 2)
   notes            String?
+  // Structured extras that don't justify their own columns yet — TDS
+  // config, MSME / Udyam registration, GST treatment override etc.
+  // Indexed by namespace inside the JSON: { tds: {...}, msme: {...},
+  // gst_treatment: "regular", default_account_id: "..." }.
+  metadata         Json     @default("{}")
   is_active        Boolean  @default(true)
   created_at       DateTime @default(now()) @db.Timestamptz
 
