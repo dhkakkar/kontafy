@@ -260,7 +260,18 @@ export default function DataImportPage() {
         );
       }
 
-      const result: ValidationResult = await response.json();
+      // The global ResponseInterceptor wraps payloads as
+      // { success, data, meta }. The real ValidationResult lives at
+      // .data — reading the envelope directly is what was causing
+      // (validationResult.preview?.length ?? 0) to crash with
+      // "Cannot read properties of undefined". Unwrap it; fall back
+      // to the raw body in case some endpoint doesn't go through
+      // the interceptor.
+      const raw = (await response.json()) as
+        | { data?: ValidationResult }
+        | ValidationResult;
+      const result: ValidationResult =
+        (raw as any)?.data ?? (raw as ValidationResult);
       setValidationResult(result);
       setStep("validate");
     } catch (err: any) {
@@ -320,7 +331,18 @@ export default function DataImportPage() {
         );
       }
 
-      const result: ImportResult = await response.json();
+      // Sales/Purchase/etc. import endpoints emit a top-level
+      // { success, total, imported, skipped, errors } object that
+      // the ResponseInterceptor passes through; the
+      // contacts/products/OB endpoints emit the same shape too.
+      // The Tally/Busy ones come wrapped — so unwrap defensively.
+      const raw = (await response.json()) as
+        | { data?: ImportResult }
+        | ImportResult;
+      const result: ImportResult =
+        (raw as any)?.data?.imported !== undefined
+          ? (raw as any).data
+          : (raw as ImportResult);
       setImportResult(result);
       setProgress(100);
       setStep("import");
@@ -604,7 +626,7 @@ export default function DataImportPage() {
           </div>
 
           {/* Data Preview */}
-          {validationResult.preview.length > 0 && (
+          {(validationResult.preview?.length ?? 0) > 0 && (
             <div className="border-b border-gray-200">
               <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
                 <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -651,11 +673,11 @@ export default function DataImportPage() {
           )}
 
           {/* Validation Errors */}
-          {validationResult.errors.length > 0 && (
+          {(validationResult.errors?.length ?? 0) > 0 && (
             <div className="p-4 border-b border-gray-200">
               <h4 className="text-sm font-medium text-red-700 mb-2">
-                {validationResult.errors.length} validation error
-                {validationResult.errors.length !== 1 ? "s" : ""} found:
+                {(validationResult.errors?.length ?? 0)} validation error
+                {(validationResult.errors?.length ?? 0) !== 1 ? "s" : ""} found:
               </h4>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {validationResult.errors.map((err, idx) => (
@@ -681,7 +703,7 @@ export default function DataImportPage() {
             </div>
           )}
 
-          {validationResult.valid && validationResult.errors.length === 0 && (
+          {validationResult.valid && (validationResult.errors?.length ?? 0) === 0 && (
             <div className="p-4 border-b border-gray-200 bg-green-50">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-green-500" />
@@ -788,7 +810,7 @@ export default function DataImportPage() {
               </div>
 
               {/* Errors */}
-              {importResult.errors.length > 0 && (
+              {(importResult.errors?.length ?? 0) > 0 && (
                 <div className="space-y-1.5 max-h-40 overflow-y-auto">
                   {importResult.errors.map((err, idx) => (
                     <div
