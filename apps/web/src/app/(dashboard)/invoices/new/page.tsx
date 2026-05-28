@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { ArrowLeft, Plus, Trash2, Save, Send, Upload, ScanLine, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { stateAbbrFromGstin, addDaysToDate } from "@/lib/gst";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface LineItem {
@@ -109,43 +110,10 @@ function calcTax(amount: number, taxRate: number): number {
   return (amount * taxRate) / 100;
 }
 
-// GSTIN's first 2 chars are the state code. Map them back to the
-// abbreviation used by the INDIAN_STATES dropdown so the customer's
-// state can be auto-resolved from their GSTIN. Kept in sync with the
-// backend's apps/api/src/common/utils/gst.util.ts; if you add codes
-// there, mirror them here.
-const GSTIN_CODE_TO_STATE_ABBR: Record<string, string> = {
-  "01": "JK", "02": "HP", "03": "PB", "04": "CH", "05": "UK",
-  "06": "HR", "07": "DL", "08": "RJ", "09": "UP", "10": "BR",
-  "11": "SK", "12": "AR", "13": "NL", "14": "MN", "15": "MZ",
-  "16": "TR", "17": "ML", "18": "AS", "19": "WB", "20": "JH",
-  "21": "OD", "22": "CT", "23": "MP", "24": "GJ", "25": "DN",
-  "26": "DN", "27": "MH", "28": "AP", "29": "KA", "30": "GA",
-  "31": "LA", "32": "KL", "33": "TN", "34": "PY", "35": "AN",
-  "36": "TG", "37": "AP", "38": "LA",
-};
-
-function stateAbbrFromGstin(gstin?: string | null): string {
-  if (!gstin) return "";
-  const code = gstin.trim().slice(0, 2);
-  return GSTIN_CODE_TO_STATE_ABBR[code] || "";
-}
-
-// Add `days` to a YYYY-MM-DD date string and return the result in the
-// same format. Uses local-time Date arithmetic so a "+30 days" lands
-// on the same calendar day everywhere — UTC math here would drift in
-// IST and produce off-by-one due dates near month boundaries.
-function addDaysToDate(dateStr: string, days: number): string {
-  if (!dateStr) return "";
-  const [y, m, d] = dateStr.split("-").map((s) => parseInt(s, 10));
-  if (!y || !m || !d) return "";
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() + (Number.isFinite(days) ? days : 0));
-  const yy = dt.getFullYear();
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getDate()).padStart(2, "0");
-  return `${yy}-${mm}-${dd}`;
-}
+// GSTIN-→-state, due-date arithmetic and inter-state detection now
+// live in @/lib/gst so Purchase Bills / Credit Notes / Debit Notes
+// share the same definitions instead of each form copy-pasting the
+// state code map.
 
 export default function NewInvoicePageWrapper() {
   return (

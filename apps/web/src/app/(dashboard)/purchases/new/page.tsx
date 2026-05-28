@@ -8,14 +8,27 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
+import {
+  stateAbbrFromGstin,
+  addDaysToDate,
+  partyStateFromContact,
+  isInterStateTransaction,
+  readVendorTds,
+  computeTdsAmount,
+} from "@/lib/gst";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, Save, Send, Upload, ScanLine, X } from "lucide-react";
 
 interface LineItem {
   id: string;
+  productId?: string;
   productName: string;
   description: string;
   hsnCode: string;
+  // Master unit (HR / MON / PRJ / NOS / ...) carried from the
+  // product master so the saved InvoiceItem.unit matches what the
+  // vendor lists on their bill instead of defaulting to "pcs".
+  unit?: string;
   quantity: number;
   rate: number;
   taxRate: number;
@@ -27,6 +40,12 @@ interface Contact {
   name: string;
   gstin?: string;
   type: string;
+  // Payment terms drive the auto due-date calc. Billing address
+  // covers the B2C / no-GSTIN fallback for place-of-supply.
+  // Metadata holds the TDS config the vendor form writes.
+  payment_terms?: number | null;
+  billing_address?: Record<string, any> | null;
+  metadata?: Record<string, any> | null;
 }
 
 interface Product {
@@ -128,20 +147,60 @@ function NewPurchasePage() {
   const [showBarcodeInput, setShowBarcodeInput] = useState(false);
   const [barcodeValue, setBarcodeValue] = useState("");
 
-  // Auto-fill terms & notes from invoice settings
+  // Auto-fill book-keeping flags (mirror of /invoices/new). Once the
+  // user manually edits POS or due date, subsequent vendor / date
+  // changes stop overwriting until they hit "Reset to auto".
+  const [posTouched, setPosTouched] = useState(false);
+  const [dueDateTouched, setDueDateTouched] = useState(false);
+  const [defaultPaymentDays, setDefaultPaymentDays] = useState<number | null>(
+    null,
+  );
+  // TDS captured from the selected vendor's metadata — display only
+  // for now (backend purchase DTO doesn't accept TDS fields yet).
+  const [activeTds, setActiveTds] = useState<{
+    section: string;
+    rate: number;
+  } | null>(null);
+
+  // Org GSTIN — drives the IGST-vs-CGST+SGST split for vendor bills.
+  // Falls back to the address.state on the org profile when no GSTIN
+  // is registered yet (unregistered businesses).
+  const { data: orgMeta } = useQuery<{
+    gstin?: string | null;
+    address?: Record<string, any> | null;
+  }>({
+    queryKey: ["settings", "organization-meta"],
+    queryFn: async () => {
+      const res = await api.get<{ data: any }>("/settings/organization");
+      return (res as any)?.data || (res as any);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const supplierState =
+    stateAbbrFromGstin(orgMeta?.gstin) ||
+    (orgMeta?.address?.state as string | undefined) ||
+    "";
+
+  // Auto-fill terms, notes, and default-payment-terms from invoice
+  // settings. Payment days are read always (drive the due-date
+  // fallback even in edit mode); terms / notes only on new bills.
   useEffect(() => {
-    if (isEditing) return;
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
         const d = res.data;
-        if (d) {
-          if (d.default_terms_conditions) {
-            setTerms(String(d.default_terms_conditions));
-          }
-          if (d.default_notes) {
-            setNotes(String(d.default_notes));
-          }
+        if (!d) return;
+        const n =
+          typeof d.default_payment_terms === "number"
+            ? d.default_payment_terms
+            : Number(d.default_payment_terms);
+        if (Number.isFinite(n) && n > 0) setDefaultPaymentDays(n);
+        if (isEditing) return;
+        if (d.default_terms_conditions) {
+          setTerms(String(d.default_terms_conditions));
+        }
+        if (d.default_notes) {
+          setNotes(String(d.default_notes));
         }
       })
       .catch(() => {});
@@ -165,8 +224,15 @@ function NewPurchasePage() {
     const p = existingPurchase;
     setVendor(p.contact_id || "");
     if (p.date) setInvoiceDate(String(p.date).slice(0, 10));
-    if (p.due_date) setDueDate(String(p.due_date).slice(0, 10));
-    if (p.place_of_supply) setPlaceOfSupply(p.place_of_supply);
+    if (p.due_date) {
+      setDueDate(String(p.due_date).slice(0, 10));
+      // Don't overwrite an audited due date on subsequent edits.
+      setDueDateTouched(true);
+    }
+    if (p.place_of_supply) {
+      setPlaceOfSupply(p.place_of_supply);
+      setPosTouched(true);
+    }
     if (p.vendor_invoice_no) setVendorInvoiceNo(p.vendor_invoice_no);
     if (typeof p.notes === "string") setNotes(p.notes);
     if (typeof p.terms === "string") setTerms(p.terms);
@@ -182,9 +248,11 @@ function NewPurchasePage() {
           const rate = Number(it.rate) || 0;
           return {
             id: it.id || generateId(),
+            productId: it.product_id || undefined,
             productName: it.description || "",
             description: it.description || "",
             hsnCode: it.hsn_code || "",
+            unit: it.unit || undefined,
             quantity: qty,
             rate,
             taxRate,
@@ -196,13 +264,17 @@ function NewPurchasePage() {
     setPrefilled(true);
   }, [isEditing, existingPurchase, prefilled]);
 
-  // Fetch contacts (vendors) from API
+  // Fetch contacts (vendors) — pull payment_terms, billing_address,
+  // and metadata so the form can auto-fill POS, due date, and TDS
+  // without a per-vendor round trip on every selection. Backend's
+  // contacts.findMany returns these by default; we just had to
+  // declare them on the Contact interface.
   const { data: contacts = [] } = useQuery<Contact[]>({
-    queryKey: ["contacts", "vendor"],
+    queryKey: ["contacts", "vendor-for-purchase"],
     queryFn: async () => {
       const res = await api.get<{ data: Contact[] }>("/bill/contacts", {
         type: "vendor",
-        limit: "100",
+        limit: "500",
       });
       return res.data;
     },
@@ -213,6 +285,74 @@ function NewPurchasePage() {
     label: c.name,
     description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
   }));
+
+  // Credit-days fallback chain — vendor's own payment_terms first,
+  // org default next, system fallback 30. Returned along with the
+  // source so the hint can attribute the auto-fill.
+  const resolveCreditDays = (
+    picked?: Pick<Contact, "payment_terms"> | null,
+  ): { days: number; source: "vendor" | "config" | "fallback" } => {
+    const v =
+      picked && typeof picked.payment_terms === "number"
+        ? picked.payment_terms
+        : null;
+    if (v != null && v > 0) return { days: v, source: "vendor" };
+    if (defaultPaymentDays && defaultPaymentDays > 0)
+      return { days: defaultPaymentDays, source: "config" };
+    return { days: 30, source: "fallback" };
+  };
+  const [creditDaysSource, setCreditDaysSource] = useState<
+    "vendor" | "config" | "fallback" | null
+  >(null);
+
+  const handleVendorChange = (contactId: string) => {
+    setVendor(contactId);
+    const picked = contacts.find((c) => c.id === contactId);
+    if (!picked) {
+      setActiveTds(null);
+      return;
+    }
+
+    // Place of Supply — vendor's state (GSTIN-derived; billing
+    // address fallback for unregistered vendors). We skip if the
+    // user has already overridden POS.
+    if (!posTouched) {
+      const derived = partyStateFromContact(picked);
+      if (derived) setPlaceOfSupply(derived);
+    }
+
+    // Due Date — bill date + vendor's payment_terms. A new vendor
+    // pick resets the touched flag (the new vendor may have very
+    // different terms than the previous).
+    const { days, source } = resolveCreditDays(picked);
+    setCreditDaysSource(source);
+    setDueDateTouched(false);
+    if (invoiceDate) {
+      setDueDate(addDaysToDate(invoiceDate, days));
+    }
+
+    // TDS — pull from vendor metadata (set on the vendor form). The
+    // backend doesn't persist per-bill TDS yet, so this is display-
+    // only and informs the "net payable" line. Lower-deduction
+    // certificate is honoured inside readVendorTds.
+    setActiveTds(readVendorTds(picked.metadata || null));
+  };
+
+  // Recompute due date when invoice date changes and the user hasn't
+  // overridden it.
+  useEffect(() => {
+    if (dueDateTouched) return;
+    if (!invoiceDate) return;
+    const picked = contacts.find((c) => c.id === vendor);
+    if (!picked) return;
+    const { days, source } = resolveCreditDays(picked);
+    setCreditDaysSource(source);
+    setDueDate(addDaysToDate(invoiceDate, days));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceDate, vendor, defaultPaymentDays]);
+
+  // Inter-state detection — vendor state vs supplier (org) state.
+  const isInterState = isInterStateTransaction(placeOfSupply, supplierState);
 
   // Fetch products from API
   const { data: products = [] } = useQuery<Product[]>({
@@ -242,8 +382,9 @@ function NewPurchasePage() {
       const newId = generateId();
       const rate = product.selling_price || 0;
       setItems([...items, {
-        id: newId, productName: product.name,
+        id: newId, productId: product.id, productName: product.name,
         description: "", hsnCode: product.hsn_code || "",
+        unit: product.unit || undefined,
         quantity: 1, rate, taxRate: product.tax_rate || 18,
         amount: calcAmount(1, rate),
       }]);
@@ -262,17 +403,24 @@ function NewPurchasePage() {
         date: invoiceDate,
         due_date: dueDate || undefined,
         place_of_supply: placeOfSupply || undefined,
+        is_igst: isInterState,
         vendor_invoice_no: vendorInvoiceNo || undefined,
         notes: notes || undefined,
         terms: terms || undefined,
         is_posted: status === "approved",
         items: items.map((item) => ({
+          product_id: item.productId || undefined,
           description: item.productName || item.description,
           hsn_code: item.hsnCode || undefined,
+          unit: item.unit || undefined,
           quantity: item.quantity,
           rate: item.rate,
-          cgst_rate: halfRate(item.taxRate),
-          sgst_rate: halfRate(item.taxRate),
+          // Inter-state: full rate goes on IGST. Intra-state:
+          // standard half-and-half. Backend re-validates against
+          // org GSTIN before storing.
+          cgst_rate: isInterState ? 0 : halfRate(item.taxRate),
+          sgst_rate: isInterState ? 0 : halfRate(item.taxRate),
+          igst_rate: isInterState ? item.taxRate : 0,
         })),
       };
 
@@ -373,6 +521,17 @@ function NewPurchasePage() {
   );
   const grandTotal = subtotal + totalTax - additionalDiscount + additionalCharges;
 
+  // TDS deducts from the *taxable* value (subtotal minus
+  // additionalDiscount that applied at the bill level). GST is
+  // explicitly excluded from the TDS base per CBDT Circular 23/2017
+  // — this is the bit that catches teams out, so we compute it
+  // here instead of letting the form sum taxable + GST.
+  const tdsBase = Math.max(0, subtotal - additionalDiscount);
+  const tdsAmount = activeTds
+    ? computeTdsAmount(tdsBase, activeTds.rate)
+    : 0;
+  const netPayable = Math.round((grandTotal - tdsAmount) * 100) / 100;
+
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Header */}
@@ -430,7 +589,7 @@ function NewPurchasePage() {
             label="Vendor"
             options={vendorOptions}
             value={vendor}
-            onChange={setVendor}
+            onChange={handleVendorChange}
             searchable
             placeholder="Select a vendor"
           />
@@ -440,27 +599,91 @@ function NewPurchasePage() {
             onChange={(e) => setVendorInvoiceNo(e.target.value)}
             placeholder="Vendor's invoice/bill number"
           />
-          <Select
-            label="Place of Supply"
-            options={INDIAN_STATES}
-            value={placeOfSupply}
-            onChange={setPlaceOfSupply}
-            searchable
-            placeholder="Select state"
-          />
+          <div>
+            <Select
+              label="Place of Supply"
+              options={INDIAN_STATES}
+              value={placeOfSupply}
+              onChange={(v) => {
+                setPlaceOfSupply(v);
+                setPosTouched(true);
+              }}
+              searchable
+              placeholder="Select state"
+            />
+            {placeOfSupply && supplierState && (
+              <p
+                className={`mt-1 text-xs font-medium ${
+                  isInterState ? "text-primary-700" : "text-success-700"
+                }`}
+              >
+                {isInterState
+                  ? `Inter-State — IGST input credit (you: ${supplierState})`
+                  : `Intra-State — CGST + SGST input credit (you: ${supplierState})`}
+              </p>
+            )}
+            {!supplierState && (
+              <p className="mt-1 text-xs text-warning-700">
+                Set the org GSTIN in Settings → Tax for correct IGST detection.
+              </p>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Bill Date"
               type="date"
               value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
+              onChange={(e) => {
+                setInvoiceDate(e.target.value);
+                // Bill date change is a documented recompute trigger
+                // — unstick the touched flag so the due date follows.
+                setDueDateTouched(false);
+              }}
             />
-            <Input
-              label="Due Date"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
+            <div>
+              <Input
+                label="Due Date"
+                type="date"
+                value={dueDate}
+                min={invoiceDate || undefined}
+                onChange={(e) => {
+                  setDueDate(e.target.value);
+                  setDueDateTouched(true);
+                }}
+                error={
+                  dueDate && invoiceDate && dueDate < invoiceDate
+                    ? "Due date can't be before the bill date"
+                    : undefined
+                }
+                hint={
+                  dueDate &&
+                  invoiceDate &&
+                  dueDate >= invoiceDate &&
+                  !dueDateTouched
+                    ? `Auto: Net ${Math.round(
+                        (new Date(dueDate).getTime() -
+                          new Date(invoiceDate).getTime()) /
+                          86_400_000,
+                      )}${
+                        creditDaysSource === "vendor"
+                          ? " (from vendor terms)"
+                          : creditDaysSource === "config"
+                            ? " (from invoice config default)"
+                            : " (system default)"
+                      }`
+                    : undefined
+                }
+              />
+              {dueDateTouched && (
+                <button
+                  type="button"
+                  onClick={() => setDueDateTouched(false)}
+                  className="mt-1 text-xs text-primary-700 hover:underline"
+                >
+                  Reset to auto
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </Card>
@@ -683,7 +906,9 @@ function NewPurchasePage() {
                     className="flex items-center justify-between text-sm"
                   >
                     <span className="text-gray-500">
-                      CGST @{tax.rate / 2}% + SGST @{tax.rate / 2}%
+                      {isInterState
+                        ? `IGST @${tax.rate}% (input credit)`
+                        : `CGST @${tax.rate / 2}% + SGST @${tax.rate / 2}% (input credit)`}
                     </span>
                     <span className="text-gray-700">
                       {formatCurrency(tax.tax)}
@@ -723,12 +948,41 @@ function NewPurchasePage() {
 
             <div className="border-t border-gray-200 pt-3 flex items-center justify-between">
               <span className="text-base font-semibold text-gray-900">
-                Total
+                Bill Total
               </span>
               <span className="text-xl font-bold text-primary-800">
                 {formatCurrency(grandTotal)}
               </span>
             </div>
+
+            {/* TDS — deducted on the taxable value (GST excluded per
+                CBDT Circular 23/2017). Shows only when the selected
+                vendor has TDS configured in their master metadata.
+                Display-only for now; backend purchase DTO doesn't
+                accept TDS fields yet. */}
+            {activeTds && tdsAmount > 0 && (
+              <>
+                <div className="flex items-center justify-between text-sm pt-2">
+                  <span className="text-gray-500">
+                    Less: TDS{activeTds.section ? ` (${activeTds.section})` : ''} @ {activeTds.rate}%
+                    <span className="block text-[10px] text-gray-400 leading-tight">
+                      on taxable {formatCurrency(tdsBase)} (GST excluded)
+                    </span>
+                  </span>
+                  <span className="text-danger-600 font-medium">
+                    - {formatCurrency(tdsAmount)}
+                  </span>
+                </div>
+                <div className="border-t border-gray-200 pt-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-900">
+                    Net Payable to Vendor
+                  </span>
+                  <span className="text-lg font-bold text-success-700">
+                    {formatCurrency(netPayable)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </Card>
       </div>
