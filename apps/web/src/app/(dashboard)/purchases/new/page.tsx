@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, Save, Send, Upload, ScanLine, X } from "lucide-react";
 
 interface LineItem {
@@ -107,6 +107,7 @@ export default function NewPurchasePageWrapper() {
 
 function NewPurchasePage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit") || null;
   const isEditing = !!editId;
@@ -290,7 +291,16 @@ function NewPurchasePage() {
       );
       return { id: (res as any)?.data?.id || (res as any)?.id };
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      // A bill against a vendor also moves Sundry Creditors and (for
+      // posted bills) the COA / Trial Balance, so invalidate the
+      // related caches alongside the purchase list itself.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["purchases"] }),
+        queryClient.invalidateQueries({ queryKey: ["purchase", result?.id] }),
+        queryClient.invalidateQueries({ queryKey: ["contacts"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
       if (isEditing && result?.id) {
         router.push(`/purchases/${result.id}`);
       } else {

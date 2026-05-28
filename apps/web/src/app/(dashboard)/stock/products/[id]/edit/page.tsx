@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +63,7 @@ function toStr(v: unknown): string {
 export default function EditProductPage() {
   const params = useParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const productId = params.id as string;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -140,6 +141,13 @@ export default function EditProductPage() {
         is_active: form.is_active,
       });
 
+      // Invalidate both the list view and the single-product cache so
+      // the detail page also shows the edited fields without a hard
+      // refresh.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["products"] }),
+        queryClient.invalidateQueries({ queryKey: ["product", productId] }),
+      ]);
       router.push(`/stock/products/${productId}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to update product";

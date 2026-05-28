@@ -278,8 +278,17 @@ function NewCreditNotePage() {
       );
       return { id: (res as any)?.data?.id || (res as any)?.id };
     },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["credit-notes"] });
+    onSuccess: async (result) => {
+      // Credit notes touch the customer's outstanding, the parent
+      // invoice's balance_due, and dashboard counters. Invalidate
+      // them together so the user doesn't see stale receivable
+      // numbers after issuing a credit.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["credit-notes"] }),
+        queryClient.invalidateQueries({ queryKey: ["invoices"] }),
+        queryClient.invalidateQueries({ queryKey: ["contacts"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
       if (isEditing && result?.id) {
         router.push(`/credit-notes/${result.id}`);
       } else {

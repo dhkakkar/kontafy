@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
 import { api } from "@/lib/api";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface JournalLine {
   id: string;
@@ -33,6 +33,7 @@ function generateLineId() {
 
 export default function NewJournalEntryPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [narration, setNarration] = useState("");
   const [lines, setLines] = useState<JournalLine[]>([
@@ -71,7 +72,17 @@ export default function NewJournalEntryPage() {
           })),
       });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Invalidate the journal list so the new entry appears, plus the
+      // accounts tree because a posted journal moves balances on the
+      // affected ledgers — without this the COA / Trial Balance show
+      // stale opening + closing figures until a hard refresh.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["journal-entries"] }),
+        queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["accounts-tree"] }),
+        queryClient.invalidateQueries({ queryKey: ["accounts-flat"] }),
+      ]);
       router.push("/books/journal");
     },
   });

@@ -236,6 +236,11 @@ export default function NewProductPage() {
         reorder_level: form.reorder_level ? Number(form.reorder_level) : undefined,
       });
 
+      // Bust the list-page cache so the newly created product appears
+      // when the user lands on /stock/products. Without this, TanStack
+      // serves the cached list and the new product is invisible until
+      // a hard refresh. Same `products` key is shared by tab counts.
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
       router.push("/stock/products");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create product";

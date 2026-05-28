@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { ArrowLeft, Plus, Trash2, Save, Send, Upload, ScanLine, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface LineItem {
   id: string;
@@ -109,6 +109,7 @@ export default function NewInvoicePageWrapper() {
 
 function NewInvoicePage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit") || null;
   const isEditing = !!editId;
@@ -301,7 +302,19 @@ function NewInvoicePage() {
       }
       return { id: invoiceId };
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      // Bust the invoice list cache so the new row shows immediately,
+      // plus the single-invoice cache for edits so the detail page
+      // reflects the saved changes. Sending an invoice also touches
+      // dashboard counters and contact outstanding — invalidate those
+      // generously so the home dashboard and the contact's ledger
+      // don't lag behind.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["invoices"] }),
+        queryClient.invalidateQueries({ queryKey: ["invoice", result?.id] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["contacts"] }),
+      ]);
       if (isEditing && result?.id) {
         router.push(`/invoices/${result.id}`);
       } else {
