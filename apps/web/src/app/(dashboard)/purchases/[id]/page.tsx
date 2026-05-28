@@ -15,7 +15,11 @@ import {
   Printer,
   Loader2,
   FileText,
+  Pencil,
 } from "lucide-react";
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 interface ApiResponse<T> {
   data: T;
@@ -55,6 +59,9 @@ interface Purchase {
   status: string;
   date: string;
   due_date: string | null;
+  place_of_supply: string | null;
+  is_igst: boolean;
+  vendor_invoice_number: string | null;
   subtotal: number;
   discount_amount: number;
   tax_amount: number;
@@ -133,6 +140,31 @@ export default function PurchaseDetailPage() {
 
   const handlePrint = () => window.print();
 
+  const [pdfLoading, setPdfLoading] = React.useState(false);
+  const handleDownloadPdf = async () => {
+    if (!purchase || pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      // Open the direct-download endpoint in a new tab so the browser
+      // handles the Content-Disposition save dialog. Mirrors the
+      // sales-invoice flow exactly — same PdfService methods on the
+      // backend, just a different controller route.
+      window.open(
+        `${API_BASE}/bill/purchases/${purchase.id}/pdf/download`,
+        "_blank",
+      );
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  // Editing is meaningful for draft / not-yet-posted bills. Once a
+  // bill is paid or partially paid we still allow edit (with a
+  // backend-enforced restriction list), but flag it visually.
+  const isEditable = !["paid", "cancelled"].includes(
+    purchase?.status || "",
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -201,6 +233,17 @@ export default function PurchaseDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {isEditable && (
+            <Link href={`/purchases/new?edit=${purchase.id}`}>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<Pencil className="h-4 w-4" />}
+              >
+                Edit
+              </Button>
+            </Link>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -212,10 +255,19 @@ export default function PurchaseDetailPage() {
           <Button
             variant="outline"
             size="sm"
+            icon={<FileText className="h-4 w-4" />}
+            onClick={handleDownloadPdf}
+            loading={pdfLoading}
+          >
+            Download PDF
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             icon={<Download className="h-4 w-4" />}
             onClick={handleExport}
           >
-            Export
+            Export CSV
           </Button>
         </div>
       </div>
@@ -281,6 +333,30 @@ export default function PurchaseDetailPage() {
               <span className="text-gray-500">Status</span>
               <Badge variant={status.variant}>{status.label}</Badge>
             </div>
+            {purchase.place_of_supply && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Place of Supply</span>
+                <span className="font-medium text-gray-900">
+                  {purchase.place_of_supply}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Supply Type</span>
+              <Badge variant={purchase.is_igst ? "info" : "success"}>
+                {purchase.is_igst
+                  ? "Inter-State (IGST input credit)"
+                  : "Intra-State (CGST + SGST input credit)"}
+              </Badge>
+            </div>
+            {purchase.vendor_invoice_number && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Vendor Inv. No.</span>
+                <span className="font-medium text-gray-900">
+                  {purchase.vendor_invoice_number}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Paid</span>
               <span className="font-medium text-gray-900">
@@ -330,14 +406,19 @@ export default function PurchaseDetailPage() {
             </thead>
             <tbody>
               {items.map((item) => {
-                const taxAmount =
-                  toNum(item.cgst_amount) +
-                  toNum(item.sgst_amount) +
-                  toNum(item.igst_amount);
-                const taxRate =
-                  toNum(item.cgst_rate) +
-                  toNum(item.sgst_rate) +
-                  toNum(item.igst_rate);
+                const igstAmt = toNum(item.igst_amount);
+                const igstRate = toNum(item.igst_rate);
+                const cgstAmt = toNum(item.cgst_amount);
+                const cgstRate = toNum(item.cgst_rate);
+                const sgstAmt = toNum(item.sgst_amount);
+                const sgstRate = toNum(item.sgst_rate);
+                // Mirror /invoices/[id]: per-line tax cell shows the
+                // bucket that's actually populated. Some legacy rows
+                // may have both filled — the order checks IGST first
+                // because inter-state items zero out CGST/SGST on
+                // create, and falling through to CGST+SGST keeps
+                // pre-fix rows rendering.
+                const isLineIgst = igstAmt > 0 || igstRate > 0;
                 return (
                   <tr
                     key={item.id}
@@ -361,11 +442,20 @@ export default function PurchaseDetailPage() {
                         : "-"}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-700">
-                      <div>{formatCurrency(taxAmount)}</div>
-                      {taxRate > 0 && (
-                        <div className="text-xs text-gray-400">
-                          @{taxRate}%
-                        </div>
+                      {isLineIgst ? (
+                        <>
+                          <div>{formatCurrency(igstAmt)}</div>
+                          <div className="text-xs text-gray-400">
+                            IGST @{igstRate}%
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>{formatCurrency(cgstAmt + sgstAmt)}</div>
+                          <div className="text-xs text-gray-400">
+                            CGST @{cgstRate}% + SGST @{sgstRate}%
+                          </div>
+                        </>
                       )}
                     </td>
                     <td className="py-3 px-4 text-right font-medium text-gray-900">
@@ -395,16 +485,65 @@ export default function PurchaseDetailPage() {
                   </span>
                 </div>
               )}
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Tax</span>
-                <span className="text-gray-900">
-                  {formatCurrency(toNum(purchase.tax_amount))}
-                </span>
-              </div>
+              {(() => {
+                // Aggregate per-bucket totals from items so the
+                // summary shows what's actually on the bill rather
+                // than the legacy "Tax" lumpsum. Inter-state bills
+                // collapse to a single IGST line; intra-state shows
+                // CGST + SGST as two lines.
+                const cgst = items.reduce((s, it) => s + toNum(it.cgst_amount), 0);
+                const sgst = items.reduce((s, it) => s + toNum(it.sgst_amount), 0);
+                const igst = items.reduce((s, it) => s + toNum(it.igst_amount), 0);
+                if (igst > 0) {
+                  return (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">
+                        IGST (input credit)
+                      </span>
+                      <span className="text-gray-900">
+                        {formatCurrency(igst)}
+                      </span>
+                    </div>
+                  );
+                }
+                if (cgst > 0 || sgst > 0) {
+                  return (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">CGST (input credit)</span>
+                        <span className="text-gray-900">
+                          {formatCurrency(cgst)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">SGST (input credit)</span>
+                        <span className="text-gray-900">
+                          {formatCurrency(sgst)}
+                        </span>
+                      </div>
+                    </>
+                  );
+                }
+                return null;
+              })()}
               <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2">
-                <span className="text-gray-900">Total</span>
+                <span className="text-gray-900">Bill Total</span>
                 <span className="text-gray-900 text-base">
                   {formatCurrency(toNum(purchase.total))}
+                </span>
+              </div>
+              {toNum(purchase.amount_paid) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Amount Paid</span>
+                  <span className="text-success-700">
+                    -{formatCurrency(toNum(purchase.amount_paid))}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm font-semibold pt-1">
+                <span className="text-gray-900">Balance Due</span>
+                <span className="text-primary-800 text-base">
+                  {formatCurrency(toNum(purchase.balance_due))}
                 </span>
               </div>
             </div>

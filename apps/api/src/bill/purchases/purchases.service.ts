@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeLineItemGst } from '../../common/utils/gst.util';
+import { formatFyShort, getFyBounds } from '../../common/utils/fy.util';
 import { CreatePurchaseDto, UpdatePurchaseDto } from '../dto/purchases.dto';
 
 @Injectable()
@@ -119,7 +120,10 @@ export class PurchasesService {
     const isIgst = data.is_igst || false;
 
     // Generate purchase invoice number
-    const invoiceNumber = await this.generatePurchaseNumber(orgId);
+    const invoiceNumber = await this.generatePurchaseNumber(
+      orgId,
+      data.date ? new Date(data.date) : new Date(),
+    );
 
     // Compute totals
     let subtotal = 0;
@@ -336,18 +340,17 @@ export class PurchasesService {
   }
 
   /**
-   * Generate purchase invoice number.
+   * Generate purchase invoice number. FY is derived from the bill's
+   * own date so a back-dated bill (e.g. 30-Apr-2025 entered today
+   * in 2026) lands in FY 25-26, not 26-27. Uses the shared
+   * fy.util helpers — same source as the sales-invoice generator.
    */
-  private async generatePurchaseNumber(orgId: string): Promise<string> {
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    const fyStart = month >= 4 ? year : year - 1;
-    const fyEnd = fyStart + 1;
-    const fyString = `${String(fyStart).slice(2)}-${String(fyEnd).slice(2)}`;
-
-    const fyStartDate = new Date(`${fyStart}-04-01`);
-    const fyEndDate = new Date(`${fyEnd}-03-31`);
+  private async generatePurchaseNumber(
+    orgId: string,
+    billDate: Date,
+  ): Promise<string> {
+    const fyString = formatFyShort(billDate);
+    const { fyStartDate, fyEndDate } = getFyBounds(billDate);
 
     const count = await this.prisma.invoice.count({
       where: {
