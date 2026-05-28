@@ -99,6 +99,28 @@ function calcTax(amount: number, taxRate: number): number {
   return (amount * taxRate) / 100;
 }
 
+// GSTIN's first 2 chars are the state code. Map them back to the
+// abbreviation used by the INDIAN_STATES dropdown so the customer's
+// state can be auto-resolved from their GSTIN. Kept in sync with the
+// backend's apps/api/src/common/utils/gst.util.ts; if you add codes
+// there, mirror them here.
+const GSTIN_CODE_TO_STATE_ABBR: Record<string, string> = {
+  "01": "JK", "02": "HP", "03": "PB", "04": "CH", "05": "UK",
+  "06": "HR", "07": "DL", "08": "RJ", "09": "UP", "10": "BR",
+  "11": "SK", "12": "AR", "13": "NL", "14": "MN", "15": "MZ",
+  "16": "TR", "17": "ML", "18": "AS", "19": "WB", "20": "JH",
+  "21": "OD", "22": "CT", "23": "MP", "24": "GJ", "25": "DN",
+  "26": "DN", "27": "MH", "28": "AP", "29": "KA", "30": "GA",
+  "31": "LA", "32": "KL", "33": "TN", "34": "PY", "35": "AN",
+  "36": "TG", "37": "AP", "38": "LA",
+};
+
+function stateAbbrFromGstin(gstin?: string | null): string {
+  if (!gstin) return "";
+  const code = gstin.trim().slice(0, 2);
+  return GSTIN_CODE_TO_STATE_ABBR[code] || "";
+}
+
 export default function NewInvoicePageWrapper() {
   return (
     <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
@@ -120,6 +142,11 @@ function NewInvoicePage() {
   );
   const [dueDate, setDueDate] = useState("");
   const [placeOfSupply, setPlaceOfSupply] = useState("");
+  // Once the user has touched POS (either manually picked a value or
+  // we hydrated one from an existing invoice on edit), we stop
+  // auto-overwriting on customer change. Declared up here because the
+  // prefill useEffect below references setPosTouched.
+  const [posTouched, setPosTouched] = useState(false);
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
   const [additionalDiscount, setAdditionalDiscount] = useState(0);
@@ -168,7 +195,13 @@ function NewInvoicePage() {
     setCustomer(inv.contact_id || "");
     if (inv.date) setInvoiceDate(String(inv.date).slice(0, 10));
     if (inv.due_date) setDueDate(String(inv.due_date).slice(0, 10));
-    if (inv.place_of_supply) setPlaceOfSupply(inv.place_of_supply);
+    if (inv.place_of_supply) {
+      setPlaceOfSupply(inv.place_of_supply);
+      // Treat any saved POS as user-confirmed so swapping customers
+      // mid-edit doesn't silently overwrite the value GSTR-1 was
+      // computed against.
+      setPosTouched(true);
+    }
     if (typeof inv.notes === "string") setNotes(inv.notes);
     if (typeof inv.terms === "string") setTerms(inv.terms);
     if (inv.discount_amount) setAdditionalDiscount(Number(inv.discount_amount));
@@ -218,17 +251,44 @@ function NewInvoicePage() {
     },
   ]);
 
-  // Fetch contacts (customers) from API
-  const { data: contacts = [] } = useQuery<Contact[]>({
-    queryKey: ["contacts", "customer"],
+  // Fetch contacts (customers) from API. We pull GSTIN and
+  // billing_address so the place-of-supply can auto-resolve when a
+  // customer is picked. GSTIN takes precedence; for B2C / unregistered
+  // we fall back to billing_address.state.
+  const { data: contacts = [] } = useQuery<
+    Array<Contact & { billing_address?: Record<string, any> }>
+  >({
+    queryKey: ["contacts", "customer-for-invoice"],
     queryFn: async () => {
-      const res = await api.get<{ data: Contact[] }>("/bill/contacts", {
+      const res = await api.get<{
+        data: Array<Contact & { billing_address?: Record<string, any> }>;
+      }>("/bill/contacts", {
         type: "customer",
         limit: "100",
       });
       return res.data;
     },
   });
+
+  // Supplier (org) state — derived from the org's GSTIN so a single
+  // source of truth feeds the inter-state check. Falls back to the
+  // legacy hardcoded "MH" only if no GSTIN is registered, which the
+  // org-profile setup wizard makes mandatory anyway.
+  const { data: orgMeta } = useQuery<{
+    gstin?: string | null;
+    address?: Record<string, any>;
+  }>({
+    queryKey: ["settings", "organization-meta"],
+    queryFn: async () => {
+      const res = await api.get<{ data: any }>("/settings/organization");
+      return (res as any)?.data || (res as any);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const supplierState =
+    stateAbbrFromGstin(orgMeta?.gstin) ||
+    (orgMeta?.address?.state as string | undefined) ||
+    "";
 
   // Fetch products from API
   const { data: products = [] } = useQuery<Product[]>({
@@ -247,16 +307,44 @@ function NewInvoicePage() {
     description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
   }));
 
+  const handleCustomerChange = (contactId: string) => {
+    setCustomer(contactId);
+    if (posTouched) return;
+    const picked = contacts.find((c) => c.id === contactId);
+    if (!picked) return;
+    // Prefer GSTIN-derived state — that's the registered address GSTN
+    // recognises. For unregistered / consumer contacts fall back to
+    // billing_address.state. Either source already uses the same
+    // 2-letter abbreviation INDIAN_STATES expects.
+    const derived =
+      stateAbbrFromGstin(picked.gstin) ||
+      (picked.billing_address?.state as string | undefined) ||
+      "";
+    if (derived) setPlaceOfSupply(derived);
+  };
+
+  // Inter-state when the place of supply is in a different state than
+  // the supplier. Empty POS or empty supplier defaults to intra-state
+  // (CGST+SGST) — the safer default that matches the historical
+  // behaviour for users who haven't picked a customer yet.
+  const isInterState =
+    !!placeOfSupply && !!supplierState && placeOfSupply !== supplierState;
+
   // Create-or-update invoice mutation.
   const createInvoice = useMutation({
     mutationFn: async (status: "draft" | "sent") => {
       const halfRate = (rate: number) => rate / 2;
+      // Tell the backend explicitly whether this invoice is
+      // inter-state. The backend also runs its own GSTIN-vs-POS
+      // check, but passing is_igst lets us be authoritative from the
+      // UI (which the user can override via the POS dropdown).
       const payload: Record<string, unknown> = {
         type: "sale",
         contact_id: customer,
         date: invoiceDate,
         due_date: dueDate || undefined,
         place_of_supply: placeOfSupply || undefined,
+        is_igst: isInterState,
         notes: notes || undefined,
         terms: terms || undefined,
         signature_url: signaturePreview || null,
@@ -269,8 +357,12 @@ function NewInvoicePage() {
             quantity: item.quantity,
             rate: item.rate,
             discount_pct: item.discount || undefined,
-            cgst_rate: halfRate(item.taxRate),
-            sgst_rate: halfRate(item.taxRate),
+            // Inter-state: full rate goes on IGST, zero CGST/SGST.
+            // Intra-state: standard half-and-half split. Both forms
+            // sum to the same line tax — the backend re-validates.
+            cgst_rate: isInterState ? 0 : halfRate(item.taxRate),
+            sgst_rate: isInterState ? 0 : halfRate(item.taxRate),
+            igst_rate: isInterState ? item.taxRate : 0,
           })),
       };
 
@@ -485,18 +577,39 @@ function NewInvoicePage() {
             label="Customer"
             options={customerOptions}
             value={customer}
-            onChange={setCustomer}
+            onChange={handleCustomerChange}
             searchable
             placeholder="Select a customer"
           />
-          <Select
-            label="Place of Supply"
-            options={INDIAN_STATES}
-            value={placeOfSupply}
-            onChange={setPlaceOfSupply}
-            searchable
-            placeholder="Select state"
-          />
+          <div>
+            <Select
+              label="Place of Supply"
+              options={INDIAN_STATES}
+              value={placeOfSupply}
+              onChange={(v) => {
+                setPlaceOfSupply(v);
+                setPosTouched(true);
+              }}
+              searchable
+              placeholder="Select state"
+            />
+            {placeOfSupply && supplierState && (
+              <p
+                className={`mt-1 text-xs font-medium ${
+                  isInterState ? "text-primary-700" : "text-success-700"
+                }`}
+              >
+                {isInterState
+                  ? `Inter-State — IGST applies (supplier: ${supplierState})`
+                  : `Intra-State — CGST + SGST applies (supplier: ${supplierState})`}
+              </p>
+            )}
+            {!supplierState && (
+              <p className="mt-1 text-xs text-warning-700">
+                Set the org GSTIN in Settings → Tax to enable correct IGST/CGST detection.
+              </p>
+            )}
+          </div>
           <Input
             label="Invoice Date"
             type="date"
@@ -773,7 +886,9 @@ function NewInvoicePage() {
                     className="flex items-center justify-between text-sm"
                   >
                     <span className="text-gray-500">
-                      CGST @{tax.rate / 2}% + SGST @{tax.rate / 2}%
+                      {isInterState
+                        ? `IGST @${tax.rate}%`
+                        : `CGST @${tax.rate / 2}% + SGST @${tax.rate / 2}%`}
                     </span>
                     <span className="text-gray-700">
                       {formatCurrency(tax.tax)}
