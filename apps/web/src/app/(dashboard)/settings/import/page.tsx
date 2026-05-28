@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect, Suspense } from "react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -106,30 +105,23 @@ const VALID_ENTITY_TYPES = new Set<EntityType>([
   "purchase_bills",
 ]);
 
-export default function DataImportPageWrapper() {
-  // useSearchParams must be inside a Suspense boundary in Next.js
-  // App Router — without it the page de-opts the whole tree to
-  // client-side rendering.
-  return (
-    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
-      <DataImportPage />
-    </Suspense>
-  );
+// Read the ?type= URL param on the client without pulling in
+// useSearchParams (which would force a Suspense boundary and broke
+// the page when combined with router.replace inside a useEffect).
+function readTypeFromUrl(): EntityType {
+  if (typeof window === "undefined") return "contacts";
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get("type") as EntityType | null;
+    return t && VALID_ENTITY_TYPES.has(t) ? t : "contacts";
+  } catch {
+    return "contacts";
+  }
 }
 
-function DataImportPage() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  // Initialise from the URL so a deep-link like ?type=sales_invoices
-  // lands on the right step. Falls back to contacts when missing or
-  // not in the allowlist.
-  const initialType = (() => {
-    const t = searchParams.get("type") as EntityType | null;
-    return t && VALID_ENTITY_TYPES.has(t) ? t : "contacts";
-  })();
+export default function DataImportPage() {
   const [step, setStep] = useState<ImportStep>("upload");
-  const [entityType, setEntityType] = useState<EntityType>(initialType);
+  const [entityType, setEntityType] = useState<EntityType>(() => readTypeFromUrl());
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [validationResult, setValidationResult] =
@@ -141,29 +133,39 @@ function DataImportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
-  // Keep the URL ?type= in sync with the dropdown. router.replace
-  // (not push) so back-button doesn't accumulate a history entry per
-  // dropdown change. Reads the existing param first to avoid a
-  // redundant replace when the URL already matches.
+  // Keep the URL ?type= in sync with the dropdown using the native
+  // History API — bypassing Next.js's router avoids the Suspense
+  // boundary requirement that comes with useSearchParams + the
+  // re-suspend that crashes the page when router.replace fires
+  // inside a useEffect on this route. window.history.replaceState
+  // updates the address bar without triggering a route navigation,
+  // so React state (uploaded file, progress, validation result) is
+  // preserved across dropdown changes.
   useEffect(() => {
-    const current = searchParams.get("type");
-    if (current === entityType) return;
-    const next = new URLSearchParams(searchParams.toString());
-    next.set("type", entityType);
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("type") === entityType) return;
+      params.set("type", entityType);
+      const newUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+      window.history.replaceState(null, "", newUrl);
+    } catch {
+      // History API failures are rare; ignore.
+    }
   }, [entityType]);
 
-  // Reverse direction: if the URL is changed externally (back/
-  // forward, deep link from another tab), reflect that in the
-  // dropdown. Only fires when the URL's type is valid and differs.
+  // Back/forward navigation: reflect the URL's type in the dropdown.
+  // popstate is the native event for browser navigation; that's
+  // sufficient since we're not using Next.js router for this URL.
   useEffect(() => {
-    const t = searchParams.get("type") as EntityType | null;
-    if (t && VALID_ENTITY_TYPES.has(t) && t !== entityType) {
-      setEntityType(t);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+    if (typeof window === "undefined") return;
+    const onPopState = () => {
+      const next = readTypeFromUrl();
+      setEntityType((prev) => (prev === next ? prev : next));
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   // Match the shape the global api client uses. The bearer token
   // lives in the `kontafy-access` cookie set by lib/auth/client.ts
