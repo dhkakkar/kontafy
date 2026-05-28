@@ -66,6 +66,10 @@ export class ContactsController {
       // here against the auto-created sub-ledger. Defaults to today on
       // the backend if omitted.
       opening_date?: string;
+      // For type='both', the receivable-side opening lives on
+      // opening_balance and the payable-side opening here. For
+      // customer-only / vendor-only contacts this is ignored.
+      payable_opening_balance?: number;
       notes?: string;
       // Structured extras: TDS config, MSME registration, GST treatment
       // override, default ledger linkage. Persisted in Contact.metadata

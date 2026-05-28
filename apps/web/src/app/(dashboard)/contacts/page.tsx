@@ -196,6 +196,20 @@ const GST_TREATMENTS = [
   { value: "deemed_export", label: "Deemed Export" },
 ];
 
+// Short list of common currencies — INR default for domestic, the rest
+// surface for overseas vendors/customers. Add more as needed; we don't
+// need to ship every ISO-4217 here.
+const CURRENCIES = [
+  { value: "INR", label: "INR — Indian Rupee" },
+  { value: "USD", label: "USD — US Dollar" },
+  { value: "EUR", label: "EUR — Euro" },
+  { value: "GBP", label: "GBP — British Pound" },
+  { value: "AED", label: "AED — UAE Dirham" },
+  { value: "AUD", label: "AUD — Australian Dollar" },
+  { value: "SGD", label: "SGD — Singapore Dollar" },
+  { value: "JPY", label: "JPY — Japanese Yen" },
+];
+
 function ContactsPage() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -256,6 +270,27 @@ function ContactsPage() {
   const [formUdyamNumber, setFormUdyamNumber] = useState("");
   const [formMsmeEnterpriseType, setFormMsmeEnterpriseType] = useState("micro");
 
+  // ── Phase 2 extras ────────────────────────────────────────
+  // Vendor's default expense ledger / customer's default income ledger.
+  // Used by future bill / invoice screens to auto-pick the line-item
+  // account so the user doesn't have to remember "this vendor always
+  // hits 5114 Cloud Hosting".
+  const [formDefaultExpenseAccountId, setFormDefaultExpenseAccountId] =
+    useState("");
+  const [formDefaultIncomeAccountId, setFormDefaultIncomeAccountId] =
+    useState("");
+  // INR default; foreign currencies surface for overseas clients/vendors.
+  const [formCurrency, setFormCurrency] = useState("INR");
+  // Multiple contact persons — list of { name, role, email, phone }.
+  // Stored in metadata.contact_persons.
+  const [formContactPersons, setFormContactPersons] = useState<
+    Array<{ name: string; role: string; email: string; phone: string }>
+  >([]);
+  // Payable-side opening for type='both' — receivable side stays on
+  // formOpeningBalance, this captures the amount we already owe.
+  const [formPayableOpeningBalance, setFormPayableOpeningBalance] =
+    useState("");
+
   // Fetch org settings so the opening-balance date can default to the
   // books_begin_from. Cached for 5 minutes — this doesn't change often.
   const { data: orgMeta } = useQuery<{
@@ -269,6 +304,34 @@ function ContactsPage() {
     },
     staleTime: 5 * 60 * 1000,
   });
+
+  // All active accounts — used for the default expense/income ledger
+  // dropdowns. We fetch once and filter client-side so vendor and
+  // customer forms share the same payload.
+  const { data: allAccounts = [] } = useQuery<
+    Array<{
+      id: string;
+      code: string;
+      name: string;
+      type: string;
+      is_active: boolean;
+    }>
+  >({
+    queryKey: ["contacts", "accounts-list"],
+    queryFn: async () => {
+      const res = await api.get<{
+        data: Array<{ id: string; code: string; name: string; type: string; is_active: boolean }>;
+      }>("/books/accounts", { active_only: "true" });
+      return res.data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const expenseAccountOptions = allAccounts
+    .filter((a) => a.type === "expense" && a.is_active)
+    .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }));
+  const incomeAccountOptions = allAccounts
+    .filter((a) => a.type === "income" && a.is_active)
+    .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }));
   const booksBeginFrom =
     orgMeta?.settings?.profile?.books_begin_from || null;
 
@@ -330,6 +393,29 @@ function ContactsPage() {
 
   const removeBankAccount = (index: number) => {
     setFormBankAccounts((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addContactPerson = () => {
+    setFormContactPersons((prev) => [
+      ...prev,
+      { name: "", role: "", email: "", phone: "" },
+    ]);
+  };
+
+  const removeContactPerson = (index: number) => {
+    setFormContactPersons((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateContactPerson = (
+    index: number,
+    field: "name" | "role" | "email" | "phone",
+    value: string,
+  ) => {
+    setFormContactPersons((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
   };
 
   const handleGstinLookup = async () => {
@@ -398,6 +484,50 @@ function ContactsPage() {
           if (c.bank_accounts && c.bank_accounts.length > 0) {
             setFormBankAccounts(c.bank_accounts);
           }
+          // Hydrate Phase 2 fields from metadata. Fall back to defaults
+          // for older contacts that pre-date the JSON column.
+          const meta = c.metadata || {};
+          setFormGstTreatment(meta.gst_treatment || "");
+          setFormCurrency(meta.currency || "INR");
+          setFormDefaultExpenseAccountId(meta.default_expense_account_id || "");
+          setFormDefaultIncomeAccountId(meta.default_income_account_id || "");
+          setFormContactPersons(
+            Array.isArray(meta.contact_persons) ? meta.contact_persons : [],
+          );
+          if (meta.tds) {
+            setFormTdsEnabled(!!meta.tds.enabled);
+            setFormTdsSection(meta.tds.section || "");
+            setFormTdsRate(meta.tds.rate != null ? String(meta.tds.rate) : "");
+            setFormTdsThreshold(
+              meta.tds.threshold != null ? String(meta.tds.threshold) : "",
+            );
+            if (meta.tds.lower_deduction) {
+              setFormLowerDedCert(true);
+              setFormLowerDedCertNo(
+                meta.tds.lower_deduction.certificate_no || "",
+              );
+              setFormLowerDedValidTill(
+                meta.tds.lower_deduction.valid_till || "",
+              );
+              setFormLowerDedRate(
+                meta.tds.lower_deduction.rate != null
+                  ? String(meta.tds.lower_deduction.rate)
+                  : "",
+              );
+            }
+          }
+          if (meta.msme) {
+            setFormMsmeEnabled(!!meta.msme.is_registered);
+            setFormUdyamNumber(meta.msme.udyam_number || "");
+            setFormMsmeEnterpriseType(meta.msme.enterprise_type || "micro");
+          }
+          // Payable opening only meaningful for type='both' — back-end
+          // exposes it as a separate field. Defaults to "" when absent.
+          setFormPayableOpeningBalance(
+            c.payable_opening_balance != null
+              ? String(c.payable_opening_balance)
+              : "",
+          );
           setShowModal(true);
         })
         .catch((err) => {
@@ -449,12 +579,36 @@ function ContactsPage() {
         balance_type: formBalanceType || undefined,
         // Backend uses this as the journal-entry date when posting the
         // opening balance against the auto-created sub-ledger.
-        opening_date: formOpeningBalance ? formOpeningDate : undefined,
+        opening_date:
+          formOpeningBalance || formPayableOpeningBalance
+            ? formOpeningDate
+            : undefined,
+        // Vendor-side opening for type='both' — receivable side rides
+        // on opening_balance above. Ignored by the backend for
+        // customer-only / vendor-only.
+        payable_opening_balance:
+          formType === "both" && formPayableOpeningBalance
+            ? Number(formPayableOpeningBalance)
+            : undefined,
         // Structured extras land in Contact.metadata server-side. We
         // only include namespaces that the user actually populated to
         // keep the JSON shape minimal.
         metadata: {
+          currency: formCurrency || "INR",
           ...(formGstTreatment ? { gst_treatment: formGstTreatment } : {}),
+          ...(formDefaultExpenseAccountId
+            ? { default_expense_account_id: formDefaultExpenseAccountId }
+            : {}),
+          ...(formDefaultIncomeAccountId
+            ? { default_income_account_id: formDefaultIncomeAccountId }
+            : {}),
+          ...(formContactPersons.filter((p) => p.name.trim()).length > 0
+            ? {
+                contact_persons: formContactPersons.filter((p) =>
+                  p.name.trim(),
+                ),
+              }
+            : {}),
           ...(formTdsEnabled
             ? {
                 tds: {
@@ -526,11 +680,62 @@ function ContactsPage() {
           pincode: formShippingPincode || undefined,
         },
         opening_balance: formOpeningBalance ? Number(formOpeningBalance) : 0,
+        payable_opening_balance:
+          formType === "both" && formPayableOpeningBalance
+            ? Number(formPayableOpeningBalance)
+            : undefined,
         payment_terms: formCreditPeriod ? Number(formCreditPeriod) : 30,
         credit_limit: formCreditLimit ? Number(formCreditLimit) : null,
         contact_person: formContactPerson || null,
         date_of_birth: formDateOfBirth || null,
         bank_accounts: nonEmptyBankAccounts.length > 0 ? nonEmptyBankAccounts : undefined,
+        metadata: {
+          currency: formCurrency || "INR",
+          ...(formGstTreatment ? { gst_treatment: formGstTreatment } : {}),
+          ...(formDefaultExpenseAccountId
+            ? { default_expense_account_id: formDefaultExpenseAccountId }
+            : {}),
+          ...(formDefaultIncomeAccountId
+            ? { default_income_account_id: formDefaultIncomeAccountId }
+            : {}),
+          ...(formContactPersons.filter((p) => p.name.trim()).length > 0
+            ? {
+                contact_persons: formContactPersons.filter((p) =>
+                  p.name.trim(),
+                ),
+              }
+            : {}),
+          ...(formTdsEnabled
+            ? {
+                tds: {
+                  enabled: true,
+                  section: formTdsSection || null,
+                  rate: formTdsRate ? Number(formTdsRate) : null,
+                  threshold: formTdsThreshold
+                    ? Number(formTdsThreshold)
+                    : null,
+                  lower_deduction: formLowerDedCert
+                    ? {
+                        certificate_no: formLowerDedCertNo,
+                        valid_till: formLowerDedValidTill || null,
+                        rate: formLowerDedRate
+                          ? Number(formLowerDedRate)
+                          : null,
+                      }
+                    : null,
+                },
+              }
+            : {}),
+          ...(formMsmeEnabled
+            ? {
+                msme: {
+                  is_registered: true,
+                  udyam_number: formUdyamNumber.trim() || null,
+                  enterprise_type: formMsmeEnterpriseType,
+                },
+              }
+            : {}),
+        },
       });
     },
     onSuccess: () => {
@@ -575,6 +780,24 @@ function ContactsPage() {
     setFormContactPerson("");
     setFormDateOfBirth("");
     setFormBankAccounts([emptyBankAccount()]);
+    setFormGstTreatment("");
+    setFormTdsEnabled(false);
+    setFormTdsSection("");
+    setFormTdsRate("");
+    setFormTdsThreshold("");
+    setFormLowerDedCert(false);
+    setFormLowerDedCertNo("");
+    setFormLowerDedValidTill("");
+    setFormLowerDedRate("");
+    setFormMsmeEnabled(false);
+    setFormUdyamNumber("");
+    setFormMsmeEnterpriseType("micro");
+    setFormDefaultExpenseAccountId("");
+    setFormDefaultIncomeAccountId("");
+    setFormCurrency("INR");
+    setFormContactPersons([]);
+    setFormPayableOpeningBalance("");
+    setFormOpeningDateTouched(false);
   };
 
   const handleBulkAdd = async () => {
@@ -988,6 +1211,36 @@ function ContactsPage() {
             />
           </div>
 
+          {/* Currency + Default Ledgers */}
+          <Select
+            label="Currency"
+            value={formCurrency}
+            onChange={setFormCurrency}
+            options={CURRENCIES}
+            searchable
+          />
+          <div />
+          {(formType === "vendor" || formType === "both") && (
+            <Select
+              label="Default Expense Ledger"
+              value={formDefaultExpenseAccountId}
+              onChange={setFormDefaultExpenseAccountId}
+              options={expenseAccountOptions}
+              searchable
+              placeholder="Pick a default expense account"
+            />
+          )}
+          {(formType === "customer" || formType === "both") && (
+            <Select
+              label="Default Income Ledger"
+              value={formDefaultIncomeAccountId}
+              onChange={setFormDefaultIncomeAccountId}
+              options={incomeAccountOptions}
+              searchable
+              placeholder="Pick a default income account"
+            />
+          )}
+
           {/* TDS Configuration — vendor or both only */}
           {(formType === "vendor" || formType === "both") && (
             <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
@@ -1209,23 +1462,44 @@ function ContactsPage() {
 
           {/* Opening Balance & Balance Type */}
           <Input
-            label="Opening Balance"
+            label={
+              formType === "both"
+                ? "Receivable Opening Balance"
+                : "Opening Balance"
+            }
             type="number"
             placeholder="0.00"
             value={formOpeningBalance}
             onChange={(e) => setFormOpeningBalance(e.target.value)}
-            hint="Outstanding amount when you started using Kontafy. A sub-ledger is auto-created under Sundry Debtors / Creditors with this opening."
+            hint={
+              formType === "both"
+                ? "Amount this contact owes you — posted to the customer sub-ledger under Sundry Debtors."
+                : "Outstanding amount when you started using Kontafy. A sub-ledger is auto-created under Sundry Debtors / Creditors with this opening."
+            }
           />
-          <Select
-            label="To Collect / To Pay"
-            options={[
-              { value: "to_collect", label: "To Collect" },
-              { value: "to_pay", label: "To Pay" },
-            ]}
-            value={formBalanceType}
-            onChange={setFormBalanceType}
-            placeholder="Select balance type"
-          />
+          {formType === "both" ? (
+            <Input
+              label="Payable Opening Balance"
+              type="number"
+              placeholder="0.00"
+              value={formPayableOpeningBalance}
+              onChange={(e) =>
+                setFormPayableOpeningBalance(e.target.value)
+              }
+              hint="Amount you owe this contact — posted to the vendor sub-ledger under Sundry Creditors."
+            />
+          ) : (
+            <Select
+              label="To Collect / To Pay"
+              options={[
+                { value: "to_collect", label: "To Collect" },
+                { value: "to_pay", label: "To Pay" },
+              ]}
+              value={formBalanceType}
+              onChange={setFormBalanceType}
+              placeholder="Select balance type"
+            />
+          )}
           <Input
             label="Opening Balance As On"
             type="date"
@@ -1241,7 +1515,9 @@ function ContactsPage() {
                 ? `Defaults to your books-begin date (${booksBeginFrom}). Change only if this balance is from a different date.`
                 : "Used as the journal entry date for the opening balance"
             }
-            disabled={!formOpeningBalance}
+            disabled={
+              !formOpeningBalance && !formPayableOpeningBalance
+            }
           />
 
           {/* Credit Period & Credit Limit */}
@@ -1260,15 +1536,92 @@ function ContactsPage() {
             onChange={(e) => setFormCreditLimit(e.target.value)}
           />
 
-          {/* Contact Person */}
+          {/* Contact Persons (multiple) */}
           <div className="md:col-span-2 border-t border-gray-200 pt-4 mt-2">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Contact Person</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h4 className="text-sm font-medium text-gray-700">
+                  Contact Persons
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Add one row per person you deal with at this contact
+                  (e.g. accounts, sales, owner).
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<Plus className="h-3 w-3" />}
+                onClick={addContactPerson}
+              >
+                Add Person
+              </Button>
+            </div>
+            {formContactPersons.length === 0 && (
+              <p className="text-xs text-gray-400 italic mb-3">
+                No additional contact persons yet.
+              </p>
+            )}
+            {formContactPersons.map((person, index) => (
+              <div
+                key={index}
+                className="relative border border-gray-200 rounded-lg p-4 mb-4"
+              >
+                <button
+                  type="button"
+                  onClick={() => removeContactPerson(index)}
+                  className="absolute top-2 right-2 h-6 w-6 rounded flex items-center justify-center text-gray-400 hover:text-danger-600 hover:bg-danger-50 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <p className="text-xs font-medium text-gray-500 mb-3">
+                  Person {index + 1}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Name"
+                    placeholder="Full name"
+                    value={person.name}
+                    onChange={(e) =>
+                      updateContactPerson(index, "name", e.target.value)
+                    }
+                  />
+                  <Input
+                    label="Role / Designation"
+                    placeholder="e.g. Accounts Manager"
+                    value={person.role}
+                    onChange={(e) =>
+                      updateContactPerson(index, "role", e.target.value)
+                    }
+                  />
+                  <Input
+                    label="Email"
+                    type="email"
+                    placeholder="name@company.com"
+                    value={person.email}
+                    onChange={(e) =>
+                      updateContactPerson(index, "email", e.target.value)
+                    }
+                  />
+                  <Input
+                    label="Phone"
+                    placeholder="+91 XXXXX XXXXX"
+                    value={person.phone}
+                    onChange={(e) =>
+                      updateContactPerson(index, "phone", e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+            ))}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
               <Input
-                label="Contact Person Name"
+                label="Primary Contact Person (legacy)"
                 placeholder="Name"
                 value={formContactPerson}
                 onChange={(e) => setFormContactPerson(e.target.value)}
+                hint="Kept for older reports; new code reads the list above."
               />
               <Input
                 label="Date of Birth"

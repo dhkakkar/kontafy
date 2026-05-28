@@ -121,6 +121,7 @@ export class ContactsService {
       credit_limit?: number;
       opening_balance?: number;
       opening_date?: string;
+      payable_opening_balance?: number;
       notes?: string;
       metadata?: Record<string, any>;
     },
@@ -271,6 +272,7 @@ export class ContactsService {
     const opening = Number(data.opening_balance) || 0;
     try {
       if (data.type === 'both') {
+        const payableOpening = Number(data.payable_opening_balance) || 0;
         await this.accountsService.createContactSubLedger(
           orgId,
           'customer',
@@ -282,7 +284,7 @@ export class ContactsService {
           orgId,
           'vendor',
           displayName,
-          0,
+          payableOpening,
           data.opening_date,
         );
       } else {
@@ -348,11 +350,16 @@ export class ContactsService {
       }
     }
 
-    // Only pass known Contact model fields to Prisma
+    // Only pass known Contact model fields to Prisma. `metadata` is the
+    // catch-all JSON column for Phase-2 extras (TDS / MSME / GST
+    // treatment / default ledgers / currency / contact_persons), so it
+    // belongs here. We do NOT relay payable_opening_balance — re-posting
+    // sub-ledger opening journals on every update would churn the COA;
+    // users adjust openings via the bulk OB page instead.
     const allowedFields = [
       'type', 'name', 'company_name', 'gstin', 'pan', 'email', 'phone',
       'whatsapp', 'billing_address', 'shipping_address', 'payment_terms',
-      'credit_limit', 'opening_balance', 'notes', 'is_active',
+      'credit_limit', 'opening_balance', 'notes', 'is_active', 'metadata',
     ];
     const cleanData: Record<string, any> = {};
     for (const key of allowedFields) {
