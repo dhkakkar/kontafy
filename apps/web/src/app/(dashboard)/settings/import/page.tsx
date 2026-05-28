@@ -20,6 +20,7 @@ import {
   CloudUpload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/auth/client";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -29,7 +30,8 @@ type EntityType =
   | "contacts"
   | "products"
   | "opening_balances"
-  | "sales_invoices";
+  | "sales_invoices"
+  | "purchase_bills";
 type MigrationSource = "tally" | "busy" | null;
 
 interface ValidationError {
@@ -61,6 +63,7 @@ const entityOptions = [
   { value: "opening_balances", label: "Opening Balances" },
   // Transactions
   { value: "sales_invoices", label: "Sales Invoices" },
+  { value: "purchase_bills", label: "Purchase Bills" },
 ];
 
 const templateTypes = [
@@ -85,6 +88,12 @@ const templateTypes = [
     description:
       "Multi-line sales invoices grouped by Invoice No, with GST auto-calc",
   },
+  {
+    type: "purchase_bills" as EntityType,
+    label: "Purchase Bills Template",
+    description:
+      "Multi-line vendor bills grouped by Bill No, with GST auto-calc + TDS columns",
+  },
 ];
 
 export default function DataImportPage() {
@@ -101,13 +110,33 @@ export default function DataImportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
-  const getAuthHeaders = (): Record<string, string> => {
+  // Match the shape the global api client uses — Supabase session
+  // for the access token, and the zustand-persisted `kontafy-auth`
+  // for the active org id. The earlier `localStorage.access_token`
+  // / `localStorage.org_id` reads always returned null in this app's
+  // actual auth flow, which is why every template download (not just
+  // sales invoices) was coming back 401.
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
     const headers: Record<string, string> = {};
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("access_token");
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      const orgId = localStorage.getItem("org_id");
-      if (orgId) headers["X-Org-Id"] = orgId;
+    if (typeof window === "undefined") return headers;
+    try {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.access_token) {
+        headers["Authorization"] = `Bearer ${data.session.access_token}`;
+      }
+    } catch {
+      // Supabase not configured / not signed in — fall through.
+    }
+    try {
+      const stored = localStorage.getItem("kontafy-auth");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const orgId = parsed?.state?.organization?.id;
+        if (orgId) headers["X-Org-Id"] = orgId;
+      }
+    } catch {
+      // Stored value is malformed — fall through.
     }
     return headers;
   };
@@ -151,7 +180,7 @@ export default function DataImportPage() {
 
       const response = await fetch(`${API_BASE}/data-transfer/import/validate`, {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: await getAuthHeaders(),
         body: formData,
       });
 
@@ -205,7 +234,7 @@ export default function DataImportPage() {
 
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: await getAuthHeaders(),
         body: formData,
       });
 
@@ -247,9 +276,16 @@ export default function DataImportPage() {
     try {
       const response = await fetch(
         `${API_BASE}/data-transfer/import/template/${type}`,
-        { headers: getAuthHeaders() }
+        { headers: await getAuthHeaders() },
       );
-      if (!response.ok) throw new Error("Download failed");
+      if (!response.ok) {
+        const errBody = await response
+          .json()
+          .catch(() => ({ message: `HTTP ${response.status}` }));
+        throw new Error(
+          errBody?.error?.message || errBody?.message || `HTTP ${response.status}`,
+        );
+      }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -261,6 +297,11 @@ export default function DataImportPage() {
       document.body.removeChild(a);
     } catch (err) {
       console.error("Template download failed:", err);
+      alert(
+        err instanceof Error
+          ? `Template download failed: ${err.message}`
+          : "Template download failed",
+      );
     }
   };
 

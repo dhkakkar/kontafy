@@ -3,16 +3,22 @@ import { DataTransferController } from './data-transfer.controller';
 import { ExportService } from './export.service';
 import { ImportService } from './import.service';
 import { SalesInvoicesImport } from './runners/sales-invoices.import';
+import { PurchaseBillsImport } from './runners/purchase-bills.import';
 import { BillModule } from '../bill/bill.module';
 
 @Module({
-  // BillModule exports InvoicesService — the sales-invoices import
-  // delegates per-invoice creation to that service so the GST split,
-  // journal posting, and sub-ledger updates stay identical to the
-  // manual /invoices/new flow.
+  // BillModule exports InvoicesService + PurchasesService — the
+  // transaction-import handlers delegate per-bill / per-invoice
+  // creation to those services so the GST split, journal posting,
+  // and sub-ledger updates stay identical to the manual forms.
   imports: [BillModule],
   controllers: [DataTransferController],
-  providers: [ExportService, ImportService, SalesInvoicesImport],
+  providers: [
+    ExportService,
+    ImportService,
+    SalesInvoicesImport,
+    PurchaseBillsImport,
+  ],
   exports: [ExportService, ImportService],
 })
 export class DataTransferModule {}

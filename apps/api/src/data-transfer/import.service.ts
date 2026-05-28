@@ -10,7 +10,8 @@ export type ImportEntityType =
   | 'contacts'
   | 'products'
   | 'opening_balances'
-  | 'sales_invoices';
+  | 'sales_invoices'
+  | 'purchase_bills';
 
 export interface ValidationError {
   row: number;
@@ -658,15 +659,21 @@ export class ImportService {
       }
     }
 
-    // Sales invoices template is built by a dedicated module — it
-    // returns its own workbook so we short-circuit the common
-    // writer above. Importing here (rather than at file top) keeps
-    // the dependency direction one-way: import.service.ts owns the
-    // shared parsers, runners delegate to it.
+    // Transaction-import templates are built by their dedicated
+    // runners — each returns its own workbook so we short-circuit
+    // the common writer above. Lazy-requiring here (rather than
+    // importing at file top) keeps the dependency direction one-
+    // way: import.service.ts owns the shared parsers, runners
+    // delegate to it.
     if (type === 'sales_invoices') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./runners/sales-invoices.import') as typeof import('./runners/sales-invoices.import');
       return mod.SalesInvoicesImport.buildTemplate();
+    }
+    if (type === 'purchase_bills') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./runners/purchase-bills.import') as typeof import('./runners/purchase-bills.import');
+      return mod.PurchaseBillsImport.buildTemplate();
     }
 
     const buffer = await workbook.xlsx.writeBuffer();

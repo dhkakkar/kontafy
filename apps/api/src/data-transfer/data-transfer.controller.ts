@@ -18,6 +18,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ExportService, ExportFormat } from './export.service';
 import { ImportService, ImportEntityType } from './import.service';
 import { SalesInvoicesImport } from './runners/sales-invoices.import';
+import { PurchaseBillsImport } from './runners/purchase-bills.import';
 
 @ApiTags('Data Transfer')
 @ApiBearerAuth('access-token')
@@ -28,6 +29,7 @@ export class DataTransferController {
     private readonly exportService: ExportService,
     private readonly importService: ImportService,
     private readonly salesInvoicesImport: SalesInvoicesImport,
+    private readonly purchaseBillsImport: PurchaseBillsImport,
   ) {}
 
   // ─── Export Endpoints ─────────────────────────────────────────
@@ -272,6 +274,44 @@ export class DataTransferController {
     };
   }
 
+  @Post('import/purchase_bills')
+  @ApiOperation({ summary: 'Bulk-import purchase bills (multi-line CSV/XLSX)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async importPurchaseBills(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    this.validateUploadedFile(file);
+    const format = this.detectFileFormat(file);
+    const result = await this.purchaseBillsImport.run(
+      orgId,
+      userId,
+      file.buffer,
+      format,
+    );
+    return {
+      success: result.errors.length === 0,
+      total: result.total,
+      imported: result.imported,
+      skipped: result.skipped,
+      errors: result.errors.map((e) => ({
+        row: 0,
+        field: e.group ? `bill ${e.group}` : (e.field || ''),
+        message: e.message,
+      })),
+    };
+  }
+
   @Get('import/template/:type')
   @ApiOperation({ summary: 'Download import template for an entity type' })
   async getImportTemplate(
@@ -283,6 +323,7 @@ export class DataTransferController {
       'products',
       'opening_balances',
       'sales_invoices',
+      'purchase_bills',
     ];
     if (!validTypes.includes(type as ImportEntityType)) {
       throw new BadRequestException(`Invalid template type. Must be one of: ${validTypes.join(', ')}`);
