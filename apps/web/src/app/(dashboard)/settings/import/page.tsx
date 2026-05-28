@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -95,9 +96,40 @@ const templateTypes = [
   },
 ];
 
-export default function DataImportPage() {
+// Map of valid entity types — used to validate the `?type=` URL
+// param so we don't poke unknown strings into the dropdown.
+const VALID_ENTITY_TYPES = new Set<EntityType>([
+  "contacts",
+  "products",
+  "opening_balances",
+  "sales_invoices",
+  "purchase_bills",
+]);
+
+export default function DataImportPageWrapper() {
+  // useSearchParams must be inside a Suspense boundary in Next.js
+  // App Router — without it the page de-opts the whole tree to
+  // client-side rendering.
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
+      <DataImportPage />
+    </Suspense>
+  );
+}
+
+function DataImportPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Initialise from the URL so a deep-link like ?type=sales_invoices
+  // lands on the right step. Falls back to contacts when missing or
+  // not in the allowlist.
+  const initialType = (() => {
+    const t = searchParams.get("type") as EntityType | null;
+    return t && VALID_ENTITY_TYPES.has(t) ? t : "contacts";
+  })();
   const [step, setStep] = useState<ImportStep>("upload");
-  const [entityType, setEntityType] = useState<EntityType>("contacts");
+  const [entityType, setEntityType] = useState<EntityType>(initialType);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [validationResult, setValidationResult] =
@@ -108,6 +140,30 @@ export default function DataImportPage() {
   const [progress, setProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
+
+  // Keep the URL ?type= in sync with the dropdown. router.replace
+  // (not push) so back-button doesn't accumulate a history entry per
+  // dropdown change. Reads the existing param first to avoid a
+  // redundant replace when the URL already matches.
+  useEffect(() => {
+    const current = searchParams.get("type");
+    if (current === entityType) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("type", entityType);
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityType]);
+
+  // Reverse direction: if the URL is changed externally (back/
+  // forward, deep link from another tab), reflect that in the
+  // dropdown. Only fires when the URL's type is valid and differs.
+  useEffect(() => {
+    const t = searchParams.get("type") as EntityType | null;
+    if (t && VALID_ENTITY_TYPES.has(t) && t !== entityType) {
+      setEntityType(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Match the shape the global api client uses. The bearer token
   // lives in the `kontafy-access` cookie set by lib/auth/client.ts
@@ -188,8 +244,18 @@ export default function DataImportPage() {
       });
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ message: "Validation failed" }));
-        throw new Error(err.message);
+        const err = await response
+          .json()
+          .catch(() => ({ message: "Validation failed" }));
+        // API envelope is { success: false, error: { message, ... } }.
+        // The previous read of err.message picked up `undefined` and the
+        // catch block then masked the real reason with "Failed to
+        // validate file" — surface the actual message instead.
+        throw new Error(
+          err?.error?.message ||
+            err?.message ||
+            `Validation failed (HTTP ${response.status})`,
+        );
       }
 
       const result: ValidationResult = await response.json();
@@ -242,8 +308,14 @@ export default function DataImportPage() {
       });
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ message: "Import failed" }));
-        throw new Error(err.message);
+        const err = await response
+          .json()
+          .catch(() => ({ message: "Import failed" }));
+        throw new Error(
+          err?.error?.message ||
+            err?.message ||
+            `Import failed (HTTP ${response.status})`,
+        );
       }
 
       const result: ImportResult = await response.json();

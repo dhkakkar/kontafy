@@ -344,7 +344,16 @@ export class DataTransferController {
       type: 'object',
       properties: {
         file: { type: 'string', format: 'binary' },
-        type: { type: 'string', enum: ['contacts', 'products', 'opening_balances'] },
+        type: {
+          type: 'string',
+          enum: [
+            'contacts',
+            'products',
+            'opening_balances',
+            'sales_invoices',
+            'purchase_bills',
+          ],
+        },
       },
     },
   })
@@ -355,7 +364,19 @@ export class DataTransferController {
   ) {
     this.validateUploadedFile(file);
 
-    const validTypes: ImportEntityType[] = ['contacts', 'products', 'opening_balances'];
+    // Allowlist mirrors getImportTemplate / the runner registry.
+    // Transaction types (sales_invoices, purchase_bills) currently
+    // get a permissive dry-run — parseFile + the (empty) switch case
+    // returns total + preview rows with zero validation errors. The
+    // actual per-group validation runs inside each runner's commit
+    // closure, surfaced as row-level errors on the import response.
+    const validTypes: ImportEntityType[] = [
+      'contacts',
+      'products',
+      'opening_balances',
+      'sales_invoices',
+      'purchase_bills',
+    ];
     if (!validTypes.includes(type as ImportEntityType)) {
       throw new BadRequestException(`Invalid type. Must be one of: ${validTypes.join(', ')}`);
     }
