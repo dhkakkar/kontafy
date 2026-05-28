@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Plus, Search, Download, Upload, MessageSquare, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -60,6 +61,14 @@ export default function InvoicesPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
+  // Server-side pagination. Reset to page 1 whenever the filter/
+  // search/page-size changes so the user doesn't end up on an
+  // out-of-range page after narrowing the result set.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  React.useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchQuery, pageSize]);
   const exportMutation = useExportReport();
 
   const handleExport = async () => {
@@ -93,28 +102,37 @@ export default function InvoicesPage() {
     }
   };
 
-  const { data: invoices = [], isLoading, error } = useQuery<Invoice[]>({
-    queryKey: ["invoices", activeTab, searchQuery],
+  const { data: page_data, isLoading, error } = useQuery<{
+    rows: Invoice[];
+    total: number;
+  }>({
+    queryKey: ["invoices", activeTab, searchQuery, page, pageSize],
     queryFn: async () => {
-      // Backend defaults to limit=20 which is far too small for a
-      // mid-size org's invoice list. Bump to 200 — the list view
-      // is the only consumer here and 200 rows is well under what
-      // TanStack Table can render smoothly. Proper paginated
-      // controls are a follow-up.
-      const params: Record<string, string> = { limit: "200" };
+      const params: Record<string, string> = {
+        page: String(page),
+        limit: String(pageSize),
+      };
       if (activeTab !== "all") params.status = activeTab;
       if (searchQuery) params.search = searchQuery;
       const res = await api.get<ApiResponse<Invoice[]>>("/bill/invoices", params);
-      return res.data;
+      return { rows: res.data, total: res.meta?.total ?? res.data.length };
     },
+    placeholderData: (prev) => prev,
   });
 
+  const invoices = page_data?.rows ?? [];
+  const totalRows = page_data?.total ?? 0;
+
+  // Tab counts reflect the current filtered page total. Switching tab
+  // re-queries; the count for the chosen tab is the API's meta.total.
+  // The other tabs show "—" because we'd need a separate aggregate
+  // query to compute them all — left as a follow-up.
   const tabs = [
-    { value: "all", label: "All", count: invoices.length },
-    { value: "draft", label: "Draft", count: invoices.filter((i) => i.status === "draft").length },
-    { value: "sent", label: "Sent", count: invoices.filter((i) => i.status === "sent").length },
-    { value: "overdue", label: "Overdue", count: invoices.filter((i) => i.status === "overdue").length },
-    { value: "paid", label: "Paid", count: invoices.filter((i) => i.status === "paid").length },
+    { value: "all", label: "All", count: activeTab === "all" ? totalRows : undefined },
+    { value: "draft", label: "Draft", count: activeTab === "draft" ? totalRows : undefined },
+    { value: "sent", label: "Sent", count: activeTab === "sent" ? totalRows : undefined },
+    { value: "overdue", label: "Overdue", count: activeTab === "overdue" ? totalRows : undefined },
+    { value: "paid", label: "Paid", count: activeTab === "paid" ? totalRows : undefined },
   ];
 
   const columns = useMemo(
@@ -291,10 +309,19 @@ export default function InvoicesPage() {
             Failed to load invoices. Please try again.
           </div>
         ) : (
-          <DataTable
-            table={table}
-            onRowClick={(row) => router.push(`/invoices/${row.id}`)}
-          />
+          <>
+            <DataTable
+              table={table}
+              onRowClick={(row) => router.push(`/invoices/${row.id}`)}
+            />
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={totalRows}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          </>
         )}
       </Card>
     </div>
