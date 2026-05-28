@@ -504,6 +504,39 @@ function NewPurchasePage() {
     );
   };
 
+  // Pick a product from the line-item dropdown — mirror of the
+  // sales-side selectProduct. Pulls HSN/SAC, rate, GST, and the
+  // master unit so the row fills out the moment the user picks.
+  // The purchase backend stores this against InvoiceItem.product_id
+  // so reports and reorder logic can join back to the product
+  // master later.
+  const selectProduct = (itemId: string, productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    setItems(
+      items.map((item) => {
+        if (item.id !== itemId) return item;
+        // Vendors usually quote their own price; we still pre-fill
+        // from the product's purchase_price (falls back to selling
+        // price when not set) so the user has a starting point.
+        const rate =
+          (product as any).purchase_price ||
+          product.selling_price ||
+          0;
+        return {
+          ...item,
+          productId: product.id,
+          productName: product.name,
+          hsnCode: product.hsn_code || "",
+          unit: product.unit || item.unit,
+          rate,
+          taxRate: product.tax_rate || 18,
+          amount: calcAmount(item.quantity, rate),
+        };
+      }),
+    );
+  };
+
   const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
 
   const taxBreakdown: Record<number, { rate: number; taxable: number; tax: number }> = {};
@@ -759,15 +792,39 @@ function NewPurchasePage() {
               {items.map((item) => (
                 <tr key={item.id} className="border-b border-gray-100">
                   <td className="py-2 px-4">
-                    <input
-                      type="text"
-                      value={item.productName}
-                      onChange={(e) =>
-                        updateItem(item.id, "productName", e.target.value)
-                      }
-                      placeholder="Product or service name"
-                      className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
+                    {products.length > 0 ? (
+                      <Select
+                        options={products.map((p) => {
+                          // Mirror the sales-side description stitch
+                          // so similarly-named products are easy to
+                          // tell apart (e.g. AWS vs Azure cloud).
+                          const bits: string[] = [];
+                          if (p.sku) bits.push(p.sku);
+                          if (p.hsn_code) bits.push(`HSN ${p.hsn_code}`);
+                          if (p.tax_rate != null) bits.push(`${p.tax_rate}%`);
+                          if (p.unit) bits.push(p.unit);
+                          return {
+                            value: p.id,
+                            label: p.name,
+                            description: bits.length > 0 ? bits.join(" · ") : undefined,
+                          };
+                        })}
+                        value={item.productId || ""}
+                        onChange={(val) => selectProduct(item.id, val)}
+                        searchable
+                        placeholder="Search product or service"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={item.productName}
+                        onChange={(e) =>
+                          updateItem(item.id, "productName", e.target.value)
+                        }
+                        placeholder="Product or service name"
+                        className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    )}
                   </td>
                   <td className="py-2 px-4">
                     <input
