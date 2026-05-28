@@ -96,7 +96,12 @@ export default function InvoicesPage() {
   const { data: invoices = [], isLoading, error } = useQuery<Invoice[]>({
     queryKey: ["invoices", activeTab, searchQuery],
     queryFn: async () => {
-      const params: Record<string, string> = {};
+      // Backend defaults to limit=20 which is far too small for a
+      // mid-size org's invoice list. Bump to 200 — the list view
+      // is the only consumer here and 200 rows is well under what
+      // TanStack Table can render smoothly. Proper paginated
+      // controls are a follow-up.
+      const params: Record<string, string> = { limit: "200" };
       if (activeTab !== "all") params.status = activeTab;
       if (searchQuery) params.search = searchQuery;
       const res = await api.get<ApiResponse<Invoice[]>>("/bill/invoices", params);

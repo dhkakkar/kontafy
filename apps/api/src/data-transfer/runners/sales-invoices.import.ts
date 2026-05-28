@@ -150,6 +150,38 @@ export class SalesInvoicesImport {
         items,
       } as any);
 
+      // Honour the optional Status column. invoicesService.create
+      // always sets the new row to "draft", so we do a follow-up
+      // patch when the row asks for anything else. Only do this
+      // when the value is in the known status set so a typo in the
+      // file doesn't corrupt the invoice state.
+      const requestedStatus = (header.status || '').trim().toLowerCase();
+      const VALID_STATUSES = new Set([
+        'sent',
+        'paid',
+        'partially_paid',
+        'overdue',
+        'cancelled',
+      ]);
+      if (
+        requestedStatus &&
+        requestedStatus !== 'draft' &&
+        VALID_STATUSES.has(requestedStatus) &&
+        (invoice as any).id
+      ) {
+        try {
+          await this.invoicesService.updateStatus(
+            orgId,
+            (invoice as any).id,
+            requestedStatus,
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Invoice ${invoiceNo} created but failed to set status=${requestedStatus}: ${(err as Error).message}`,
+          );
+        }
+      }
+
       return {
         invoice_id: (invoice as any).id,
         invoice_number: (invoice as any).invoice_number,

@@ -539,7 +539,11 @@ function ContactsPage() {
   const { data: contacts = [], isLoading, error } = useQuery<Contact[]>({
     queryKey: ["contacts", activeTab, searchQuery],
     queryFn: async () => {
-      const params: Record<string, string> = {};
+      // Backend default is limit=20 which clips the list aggressively
+      // once an org imports a real-world contact book. Bump to 500;
+      // proper pagination controls can replace this when the list
+      // grows past that.
+      const params: Record<string, string> = { limit: "500" };
       if (activeTab === "customer" || activeTab === "vendor") params.type = activeTab;
       if (searchQuery) params.search = searchQuery;
       const res = await api.get<ApiResponse<Contact[]>>("/bill/contacts", params);
