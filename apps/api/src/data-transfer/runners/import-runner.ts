@@ -79,11 +79,34 @@ export async function parseSheetToRows(
     ? new Set(options.allowedKeys)
     : null;
 
+  // Pre-compute the header-key order. Every row record is then
+  // seeded with empty strings for every header so Object.values()
+  // in the frontend preview renders cells in the correct positions
+  // even when intermediate columns (e.g. Vendor GSTIN for a B2C
+  // vendor) are blank. Without this, ExcelJS's eachCell skips
+  // empty cells and the row object would only have keys for the
+  // populated columns — `Object.values` then collapses the row,
+  // shifting "PB" into the Vendor GSTIN slot and so on.
+  const orderedKeys: string[] = [];
+  for (let c = 1; c < headers.length; c++) {
+    const key = headers[c];
+    if (!key) continue;
+    if (allow && !allow.has(key)) continue;
+    orderedKeys.push(key);
+  }
+
   const rows: Array<Record<string, string>> = [];
   sheet.eachRow((row, rowNum) => {
     if (rowNum === 1) return;
+
+    // Initialise with empty values in the declared header order so
+    // the row keeps stable column alignment. JS preserves
+    // insertion order on objects, which is what Object.values()
+    // relies on.
     const record: Record<string, string> = {};
-    row.eachCell((cell, colNum) => {
+    for (const key of orderedKeys) record[key] = '';
+
+    row.eachCell({ includeEmpty: true }, (cell, colNum) => {
       const key = headers[colNum];
       if (!key) return;
       if (allow && !allow.has(key)) return;

@@ -55,11 +55,24 @@ export class ImportService {
       headers[colNum] = String(cell.value || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
     });
 
+    // Pre-compute the header order so every parsed row carries
+    // every header key (with empty string for blanks). Without
+    // this, ExcelJS's eachCell skips empty cells and the row
+    // object only has keys for populated columns — the frontend's
+    // preview table then uses Object.values() and the cells
+    // visibly slide left (a B2C vendor's missing GSTIN pushed
+    // "PB" into the GSTIN column, etc.).
+    const orderedKeys: string[] = [];
+    for (let c = 1; c < headers.length; c++) {
+      if (headers[c]) orderedKeys.push(headers[c]);
+    }
+
     const rows: Record<string, string>[] = [];
     sheet.eachRow((row, rowNum) => {
       if (rowNum === 1) return; // skip header
       const record: Record<string, string> = {};
-      row.eachCell((cell, colNum) => {
+      for (const key of orderedKeys) record[key] = '';
+      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
         const key = headers[colNum];
         if (key) {
           record[key] = cell.value !== null && cell.value !== undefined ? String(cell.value).trim() : '';
