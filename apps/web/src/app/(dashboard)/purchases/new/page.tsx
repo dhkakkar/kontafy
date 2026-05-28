@@ -233,7 +233,12 @@ function NewPurchasePage() {
       setPlaceOfSupply(p.place_of_supply);
       setPosTouched(true);
     }
-    if (p.vendor_invoice_no) setVendorInvoiceNo(p.vendor_invoice_no);
+    // Backend persists vendor_invoice_number in the e_invoice_irn
+    // column on the Invoice row (legacy mapping in
+    // PurchasesService.update). Read both shapes for resilience.
+    if (p.vendor_invoice_number) setVendorInvoiceNo(p.vendor_invoice_number);
+    else if (p.e_invoice_irn) setVendorInvoiceNo(p.e_invoice_irn);
+    else if (p.vendor_invoice_no) setVendorInvoiceNo(p.vendor_invoice_no);
     if (typeof p.notes === "string") setNotes(p.notes);
     if (typeof p.terms === "string") setTerms(p.terms);
 
@@ -404,7 +409,9 @@ function NewPurchasePage() {
         due_date: dueDate || undefined,
         place_of_supply: placeOfSupply || undefined,
         is_igst: isInterState,
-        vendor_invoice_no: vendorInvoiceNo || undefined,
+        // Backend DTO key is vendor_invoice_number (not _no).
+        // Server stores it on the Invoice.e_invoice_irn column.
+        vendor_invoice_number: vendorInvoiceNo || undefined,
         notes: notes || undefined,
         terms: terms || undefined,
         is_posted: status === "approved",

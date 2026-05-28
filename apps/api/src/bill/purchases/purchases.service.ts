@@ -98,7 +98,15 @@ export class PurchasesService {
       throw new NotFoundException('Purchase invoice not found');
     }
 
-    return purchase;
+    // Surface the supplier's invoice number under its canonical
+    // name. It's stored on the e_invoice_irn column (legacy reuse
+    // — the Invoice model lacks a dedicated field), but every
+    // frontend consumer should reference vendor_invoice_number so
+    // the underlying column rename later is a one-place change.
+    return {
+      ...purchase,
+      vendor_invoice_number: purchase.e_invoice_irn,
+    };
   }
 
   /**
@@ -192,6 +200,11 @@ export class PurchasesService {
           balance_due: grandTotal,
           notes: data.notes,
           terms: data.terms,
+          // vendor_invoice_number lands on the e_invoice_irn column —
+          // legacy reuse since the Invoice model doesn't have a
+          // dedicated supplier-number field. update() already mirrors
+          // this; create was silently dropping it.
+          e_invoice_irn: data.vendor_invoice_number || null,
           created_by: userId,
         },
       });
