@@ -567,7 +567,36 @@ export class SettingsService {
     let nextBankAccounts: Array<Record<string, any>> | undefined;
     let mirroredFlat: Record<string, string> | undefined;
     if (Array.isArray(data.bank_accounts)) {
-      const cleaned = data.bank_accounts
+      // Dedupe by (account_number + IFSC). Same business identity =
+      // same bank — surfaces in two ways: (a) the user accidentally
+      // pasted the same account twice in the form, (b) a double-submit
+      // races the existing row past the dedup-by-id logic. Last
+      // occurrence wins so edits to the duplicate row don't get
+      // silently dropped.
+      const seenKeys = new Map<string, number>();
+      const deduped: typeof data.bank_accounts = [];
+      data.bank_accounts.forEach((b) => {
+        if (!b) return;
+        const acct = (b.account_number || '').trim();
+        const ifsc = (b.ifsc || '').trim().toUpperCase();
+        if (!acct || !ifsc) {
+          deduped.push(b);
+          return;
+        }
+        const key = `${acct}|${ifsc}`;
+        if (seenKeys.has(key)) {
+          // Replace prior occurrence with this one (last write wins).
+          deduped[seenKeys.get(key) as number] = b;
+          this.logger.warn(
+            `Dedup: dropped duplicate bank ${acct.slice(-4)} / ${ifsc} from invoice-config payload (org ${orgId})`,
+          );
+          return;
+        }
+        seenKeys.set(key, deduped.length);
+        deduped.push(b);
+      });
+
+      const cleaned = deduped
         .filter(
           (b) =>
             b && (b.bank_name?.trim() || b.account_number?.trim() || b.ifsc?.trim()),

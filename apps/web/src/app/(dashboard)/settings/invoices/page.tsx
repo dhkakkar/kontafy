@@ -233,6 +233,14 @@ export default function InvoiceConfigPage() {
     banks.length === 0 || (primaryCount === 1 && !hasBankRowErrors);
 
   const handleSave = async () => {
+    // Guard against double-submit: the button already auto-disables
+    // via loading={saving}, but React's state update is async — a
+    // sufficiently-fast double-click (or a programmatic re-fire) can
+    // squeeze in before the next render. This early-return closes that
+    // window. Without it, two PATCH calls land back-to-back and the
+    // second one re-creates the bank sub-ledger because the first
+    // hasn't echoed account_id back yet.
+    if (saving) return;
     if (!banksValid) {
       setSaveError(
         banks.length > 0 && primaryCount !== 1

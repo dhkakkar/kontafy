@@ -1703,9 +1703,31 @@ function ContactsPage() {
             Cancel
           </Button>
           <Button
-            onClick={() => editingContactId ? updateMutation.mutate() : createMutation.mutate()}
+            onClick={() => {
+              // react-query's isPending flips synchronously on .mutate(),
+              // so the button re-renders disabled — but we re-check here
+              // because the click handler may have already been entered
+              // by a faster-than-react double-click. Without this guard
+              // a duplicate contact (and a duplicate 1103/2101 sub-ledger
+              // before the backend's name-based reuse caught it) was
+              // possible on rapid double-click.
+              if (
+                createMutation.isPending ||
+                updateMutation.isPending
+              )
+                return;
+              if (editingContactId) {
+                updateMutation.mutate();
+              } else {
+                createMutation.mutate();
+              }
+            }}
             loading={editingContactId ? updateMutation.isPending : createMutation.isPending}
-            disabled={!formName}
+            disabled={
+              !formName ||
+              createMutation.isPending ||
+              updateMutation.isPending
+            }
           >
             {editingContactId ? "Update Contact" : "Save Contact"}
           </Button>

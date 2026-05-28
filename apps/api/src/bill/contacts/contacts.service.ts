@@ -164,6 +164,37 @@ export class ContactsService {
       }
     }
 
+    // Name+type duplicate guard. Catches the double-submit case where
+    // two clicks fire before the first response returns: the GSTIN
+    // check above already covers GSTIN-bearing contacts, but for
+    // unregistered/consumer contacts (no GSTIN) we'd otherwise mint
+    // two rows + two sub-ledgers. Case-insensitive on the trimmed
+    // name, scoped to active contacts of the same type.
+    const trimmedName = (data.name || '').trim();
+    if (trimmedName) {
+      const dupName = await this.prisma.contact.findFirst({
+        where: {
+          org_id: orgId,
+          is_active: true,
+          name: { equals: trimmedName, mode: 'insensitive' },
+          // Treat 'both' as colliding with either customer or vendor
+          // (it'll generate sub-ledgers on both sides).
+          OR:
+            data.type === 'both'
+              ? undefined
+              : [{ type: data.type }, { type: 'both' }],
+          ...(data.type === 'both' ? {} : {}),
+        },
+      });
+      if (dupName) {
+        throw new BadRequestException({
+          error: 'DUPLICATE_CONTACT',
+          message: `A ${dupName.type} contact named "${dupName.name}" already exists. Edit the existing one or use a different name.`,
+          details: { field: 'name', existingId: dupName.id },
+        });
+      }
+    }
+
     // Validate PAN format if provided. We also auto-fill PAN from GSTIN
     // when it's missing, and reject mismatches between user-typed PAN
     // and the PAN embedded in the GSTIN — those mean someone fat-fingered

@@ -885,6 +885,26 @@ export class AccountsService {
       }
     }
 
+    // Idempotency: if the caller didn't pin an existingAccountId (or it
+    // was stale), fall back to a name-based lookup under 1102. Without
+    // this, a double-submit of the bank form — which posts the bank
+    // *before* the first response writes account_id back into settings —
+    // would mint a fresh 1102.NNN every time and silently double-count
+    // openings in the Trial Balance. The match is exact on displayName
+    // so two genuinely-different banks (e.g. "ICICI - 9012" vs
+    // "ICICI - 1234") still get their own ledgers.
+    if (!child) {
+      const existingByName = await this.prisma.account.findFirst({
+        where: {
+          org_id: orgId,
+          parent_id: parent.id,
+          name: displayName,
+        },
+        select: { id: true, code: true, name: true },
+      });
+      if (existingByName) child = existingByName;
+    }
+
     if (!child) {
       const siblings = await this.prisma.account.findMany({
         where: {
