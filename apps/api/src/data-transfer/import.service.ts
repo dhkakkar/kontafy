@@ -6,7 +6,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import * as ExcelJS from 'exceljs';
 
-export type ImportEntityType = 'contacts' | 'products' | 'opening_balances';
+export type ImportEntityType =
+  | 'contacts'
+  | 'products'
+  | 'opening_balances'
+  | 'sales_invoices';
 
 export interface ValidationError {
   row: number;
@@ -652,6 +656,17 @@ export class ImportService {
         });
         break;
       }
+    }
+
+    // Sales invoices template is built by a dedicated module — it
+    // returns its own workbook so we short-circuit the common
+    // writer above. Importing here (rather than at file top) keeps
+    // the dependency direction one-way: import.service.ts owns the
+    // shared parsers, runners delegate to it.
+    if (type === 'sales_invoices') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./runners/sales-invoices.import') as typeof import('./runners/sales-invoices.import');
+      return mod.SalesInvoicesImport.buildTemplate();
     }
 
     const buffer = await workbook.xlsx.writeBuffer();

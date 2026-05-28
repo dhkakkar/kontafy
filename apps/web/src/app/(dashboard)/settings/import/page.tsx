@@ -25,7 +25,11 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 type ImportStep = "upload" | "preview" | "validate" | "import";
-type EntityType = "contacts" | "products" | "opening_balances";
+type EntityType =
+  | "contacts"
+  | "products"
+  | "opening_balances"
+  | "sales_invoices";
 type MigrationSource = "tally" | "busy" | null;
 
 interface ValidationError {
@@ -51,9 +55,12 @@ interface ValidationResult {
 }
 
 const entityOptions = [
+  // Master data
   { value: "contacts", label: "Contacts" },
   { value: "products", label: "Products" },
   { value: "opening_balances", label: "Opening Balances" },
+  // Transactions
+  { value: "sales_invoices", label: "Sales Invoices" },
 ];
 
 const templateTypes = [
@@ -71,6 +78,12 @@ const templateTypes = [
     type: "opening_balances" as EntityType,
     label: "Opening Balances Template",
     description: "Account opening balances",
+  },
+  {
+    type: "sales_invoices" as EntityType,
+    label: "Sales Invoices Template",
+    description:
+      "Multi-line sales invoices grouped by Invoice No, with GST auto-calc",
   },
 ];
 

@@ -14,8 +14,10 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { Response } from 'express';
 import { OrgId } from '../common/decorators/org-id.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ExportService, ExportFormat } from './export.service';
 import { ImportService, ImportEntityType } from './import.service';
+import { SalesInvoicesImport } from './runners/sales-invoices.import';
 
 @ApiTags('Data Transfer')
 @ApiBearerAuth('access-token')
@@ -25,6 +27,7 @@ export class DataTransferController {
   constructor(
     private readonly exportService: ExportService,
     private readonly importService: ImportService,
+    private readonly salesInvoicesImport: SalesInvoicesImport,
   ) {}
 
   // ─── Export Endpoints ─────────────────────────────────────────
@@ -223,13 +226,64 @@ export class DataTransferController {
     return this.importService.importBusyData(orgId, file.buffer);
   }
 
+  // Endpoint uses snake_case to match the EntityType slug used by the
+  // frontend ("sales_invoices") — the existing list endpoints
+  // (contacts/products) all align this way, so the frontend's URL
+  // builder doesn't need a special case.
+  @Post('import/sales_invoices')
+  @ApiOperation({ summary: 'Bulk-import sales invoices (multi-line CSV/XLSX)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async importSalesInvoices(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    this.validateUploadedFile(file);
+    const format = this.detectFileFormat(file);
+    const result = await this.salesInvoicesImport.run(
+      orgId,
+      userId,
+      file.buffer,
+      format,
+    );
+    // Match the shape the existing contact/product/OB imports return
+    // so the frontend's ImportResult renderer and the global
+    // ResponseInterceptor (which passes through objects already
+    // tagged with `success`) treat this the same way.
+    return {
+      success: result.errors.length === 0,
+      total: result.total,
+      imported: result.imported,
+      skipped: result.skipped,
+      errors: result.errors.map((e) => ({
+        row: 0,
+        field: e.group ? `invoice ${e.group}` : (e.field || ''),
+        message: e.message,
+      })),
+    };
+  }
+
   @Get('import/template/:type')
   @ApiOperation({ summary: 'Download import template for an entity type' })
   async getImportTemplate(
     @Param('type') type: string,
     @Res() res: Response,
   ) {
-    const validTypes: ImportEntityType[] = ['contacts', 'products', 'opening_balances'];
+    const validTypes: ImportEntityType[] = [
+      'contacts',
+      'products',
+      'opening_balances',
+      'sales_invoices',
+    ];
     if (!validTypes.includes(type as ImportEntityType)) {
       throw new BadRequestException(`Invalid template type. Must be one of: ${validTypes.join(', ')}`);
     }
