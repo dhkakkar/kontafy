@@ -29,6 +29,12 @@ interface Contact {
   name: string;
   gstin?: string;
   type: string;
+  // Customer-specific credit period. Falls back to the org default
+  // when null (and ultimately to 30 days). The backend's Contact
+  // model calls this `payment_terms` — the same field is reused for
+  // both customer-side credit window and vendor-side payable terms.
+  payment_terms?: number | null;
+  billing_address?: Record<string, any>;
 }
 
 interface Product {
@@ -121,6 +127,22 @@ function stateAbbrFromGstin(gstin?: string | null): string {
   return GSTIN_CODE_TO_STATE_ABBR[code] || "";
 }
 
+// Add `days` to a YYYY-MM-DD date string and return the result in the
+// same format. Uses local-time Date arithmetic so a "+30 days" lands
+// on the same calendar day everywhere — UTC math here would drift in
+// IST and produce off-by-one due dates near month boundaries.
+function addDaysToDate(dateStr: string, days: number): string {
+  if (!dateStr) return "";
+  const [y, m, d] = dateStr.split("-").map((s) => parseInt(s, 10));
+  if (!y || !m || !d) return "";
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + (Number.isFinite(days) ? days : 0));
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
 export default function NewInvoicePageWrapper() {
   return (
     <Suspense fallback={<div className="p-6 text-gray-400">Loading…</div>}>
@@ -147,6 +169,21 @@ function NewInvoicePage() {
   // auto-overwriting on customer change. Declared up here because the
   // prefill useEffect below references setPosTouched.
   const [posTouched, setPosTouched] = useState(false);
+
+  // Same idea for Due Date — once the user picks a date manually (or
+  // we loaded one from an existing invoice on edit), stop auto-
+  // recomputing from invoice_date + credit_days.
+  const [dueDateTouched, setDueDateTouched] = useState(false);
+  // Org's default payment terms, fed from /settings/invoice-config.
+  // Acts as the fallback when the customer has no `payment_terms` of
+  // its own — system fallback is 30 days. Source attribution is kept
+  // so the hint can say where the value came from.
+  const [defaultPaymentDays, setDefaultPaymentDays] = useState<number | null>(
+    null,
+  );
+  const [creditDaysSource, setCreditDaysSource] = useState<
+    "customer" | "config" | "fallback" | null
+  >(null);
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
   const [additionalDiscount, setAdditionalDiscount] = useState(0);
@@ -156,21 +193,31 @@ function NewInvoicePage() {
   const [showBarcodeInput, setShowBarcodeInput] = useState(false);
   const [barcodeValue, setBarcodeValue] = useState("");
 
-  // Auto-fill terms & notes from invoice settings — only for NEW invoices,
-  // not when editing an existing one (we'd clobber the saved values).
+  // Auto-fill terms, notes, and default-payment-terms from invoice
+  // settings. Notes / terms only run on NEW invoices (we'd clobber
+  // saved values on edit). Default payment days, however, we
+  // *always* fetch — it feeds the due-date fallback hint even in
+  // edit mode.
   useEffect(() => {
-    if (isEditing) return;
     api
       .get<{ data: Record<string, unknown> }>("/settings/invoice-config")
       .then((res) => {
         const d = res.data;
-        if (d) {
+        if (!d) return;
+        if (!isEditing) {
           if (d.default_terms_conditions) {
             setTerms(String(d.default_terms_conditions));
           }
           if (d.default_notes) {
             setNotes(String(d.default_notes));
           }
+        }
+        const n =
+          typeof d.default_payment_terms === "number"
+            ? d.default_payment_terms
+            : Number(d.default_payment_terms);
+        if (Number.isFinite(n) && n > 0) {
+          setDefaultPaymentDays(n);
         }
       })
       .catch(() => {});
@@ -194,7 +241,12 @@ function NewInvoicePage() {
     const inv = existingInvoice;
     setCustomer(inv.contact_id || "");
     if (inv.date) setInvoiceDate(String(inv.date).slice(0, 10));
-    if (inv.due_date) setDueDate(String(inv.due_date).slice(0, 10));
+    if (inv.due_date) {
+      setDueDate(String(inv.due_date).slice(0, 10));
+      // Preserve the saved due date — don't let the auto-recompute
+      // effect overwrite it on subsequent customer / date changes.
+      setDueDateTouched(true);
+    }
     if (inv.place_of_supply) {
       setPlaceOfSupply(inv.place_of_supply);
       // Treat any saved POS as user-confirmed so swapping customers
@@ -307,21 +359,63 @@ function NewInvoicePage() {
     description: c.gstin ? `GSTIN: ${c.gstin}` : undefined,
   }));
 
+  // Resolve credit days for a customer with the documented fallback
+  // chain: contact's own payment_terms → invoice-config default →
+  // 30. Returned alongside the source so the UI can attribute the
+  // hint ("from customer terms" / "org default" / "system default").
+  const resolveCreditDays = (
+    picked?: Pick<Contact, "payment_terms"> | null,
+  ): { days: number; source: "customer" | "config" | "fallback" } => {
+    const cust =
+      picked && typeof picked.payment_terms === "number"
+        ? picked.payment_terms
+        : null;
+    if (cust != null && cust > 0) return { days: cust, source: "customer" };
+    if (defaultPaymentDays && defaultPaymentDays > 0)
+      return { days: defaultPaymentDays, source: "config" };
+    return { days: 30, source: "fallback" };
+  };
+
   const handleCustomerChange = (contactId: string) => {
     setCustomer(contactId);
-    if (posTouched) return;
     const picked = contacts.find((c) => c.id === contactId);
     if (!picked) return;
-    // Prefer GSTIN-derived state — that's the registered address GSTN
-    // recognises. For unregistered / consumer contacts fall back to
-    // billing_address.state. Either source already uses the same
-    // 2-letter abbreviation INDIAN_STATES expects.
-    const derived =
-      stateAbbrFromGstin(picked.gstin) ||
-      (picked.billing_address?.state as string | undefined) ||
-      "";
-    if (derived) setPlaceOfSupply(derived);
+
+    // Place of Supply — GSTIN-derived state preferred; B2C / no-GSTIN
+    // falls back to billing_address.state. Skipped if user has
+    // already overridden POS so we don't clobber an audit-relevant
+    // choice.
+    if (!posTouched) {
+      const derived =
+        stateAbbrFromGstin(picked.gstin) ||
+        (picked.billing_address?.state as string | undefined) ||
+        "";
+      if (derived) setPlaceOfSupply(derived);
+    }
+
+    // Due Date — invoiceDate + customer credit days. Attribution is
+    // recorded so the hint text can explain *why* it picked this
+    // number (helps the user trust the auto-fill before clicking
+    // Send Invoice).
+    const { days, source } = resolveCreditDays(picked);
+    setCreditDaysSource(source);
+    if (!dueDateTouched && invoiceDate) {
+      setDueDate(addDaysToDate(invoiceDate, days));
+    }
   };
+
+  // Recompute due date when the invoice date moves and the user
+  // hasn't manually overridden it. We need the most up-to-date
+  // customer here, hence the lookup off `contacts`.
+  useEffect(() => {
+    if (dueDateTouched) return;
+    if (!invoiceDate) return;
+    const picked = contacts.find((c) => c.id === customer);
+    const { days, source } = resolveCreditDays(picked);
+    setCreditDaysSource(picked ? source : source);
+    setDueDate(addDaysToDate(invoiceDate, days));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceDate, customer, defaultPaymentDays]);
 
   // Inter-state when the place of supply is in a different state than
   // the supplier. Empty POS or empty supplier defaults to intra-state
@@ -516,7 +610,13 @@ function NewInvoicePage() {
   );
   const grandTotal = subtotal + totalTax - additionalDiscount + additionalCharges;
 
-  const canSubmit = customer && items.some((i) => i.amount > 0);
+  // Block save when the due date is set but predates the invoice
+  // date — that would let through a GSTR-1 row with a negative
+  // payment window, which the GST portal rejects.
+  const dueDateInvalid =
+    !!dueDate && !!invoiceDate && dueDate < invoiceDate;
+  const canSubmit =
+    customer && items.some((i) => i.amount > 0) && !dueDateInvalid;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -616,12 +716,47 @@ function NewInvoicePage() {
             value={invoiceDate}
             onChange={(e) => setInvoiceDate(e.target.value)}
           />
-          <Input
-            label="Due Date"
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-          />
+          <div>
+            <Input
+              label="Due Date"
+              type="date"
+              value={dueDate}
+              min={invoiceDate || undefined}
+              onChange={(e) => {
+                setDueDate(e.target.value);
+                setDueDateTouched(true);
+              }}
+              error={
+                dueDate && invoiceDate && dueDate < invoiceDate
+                  ? "Due date can't be before the invoice date"
+                  : undefined
+              }
+              hint={
+                dueDate && invoiceDate && dueDate >= invoiceDate && !dueDateTouched
+                  ? `Auto: Net ${Math.round(
+                      (new Date(dueDate).getTime() -
+                        new Date(invoiceDate).getTime()) /
+                        86_400_000,
+                    )}${
+                      creditDaysSource === "customer"
+                        ? " (from customer terms)"
+                        : creditDaysSource === "config"
+                          ? " (from invoice config default)"
+                          : " (system default)"
+                    }`
+                  : undefined
+              }
+            />
+            {dueDateTouched && (
+              <button
+                type="button"
+                onClick={() => setDueDateTouched(false)}
+                className="mt-1 text-xs text-primary-700 hover:underline"
+              >
+                Reset to auto
+              </button>
+            )}
+          </div>
         </div>
       </Card>
 
