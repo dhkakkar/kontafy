@@ -20,7 +20,6 @@ import {
   CloudUpload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/auth/client";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -110,23 +109,27 @@ export default function DataImportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
-  // Match the shape the global api client uses — Supabase session
-  // for the access token, and the zustand-persisted `kontafy-auth`
-  // for the active org id. The earlier `localStorage.access_token`
-  // / `localStorage.org_id` reads always returned null in this app's
-  // actual auth flow, which is why every template download (not just
-  // sales invoices) was coming back 401.
-  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  // Match the shape the global api client uses. The bearer token
+  // lives in the `kontafy-access` cookie set by lib/auth/client.ts
+  // (cookie-based session, NOT Supabase — the earlier code read
+  // localStorage.access_token / localStorage.org_id which this app
+  // never sets, so every template download was silently 401-ing).
+  // The active org id is on the zustand-persisted `kontafy-auth`
+  // key under .state.organization.id.
+  const getAuthHeaders = (): Record<string, string> => {
     const headers: Record<string, string> = {};
     if (typeof window === "undefined") return headers;
     try {
-      const supabase = createClient();
-      const { data } = await supabase.auth.getSession();
-      if (data.session?.access_token) {
-        headers["Authorization"] = `Bearer ${data.session.access_token}`;
+      const cookie = document.cookie || "";
+      const match = cookie
+        .split("; ")
+        .find((row) => row.startsWith("kontafy-access="));
+      if (match) {
+        const token = decodeURIComponent(match.slice("kontafy-access=".length));
+        if (token) headers["Authorization"] = `Bearer ${token}`;
       }
     } catch {
-      // Supabase not configured / not signed in — fall through.
+      // Cookie read failed (e.g. opaque error) — fall through.
     }
     try {
       const stored = localStorage.getItem("kontafy-auth");
@@ -180,7 +183,7 @@ export default function DataImportPage() {
 
       const response = await fetch(`${API_BASE}/data-transfer/import/validate`, {
         method: "POST",
-        headers: await getAuthHeaders(),
+        headers: getAuthHeaders(),
         body: formData,
       });
 
@@ -234,7 +237,7 @@ export default function DataImportPage() {
 
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
-        headers: await getAuthHeaders(),
+        headers: getAuthHeaders(),
         body: formData,
       });
 
@@ -276,7 +279,7 @@ export default function DataImportPage() {
     try {
       const response = await fetch(
         `${API_BASE}/data-transfer/import/template/${type}`,
-        { headers: await getAuthHeaders() },
+        { headers: getAuthHeaders() },
       );
       if (!response.ok) {
         const errBody = await response
