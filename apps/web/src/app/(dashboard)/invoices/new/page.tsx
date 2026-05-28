@@ -836,11 +836,21 @@ function NewInvoicePage() {
                   <td className="py-2 px-4">
                     {products.length > 0 ? (
                       <Select
-                        options={products.map((p) => ({
-                          value: p.id,
-                          label: p.name,
-                          description: p.sku || undefined,
-                        }))}
+                        options={products.map((p) => {
+                          // Stitch SKU · HSN/SAC · GST · unit into the
+                          // option description so the user can tell
+                          // similarly-named products apart at a glance.
+                          const bits: string[] = [];
+                          if (p.sku) bits.push(p.sku);
+                          if (p.hsn_code) bits.push(`HSN ${p.hsn_code}`);
+                          if (p.tax_rate != null) bits.push(`${p.tax_rate}%`);
+                          if (p.unit) bits.push(p.unit);
+                          return {
+                            value: p.id,
+                            label: p.name,
+                            description: bits.length > 0 ? bits.join(" · ") : undefined,
+                          };
+                        })}
                         value={item.productId || ""}
                         onChange={(val) => selectProduct(item.id, val)}
                         searchable
