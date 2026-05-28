@@ -102,6 +102,11 @@ export interface InvoiceTemplateData {
   notes?: string;
   terms?: string;
   signature_url?: string;
+  // Whether the recipient is liable to pay GST under reverse charge
+  // (RCM). Mandatory GST disclosure on every tax invoice — Rule 46(p)
+  // of CGST Rules. Defaults to false; flip true only for the RCM cases
+  // (legal services, GTA, unregistered purchases above threshold, ...).
+  reverse_charge?: boolean;
   bank_details?: {
     bank_name?: string;
     account_name?: string;
@@ -252,6 +257,113 @@ export function generateInvoiceHtml(data: InvoiceTemplateData): string {
         </tr>`;
     })
     .join('\n');
+
+  // HSN/SAC summary — Rule 46(g) requires a per-HSN breakdown on
+  // every tax invoice once the supplier's aggregate turnover crosses
+  // ₹5 cr (mandatory for everyone since 01-Apr-2021). Aggregate the
+  // line items by HSN and emit a table with the same IGST or CGST+SGST
+  // column split the line items used.
+  type HsnRow = {
+    hsn: string;
+    taxable: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    cess: number;
+    total: number;
+  };
+  const hsnMap = new Map<string, HsnRow>();
+  for (const it of data.items) {
+    const key = (it.hsn_code || '—').toString();
+    const existing =
+      hsnMap.get(key) ||
+      ({ hsn: key, taxable: 0, cgst: 0, sgst: 0, igst: 0, cess: 0, total: 0 } as HsnRow);
+    existing.taxable += Number(it.taxable_amount) || 0;
+    existing.cgst += Number(it.cgst_amount) || 0;
+    existing.sgst += Number(it.sgst_amount) || 0;
+    existing.igst += Number(it.igst_amount) || 0;
+    existing.cess += Number(it.cess_amount) || 0;
+    existing.total += Number(it.total) || 0;
+    hsnMap.set(key, existing);
+  }
+  const hsnRowsArr = Array.from(hsnMap.values()).sort((a, b) =>
+    a.hsn.localeCompare(b.hsn),
+  );
+  const hsnTotals = hsnRowsArr.reduce(
+    (acc, r) => ({
+      taxable: acc.taxable + r.taxable,
+      cgst: acc.cgst + r.cgst,
+      sgst: acc.sgst + r.sgst,
+      igst: acc.igst + r.igst,
+      cess: acc.cess + r.cess,
+      total: acc.total + r.total,
+    }),
+    { taxable: 0, cgst: 0, sgst: 0, igst: 0, cess: 0, total: 0 },
+  );
+  const hsnTaxCols = data.is_igst
+    ? '<th class="right">IGST</th>'
+    : '<th class="right">CGST</th><th class="right">SGST</th>';
+  const hsnCessCol = hasCess ? '<th class="right">Cess</th>' : '';
+  const hsnRows = hsnRowsArr
+    .map((r) => {
+      const tax = data.is_igst
+        ? `<td class="right">${formatIndianNumber(r.igst)}</td>`
+        : `<td class="right">${formatIndianNumber(r.cgst)}</td>
+           <td class="right">${formatIndianNumber(r.sgst)}</td>`;
+      const cess = hasCess
+        ? `<td class="right">${formatIndianNumber(r.cess)}</td>`
+        : '';
+      return `
+        <tr>
+          <td class="center">${r.hsn}</td>
+          <td class="right">${formatIndianNumber(r.taxable)}</td>
+          ${tax}
+          ${cess}
+          <td class="right bold">${formatIndianNumber(r.total)}</td>
+        </tr>`;
+    })
+    .join('\n');
+  const hsnTotalsRow = `
+    <tr class="totals-row">
+      <td class="center bold">Total</td>
+      <td class="right bold">${formatIndianNumber(hsnTotals.taxable)}</td>
+      ${
+        data.is_igst
+          ? `<td class="right bold">${formatIndianNumber(hsnTotals.igst)}</td>`
+          : `<td class="right bold">${formatIndianNumber(hsnTotals.cgst)}</td>
+             <td class="right bold">${formatIndianNumber(hsnTotals.sgst)}</td>`
+      }
+      ${hasCess ? `<td class="right bold">${formatIndianNumber(hsnTotals.cess)}</td>` : ''}
+      <td class="right bold">${formatIndianNumber(hsnTotals.total)}</td>
+    </tr>`;
+  const hsnSummaryHtml = hsnRowsArr.length > 0 ? `
+    <div class="tax-summary hsn-summary">
+      <h4>HSN/SAC Summary</h4>
+      <table>
+        <thead>
+          <tr>
+            <th class="center">HSN/SAC</th>
+            <th class="right">Taxable Val</th>
+            ${hsnTaxCols}
+            ${hsnCessCol}
+            <th class="right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${hsnRows}
+          ${hsnTotalsRow}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  // Reverse charge declaration — Rule 46(p) mandates this disclosure
+  // on every tax invoice, even when "No". Renders as a single line
+  // under the totals so it's adjacent to the amount in words.
+  const reverseChargeHtml = `
+    <div class="rcm-row">
+      <span class="label">Tax payable on reverse charge:</span>
+      <span class="value">${data.reverse_charge ? 'Yes' : 'No'}</span>
+    </div>`;
 
   // Bank details section
   const bankDetailsHtml = data.bank_details
@@ -560,6 +672,27 @@ export function generateInvoiceHtml(data: InvoiceTemplateData): string {
       margin-top: 2px;
     }
 
+    /* Reverse-charge disclosure (Rule 46(p)) — same visual weight as
+       the amount-in-words row above it. */
+    .rcm-row {
+      padding: 6px 12px;
+      margin-bottom: 20px;
+      font-size: 10px;
+      color: var(--gray-700);
+      border-left: 3px solid var(--gray-300);
+    }
+    .rcm-row .label {
+      font-weight: 600;
+      color: var(--gray-500);
+      text-transform: uppercase;
+      font-size: 9px;
+      margin-right: 6px;
+    }
+    .rcm-row .value {
+      font-weight: 700;
+      color: var(--gray-900);
+    }
+
     /* Tax summary */
     .tax-summary {
       margin-bottom: 20px;
@@ -788,6 +921,9 @@ export function generateInvoiceHtml(data: InvoiceTemplateData): string {
       <div class="value">INR ${totalInWords} Only</div>
     </div>
 
+    <!-- Reverse Charge declaration (Rule 46(p)) -->
+    ${reverseChargeHtml}
+
     <!-- Totals Section -->
     <div class="totals-section">
       <div class="totals-left">
@@ -809,6 +945,9 @@ export function generateInvoiceHtml(data: InvoiceTemplateData): string {
             </tbody>
           </table>
         </div>
+
+        <!-- HSN/SAC Summary (Rule 46(g)) -->
+        ${hsnSummaryHtml}
 
         ${bankDetailsHtml}
       </div>

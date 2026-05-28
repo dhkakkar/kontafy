@@ -314,6 +314,7 @@ model Invoice {
   due_date        DateTime? @db.Date
   place_of_supply String?   @db.VarChar(2)
   is_igst         Boolean   @default(false)
+  reverse_charge  Boolean   @default(false)
   subtotal        Decimal?  @db.Decimal(15, 2)
   discount_amount Decimal   @default(0) @db.Decimal(15, 2)
   tax_amount      Decimal   @default(0) @db.Decimal(15, 2)

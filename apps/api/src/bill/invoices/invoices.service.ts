@@ -218,8 +218,37 @@ export class InvoicesService {
       isIgst = await this.computeIsIgst(orgId, data.place_of_supply);
     }
 
-    // Generate invoice number
-    const invoiceNumber = await this.generateInvoiceNumber(orgId, data.type);
+    // Generate invoice number. Pass the invoice date so the FY suffix
+    // matches the period the invoice belongs to — back-dated invoices
+    // (e.g. 05-Apr-2025 entered today in 2026) must land in FY 2025-26,
+    // not the current system date's FY.
+    const invoiceNumber = await this.generateInvoiceNumber(
+      orgId,
+      data.type,
+      data.date ? new Date(data.date) : new Date(),
+    );
+
+    // Preload referenced products so the line items can carry the
+    // product's master unit (Hour / Project / MON / …) without the
+    // frontend having to send it. Falls back to "pcs" only if the
+    // product itself has no unit set.
+    const productIds = Array.from(
+      new Set(
+        data.items
+          .map((it) => it.product_id)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const productMap = new Map<string, { unit: string }>();
+    if (productIds.length > 0) {
+      const prods = await this.prisma.product.findMany({
+        where: { id: { in: productIds }, org_id: orgId },
+        select: { id: true, unit: true },
+      });
+      for (const p of prods) {
+        productMap.set(p.id, { unit: p.unit || 'pcs' });
+      }
+    }
 
     // Compute totals for each item
     let subtotal = 0;
@@ -251,12 +280,21 @@ export class InvoicesService {
       totalDiscount += computed.discountAmount;
       totalTax += computed.totalTax;
 
+      // Unit resolution priority: explicit payload value → product's
+      // master unit → 'pcs' fallback. This is what fixes the bug where
+      // a SEO Monthly product (unit MON) ended up stored as "pcs" on
+      // the invoice line.
+      const productUnit = item.product_id
+        ? productMap.get(item.product_id)?.unit
+        : undefined;
+      const resolvedUnit = item.unit || productUnit || 'pcs';
+
       return {
         product_id: item.product_id,
         description: item.description,
         hsn_code: item.hsn_code,
         quantity: item.quantity,
-        unit: item.unit || 'pcs',
+        unit: resolvedUnit,
         rate: item.rate,
         discount_pct: item.discount_pct || 0,
         taxable_amount: computed.taxableAmount,
@@ -274,6 +312,30 @@ export class InvoicesService {
 
     const grandTotal = Math.round((subtotal - totalDiscount + totalTax) * 100) / 100;
 
+    // Defensive due_date computation. Frontend should already send a
+    // computed value (invoice_date + customer.payment_terms), but if
+    // it doesn't, derive from the contact's payment_terms here so the
+    // saved invoice still has a sane due date. Computed in the same
+    // local-day arithmetic the frontend uses to avoid TZ drift on
+    // month boundaries.
+    let resolvedDueDate: Date | null = data.due_date
+      ? new Date(data.due_date)
+      : null;
+    if (!resolvedDueDate && data.contact_id) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: data.contact_id, org_id: orgId },
+        select: { payment_terms: true },
+      });
+      const days = contact?.payment_terms || 30;
+      const start = new Date(data.date);
+      const due = new Date(
+        start.getFullYear(),
+        start.getMonth(),
+        start.getDate() + days,
+      );
+      resolvedDueDate = due;
+    }
+
     // Create invoice with items in a transaction
     const invoice = await this.prisma.$transaction(async (tx) => {
       const inv = await tx.invoice.create({
@@ -284,9 +346,10 @@ export class InvoicesService {
           status: 'draft',
           contact_id: data.contact_id,
           date: new Date(data.date),
-          due_date: data.due_date ? new Date(data.due_date) : null,
+          due_date: resolvedDueDate,
           place_of_supply: data.place_of_supply,
           is_igst: isIgst,
+          reverse_charge: !!(data as any).reverse_charge,
           subtotal: subtotal,
           discount_amount: totalDiscount,
           tax_amount: totalTax,
@@ -597,7 +660,12 @@ export class InvoicesService {
       throw new NotFoundException('Invoice not found');
     }
 
-    const invoiceNumber = await this.generateInvoiceNumber(orgId, original.type);
+    // Duplicate creates a fresh draft dated today, so today's FY is correct here.
+    const invoiceNumber = await this.generateInvoiceNumber(
+      orgId,
+      original.type,
+      new Date(),
+    );
 
     const invoice = await this.prisma.$transaction(async (tx) => {
       const inv = await tx.invoice.create({
@@ -693,7 +761,11 @@ export class InvoicesService {
    *     `fiscal_year_start` month (default April), like "2026-27"
    * Otherwise fall back to the short default format like "INV/25-26/0001".
    */
-  private async generateInvoiceNumber(orgId: string, type: string): Promise<string> {
+  private async generateInvoiceNumber(
+    orgId: string,
+    type: string,
+    invoiceDate: Date,
+  ): Promise<string> {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
       select: { settings: true, fiscal_year_start: true },
@@ -711,13 +783,14 @@ export class InvoicesService {
         ? (settings.next_invoice_number as number)
         : null;
 
-    // Fiscal year based on the org's configured start month (April by default).
+    // Fiscal year is derived from the *invoice's* date, not the system
+    // clock — a back-dated invoice (05-Apr-2025) entered today must
+    // belong to FY 2025-26 even if today is in FY 2026-27.
     const fyStartMonth = org?.fiscal_year_start || 4;
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
+    const refMonth = invoiceDate.getMonth() + 1;
+    const refYear = invoiceDate.getFullYear();
     const fyStartYear =
-      currentMonth >= fyStartMonth ? currentYear : currentYear - 1;
+      refMonth >= fyStartMonth ? refYear : refYear - 1;
     const fyEndYear = fyStartYear + 1;
 
     if (type === 'sale' && configuredPrefix) {

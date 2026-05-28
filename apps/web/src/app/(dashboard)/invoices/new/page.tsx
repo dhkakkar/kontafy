@@ -17,6 +17,10 @@ interface LineItem {
   productName: string;
   description: string;
   hsnCode: string;
+  // Master unit from the product (HR / MON / PRJ / …). Sent to the
+  // backend so the saved InvoiceItem.unit matches the product master
+  // rather than the historical "pcs" default.
+  unit?: string;
   quantity: number;
   rate: number;
   discount: number;
@@ -186,6 +190,10 @@ function NewInvoicePage() {
   >(null);
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
+  // Rule 46(p) disclosure — defaults to false. Flip on when the
+  // recipient is liable to pay GST under reverse charge (legal
+  // services, GTA, unregistered purchases above threshold, …).
+  const [reverseCharge, setReverseCharge] = useState(false);
   const [additionalDiscount, setAdditionalDiscount] = useState(0);
   const [additionalCharges, setAdditionalCharges] = useState(0);
   const [additionalChargesLabel, setAdditionalChargesLabel] = useState("Shipping");
@@ -256,6 +264,8 @@ function NewInvoicePage() {
     }
     if (typeof inv.notes === "string") setNotes(inv.notes);
     if (typeof inv.terms === "string") setTerms(inv.terms);
+    if (typeof inv.reverse_charge === "boolean")
+      setReverseCharge(inv.reverse_charge);
     if (inv.discount_amount) setAdditionalDiscount(Number(inv.discount_amount));
     if (typeof inv.signature_url === "string" && inv.signature_url) {
       setSignaturePreview(inv.signature_url);
@@ -277,6 +287,7 @@ function NewInvoicePage() {
             productName: it.description || "",
             description: it.description || "",
             hsnCode: it.hsn_code || "",
+            unit: it.unit || undefined,
             quantity: qty,
             rate,
             discount,
@@ -393,13 +404,14 @@ function NewInvoicePage() {
       if (derived) setPlaceOfSupply(derived);
     }
 
-    // Due Date — invoiceDate + customer credit days. Attribution is
-    // recorded so the hint text can explain *why* it picked this
-    // number (helps the user trust the auto-fill before clicking
-    // Send Invoice).
+    // Due Date — invoiceDate + customer credit days. Picking a new
+    // customer is a documented recompute trigger (the new customer
+    // can have very different credit terms), so we unstick the
+    // touched flag before computing.
     const { days, source } = resolveCreditDays(picked);
     setCreditDaysSource(source);
-    if (!dueDateTouched && invoiceDate) {
+    setDueDateTouched(false);
+    if (invoiceDate) {
       setDueDate(addDaysToDate(invoiceDate, days));
     }
   };
@@ -439,6 +451,7 @@ function NewInvoicePage() {
         due_date: dueDate || undefined,
         place_of_supply: placeOfSupply || undefined,
         is_igst: isInterState,
+        reverse_charge: reverseCharge,
         notes: notes || undefined,
         terms: terms || undefined,
         signature_url: signaturePreview || null,
@@ -448,6 +461,7 @@ function NewInvoicePage() {
             product_id: item.productId || undefined,
             description: item.productName || item.description || "Item",
             hsn_code: item.hsnCode || undefined,
+            unit: item.unit || undefined,
             quantity: item.quantity,
             rate: item.rate,
             discount_pct: item.discount || undefined,
@@ -554,6 +568,9 @@ function NewInvoicePage() {
           productId: product.id,
           productName: product.name,
           hsnCode: product.hsn_code || "",
+          // Pull the master unit so MON / HR / PRJ flows through to
+          // the saved invoice instead of the legacy "pcs" default.
+          unit: product.unit || item.unit,
           rate,
           taxRate: product.tax_rate || 18,
           amount: calcAmount(item.quantity, rate, item.discount),
@@ -581,6 +598,7 @@ function NewInvoicePage() {
       setItems([...items, {
         id: newId, productId: product.id, productName: product.name,
         description: "", hsnCode: product.hsn_code || "",
+        unit: product.unit || undefined,
         quantity: 1, rate, discount: 0, taxRate: product.tax_rate || 18,
         amount: calcAmount(1, rate, 0),
       }]);
@@ -714,7 +732,14 @@ function NewInvoicePage() {
             label="Invoice Date"
             type="date"
             value={invoiceDate}
-            onChange={(e) => setInvoiceDate(e.target.value)}
+            onChange={(e) => {
+              setInvoiceDate(e.target.value);
+              // Changing the invoice date is a documented trigger for
+              // due-date recomputation, so unstick the touched flag
+              // here. If the user explicitly wanted a manual due date
+              // they can re-edit it after the auto-recompute fires.
+              setDueDateTouched(false);
+            }}
           />
           <div>
             <Input
@@ -979,6 +1004,22 @@ function NewInvoicePage() {
                 placeholder="Payment terms, validity, etc."
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               />
+            </div>
+            <div className="flex items-start gap-2 pt-2">
+              <input
+                type="checkbox"
+                id="reverse-charge"
+                checked={reverseCharge}
+                onChange={(e) => setReverseCharge(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="reverse-charge" className="text-sm text-gray-700 select-none">
+                Tax payable on reverse charge
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  Enable for legal services, GTA, unregistered purchases above
+                  threshold and other RCM cases.
+                </span>
+              </label>
             </div>
             {/* Signature Upload */}
             <div>
