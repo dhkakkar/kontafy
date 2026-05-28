@@ -181,47 +181,63 @@ export default function PurchaseDetailPage() {
     },
   });
 
-  const handleExport = () => {
+  // Open the rendered PDF in a new tab — browser's native PDF
+  // viewer handles print, and the format stays identical to the
+  // sales-invoice PDF. Falls back to window.print() if the URL
+  // fetch fails so the user still has a path to a printout.
+  const handlePrint = async () => {
     if (!purchase) return;
-    const rows = [["Item", "HSN/SAC", "Qty", "Rate", "Disc %", "Tax", "Amount"]];
-    (purchase.items || []).forEach((item) => {
-      rows.push([
-        item.description,
-        item.hsn_code || "",
-        String(item.quantity),
-        String(toNum(item.rate)),
-        String(toNum(item.discount_pct)),
-        String(
-          toNum(item.cgst_amount) +
-            toNum(item.sgst_amount) +
-            toNum(item.igst_amount),
-        ),
-        String(toNum(item.total)),
-      ]);
-    });
-    rows.push(["", "", "", "", "", "Subtotal", String(toNum(purchase.subtotal))]);
-    rows.push(["", "", "", "", "", "Tax", String(toNum(purchase.tax_amount))]);
-    rows.push(["", "", "", "", "", "Total", String(toNum(purchase.total))]);
-
-    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `purchase-${purchase.invoice_number}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const res = await api.get<{ url?: string } | { data: { url?: string } }>(
+        `/bill/purchases/${purchase.id}/pdf`,
+      );
+      const url = (res as any)?.data?.url ?? (res as any)?.url ?? null;
+      if (url) {
+        const win = window.open(url, "_blank");
+        // Best-effort auto-print once the PDF loads; popup blockers
+        // may stop the print call but the PDF still opens.
+        if (win) {
+          win.addEventListener("load", () => {
+            try {
+              win.print();
+            } catch {
+              /* user can hit Ctrl+P */
+            }
+          });
+        }
+        return;
+      }
+    } catch {
+      // Fall through to the fallback below.
+    }
+    window.print();
   };
 
-  const handlePrint = () => window.print();
-
-  const handleDownloadPdf = () => {
+  // Mirror of sales-side downloadPdf. The /pdf endpoint returns a
+  // presigned R2 URL (no auth needed once issued), which we open
+  // in a new tab. The previous `window.open(.../pdf/download)`
+  // approach failed silently with 401 because the kontafy-access
+  // cookie only lives on app.kontafy.com — opening api.kontafy.com
+  // directly doesn't carry it across the origin boundary.
+  const handleDownloadPdf = async () => {
     if (!purchase || pdfLoading) return;
     setPdfLoading(true);
     try {
-      window.open(
-        `${API_BASE}/bill/purchases/${purchase.id}/pdf/download`,
-        "_blank",
+      const res = await api.get<{ url?: string } | { data: { url?: string } }>(
+        `/bill/purchases/${purchase.id}/pdf`,
+      );
+      const url =
+        (res as any)?.data?.url ?? (res as any)?.url ?? null;
+      if (url) {
+        window.open(url, "_blank");
+      } else {
+        alert("PDF generated but no URL returned.");
+      }
+    } catch (err) {
+      alert(
+        err instanceof Error
+          ? `PDF download failed: ${err.message}`
+          : "PDF download failed",
       );
     } finally {
       setPdfLoading(false);
@@ -349,14 +365,6 @@ export default function PurchaseDetailPage() {
             loading={pdfLoading}
           >
             Download PDF
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            icon={<Download className="h-4 w-4" />}
-            onClick={handleExport}
-          >
-            Export CSV
           </Button>
         </div>
       </div>
@@ -608,7 +616,7 @@ export default function PurchaseDetailPage() {
               <div className="flex items-center justify-between w-full">
                 <CardTitle>Payments</CardTitle>
                 {purchase.status !== "paid" && purchase.status !== "cancelled" && (
-                  <Link href={`/payments/new?bill_id=${purchase.id}&type=made`}>
+                  <Link href={`/purchases/${purchase.id}/record-payment`}>
                     <Button
                       size="sm"
                       icon={<CreditCard className="h-4 w-4" />}
@@ -739,7 +747,7 @@ export default function PurchaseDetailPage() {
             </CardHeader>
             <div className="space-y-2">
               {purchase.status !== "paid" && purchase.status !== "cancelled" && (
-                <Link href={`/payments/new?bill_id=${purchase.id}&type=made`}>
+                <Link href={`/purchases/${purchase.id}/record-payment`}>
                   <Button
                     variant="primary"
                     className="w-full justify-start"
