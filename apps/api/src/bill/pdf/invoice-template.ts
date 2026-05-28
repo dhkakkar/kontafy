@@ -404,20 +404,60 @@ export function generateInvoiceHtml(data: InvoiceTemplateData): string {
       --gray-900: #111827;
     }
 
+    /* A4 page setup. preferCSSPageSize=false in pdf.service.ts means
+       puppeteer's format:A4 wins, but the @page rule below mirrors it
+       so the layout works for browser-side print previews too. */
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
     body {
       font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
-      font-size: 11px;
-      line-height: 1.5;
+      font-size: 10.5px;
+      line-height: 1.4;
       color: var(--gray-900);
       background: #fff;
     }
 
+    /* Wrapper: drop the forced min-height: 297mm so a slightly-tall
+       single-page bill doesn't get pushed onto page 2. Tighter
+       padding too — 12mm/14mm gives us back ~16mm vertical room. */
     .invoice-wrapper {
       width: 210mm;
-      min-height: 297mm;
-      padding: 20mm 18mm;
+      padding: 12mm 14mm;
       margin: 0 auto;
     }
+
+    /* Keep heavy sections together when content does need a second
+       page — avoids splitting the HSN summary or the totals across
+       pages, which is ugly and confuses some auditors. */
+    .totals-section,
+    .tax-summary,
+    .bank-details,
+    .rcm-row,
+    .words-row {
+      page-break-inside: avoid;
+    }
+
+    /* Section-spacing compaction. The template was using 20px gaps
+       between every block which added up to ~32mm of dead space —
+       enough to push a single-page bill to a 2nd page. Tightening
+       to 10-12px keeps the visual hierarchy without wasting paper. */
+    .header { padding-bottom: 10px !important; margin-bottom: 12px !important; }
+    .parties-section,
+    .meta-section,
+    .items-table,
+    .words-row,
+    .rcm-row,
+    .tax-summary,
+    .hsn-summary,
+    .totals-section,
+    .bank-details,
+    .notes-section { margin-bottom: 12px !important; }
+    .items-table thead th { padding: 6px 5px !important; }
+    .items-table tbody td { padding: 5px 5px !important; }
+    .tax-summary table th, .tax-summary table td { padding: 4px 6px !important; }
 
     /* Header */
     .header {
