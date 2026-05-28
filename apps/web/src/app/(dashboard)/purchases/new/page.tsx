@@ -223,6 +223,14 @@ function NewPurchasePage() {
     if (!isEditing || !existingPurchase || prefilled) return;
     const p = existingPurchase;
     setVendor(p.contact_id || "");
+    // Restore the vendor's TDS line on the summary too — we only
+    // get the vendor's metadata.tds via the contacts list lookup,
+    // which may load slightly after the existing-purchase fetch.
+    // The second useEffect below covers the race; this branch
+    // handles the case when contacts are already cached.
+    if (p.contact && p.contact.metadata) {
+      setActiveTds(readVendorTds(p.contact.metadata));
+    }
     if (p.date) setInvoiceDate(String(p.date).slice(0, 10));
     if (p.due_date) {
       setDueDate(String(p.due_date).slice(0, 10));
@@ -431,6 +439,7 @@ function NewPurchasePage() {
         })),
       };
 
+      let billId: string | undefined;
       if (isEditing && editId) {
         const { type: _type, ...updatePayload } = payload;
         void _type;
@@ -438,13 +447,33 @@ function NewPurchasePage() {
           `/bill/purchases/${editId}`,
           updatePayload,
         );
-        return { id: (res as any)?.data?.id || (res as any)?.id || editId };
+        billId = (res as any)?.data?.id || (res as any)?.id || editId;
+      } else {
+        const res = await api.post<{ data: { id: string } } | { id: string }>(
+          "/bill/purchases",
+          payload,
+        );
+        billId = (res as any)?.data?.id || (res as any)?.id;
       }
-      const res = await api.post<{ data: { id: string } } | { id: string }>(
-        "/bill/purchases",
-        payload,
-      );
-      return { id: (res as any)?.data?.id || (res as any)?.id };
+
+      // Save & Approve → follow-up PATCH to /status. Backend's
+      // create always starts a bill in 'draft'; the new /status
+      // endpoint validates the draft→sent transition and (for
+      // future cancel actions) reverses the journal entry.
+      if (status === "approved" && billId) {
+        try {
+          await api.patch(`/bill/purchases/${billId}/status`, {
+            status: "sent",
+          });
+        } catch (err) {
+          // Surface but don't fail the save — the bill is already
+          // persisted; user can re-try Mark as Approved from the
+          // detail page.
+          console.error("Failed to mark bill as approved:", err);
+        }
+      }
+
+      return { id: billId };
     },
     onSuccess: async (result) => {
       // A bill against a vendor also moves Sundry Creditors and (for

@@ -75,4 +75,14 @@ export class PurchasesController {
   ) {
     return this.purchasesService.update(orgId, id, body);
   }
+
+  @Patch(':id/status')
+  @ApiOperation({ summary: 'Transition a purchase bill status (draft → sent / cancelled / …)' })
+  async updateStatus(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @Body() body: { status: string },
+  ) {
+    return this.purchasesService.updateStatus(orgId, id, body.status);
+  }
 }

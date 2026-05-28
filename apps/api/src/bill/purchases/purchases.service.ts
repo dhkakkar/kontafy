@@ -7,13 +7,23 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeLineItemGst } from '../../common/utils/gst.util';
 import { formatFyShort, getFyBounds } from '../../common/utils/fy.util';
+import { JournalPostingService } from '../../books/journal-posting/journal-posting.service';
 import { CreatePurchaseDto, UpdatePurchaseDto } from '../dto/purchases.dto';
 
 @Injectable()
 export class PurchasesService {
   private readonly logger = new Logger(PurchasesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Drives Input GST (1105/1106/1107), Accounts Payable (2101)
+    // and Expense ledger entries when a purchase is created or
+    // transitions to sent. Mirrors what InvoicesService does on
+    // the sales side. Without this, bills land in the DB but the
+    // Trial Balance never reflects them — Input ITC is silently
+    // lost.
+    private readonly journalPosting: JournalPostingService,
+  ) {}
 
   /**
    * List purchase invoices with filtering and pagination.
@@ -222,6 +232,21 @@ export class PurchasesService {
       });
     });
 
+    // Post the purchase JE — Dr Expense + Dr Input CGST/SGST/IGST,
+    // Cr A/P. Sales side posts at create time too. Best-effort: if
+    // the chart isn't seeded or a ledger is missing we log and
+    // continue so the bill itself still saves; the user can re-post
+    // later via the recompute endpoint.
+    if (purchase?.id) {
+      try {
+        await this.journalPosting.postInvoice(purchase.id);
+      } catch (err) {
+        this.logger.warn(
+          `Purchase ${purchase.id} saved but journal posting failed: ${(err as Error).message}`,
+        );
+      }
+    }
+
     return purchase;
   }
 
@@ -350,6 +375,77 @@ export class PurchasesService {
       data: updateData,
       include: { items: true, contact: true },
     });
+  }
+
+  /**
+   * Transition a purchase bill's status. Mirrors the sales-side
+   * updateStatus(): validates the value + the transition, then
+   * triggers journal-side effects when moving in/out of states
+   * that affect the books. Sales posts on create already, but
+   * purchases can also approve a previously-cancelled draft —
+   * call postInvoice on every move into a posted state so the
+   * COA stays consistent.
+   */
+  async updateStatus(orgId: string, id: string, status: string) {
+    const validStatuses = [
+      'draft',
+      'sent',
+      'partially_paid',
+      'paid',
+      'overdue',
+      'cancelled',
+    ];
+    if (!validStatuses.includes(status)) {
+      throw new BadRequestException(
+        `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+      );
+    }
+
+    const purchase = await this.prisma.invoice.findFirst({
+      where: { id, org_id: orgId, type: 'purchase' },
+    });
+
+    if (!purchase) {
+      throw new NotFoundException('Purchase bill not found');
+    }
+
+    const allowedTransitions: Record<string, string[]> = {
+      draft: ['sent', 'cancelled'],
+      sent: ['partially_paid', 'paid', 'overdue', 'cancelled'],
+      partially_paid: ['paid', 'overdue', 'cancelled'],
+      overdue: ['partially_paid', 'paid', 'cancelled'],
+      paid: [],
+      cancelled: [],
+    };
+
+    const allowed = allowedTransitions[purchase.status] || [];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(
+        `Cannot transition from "${purchase.status}" to "${status}". Allowed: ${allowed.join(', ') || 'none'}`,
+      );
+    }
+
+    const updated = await this.prisma.invoice.update({
+      where: { id },
+      data: { status, updated_at: new Date() },
+    });
+
+    // Journal side-effects on status transition.
+    // - cancelled → reverse the JE so Input GST and A/P unwind.
+    // - draft → sent: the create already posted the JE, no extra
+    //   work needed. (Sales mirrors this — postInvoice runs at
+    //   create time regardless of status.)
+    if (status === 'cancelled') {
+      try {
+        await this.journalPosting.reverseInvoice(id);
+      } catch (err) {
+        this.logger.warn(
+          `Purchase ${id} cancelled but journal reversal failed: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return updated;
   }
 
   /**

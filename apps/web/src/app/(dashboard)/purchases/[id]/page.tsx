@@ -166,13 +166,12 @@ export default function PurchaseDetailPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Approve = move status from draft → sent. Backend's PATCH
-  // /bill/purchases/:id (or /status) doesn't have a dedicated
-  // status endpoint, so we update through the patch route. If a
-  // dedicated status endpoint lands later, swap the URL here.
+  // Approve = move status from draft → sent. Uses the dedicated
+  // /status endpoint (mirror of sales). Backend validates the
+  // transition table and triggers a journal-reversal on cancel.
   const updateStatusMutation = useMutation({
     mutationFn: (status: string) =>
-      api.patch(`/bill/purchases/${id}`, { status }),
+      api.patch(`/bill/purchases/${id}/status`, { status }),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["purchase", id] }),
