@@ -33,7 +33,8 @@ type EntityType =
   | "sales_invoices"
   | "purchase_bills"
   | "payments_received"
-  | "payments_made";
+  | "payments_made"
+  | "expenses";
 type MigrationSource = "tally" | "busy" | null;
 
 interface ValidationError {
@@ -68,6 +69,7 @@ const entityOptions = [
   { value: "purchase_bills", label: "Purchase Bills" },
   { value: "payments_received", label: "Payments Received (Receipts)" },
   { value: "payments_made", label: "Payments Made (Vendor Payments)" },
+  { value: "expenses", label: "Expenses" },
 ];
 
 const templateTypes = [
@@ -110,6 +112,12 @@ const templateTypes = [
     description:
       "Vendor payments — one row per payment, optionally allocated against a bill",
   },
+  {
+    type: "expenses" as EntityType,
+    label: "Expenses Template",
+    description:
+      "Business expenses — one row per expense, with category and payment method",
+  },
 ];
 
 // Map of valid entity types — used to validate the `?type=` URL
@@ -122,6 +130,7 @@ const VALID_ENTITY_TYPES = new Set<EntityType>([
   "purchase_bills",
   "payments_received",
   "payments_made",
+  "expenses",
 ]);
 
 // Read the ?type= URL param on the client without pulling in
@@ -186,6 +195,10 @@ export default function DataImportPage() {
       ["payment-outstanding-modal"],
       ["dashboard"],
     ],
+    // Expense import: just the expenses list + dashboard widgets that
+    // surface expense totals. No invoice/bill balances to bust since
+    // expenses don't allocate against transactions.
+    expenses: [["expenses"], ["dashboard"]],
   };
 
   // Keep the URL ?type= in sync with the dropdown using the native

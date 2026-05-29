@@ -5,6 +5,7 @@ import { ImportService } from './import.service';
 import { SalesInvoicesImport } from './runners/sales-invoices.import';
 import { PurchaseBillsImport } from './runners/purchase-bills.import';
 import { PaymentsImport } from './runners/payments.import';
+import { ExpensesImport } from './runners/expenses.import';
 import { BillModule } from '../bill/bill.module';
 
 @Module({
@@ -20,6 +21,7 @@ import { BillModule } from '../bill/bill.module';
     SalesInvoicesImport,
     PurchaseBillsImport,
     PaymentsImport,
+    ExpensesImport,
   ],
   exports: [ExportService, ImportService],
 })

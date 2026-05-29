@@ -13,7 +13,8 @@ export type ImportEntityType =
   | 'sales_invoices'
   | 'purchase_bills'
   | 'payments_received'
-  | 'payments_made';
+  | 'payments_made'
+  | 'expenses';
 
 export interface ValidationError {
   row: number;
@@ -708,6 +709,11 @@ export class ImportService {
       return mod.PaymentsImport.buildTemplate(
         type === 'payments_received' ? 'received' : 'made',
       );
+    }
+    if (type === 'expenses') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./runners/expenses.import') as typeof import('./runners/expenses.import');
+      return mod.ExpensesImport.buildTemplate();
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
