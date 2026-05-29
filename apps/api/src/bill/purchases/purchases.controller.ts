@@ -50,6 +50,15 @@ export class PurchasesController {
     });
   }
 
+  @Get('stats')
+  @ApiOperation({
+    summary:
+      'Aggregate purchase stats — status counts + outstanding totals',
+  })
+  async getStats(@OrgId() orgId: string) {
+    return this.purchasesService.getStats(orgId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get purchase invoice details with items' })
   async findOne(@OrgId() orgId: string, @Param('id') id: string) {

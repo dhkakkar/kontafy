@@ -93,6 +93,76 @@ export class PurchasesService {
   }
 
   /**
+   * Aggregate stats for the purchases page header: counts per status
+   * and AP outstanding totals. Keeping this separate from `findAll`
+   * lets the list be paginated to 25 rows without the summary tiles
+   * collapsing to "outstanding across visible page" — which would
+   * be nonsensical when the page only shows 25 of 200 bills.
+   *
+   * Returns:
+   *   {
+   *     byStatus: { all, draft, sent, partially_paid, overdue, paid, cancelled },
+   *     outstanding: { total, overdue }
+   *   }
+   *
+   * "Outstanding" sums `balance_due` of bills in (sent, partially_paid,
+   * overdue) — same semantics the per-page reducer used before. The
+   * frontend renders the warning tile from `outstanding.total` and
+   * the danger sub-tile from `outstanding.overdue`.
+   */
+  async getStats(orgId: string) {
+    const base = { org_id: orgId, type: 'purchase' as const };
+
+    // One groupBy gives counts per status in a single round-trip.
+    const grouped = await this.prisma.invoice.groupBy({
+      by: ['status'],
+      where: base,
+      _count: { _all: true },
+    });
+    const byStatus: Record<string, number> = {
+      all: 0,
+      draft: 0,
+      sent: 0,
+      partially_paid: 0,
+      overdue: 0,
+      paid: 0,
+      cancelled: 0,
+    };
+    for (const g of grouped) {
+      byStatus[g.status] = g._count._all;
+      byStatus.all += g._count._all;
+    }
+
+    // Two aggregations for the outstanding tiles. Both query just
+    // balance_due — total is the unpaid book obligation across
+    // open bills, overdue is the subset whose status is overdue.
+    // Keeping them as separate queries (rather than a CASE expr)
+    // is simpler and Neon handles them in parallel.
+    const [outstandingAll, outstandingOverdue] = await Promise.all([
+      this.prisma.invoice.aggregate({
+        where: {
+          ...base,
+          status: { in: ['sent', 'partially_paid', 'overdue'] },
+        },
+        _sum: { balance_due: true },
+      }),
+      this.prisma.invoice.aggregate({
+        where: { ...base, status: 'overdue' },
+        _sum: { balance_due: true },
+      }),
+    ]);
+
+    return {
+      byStatus,
+      outstanding: {
+        total: Number(outstandingAll._sum.balance_due || 0),
+        overdue: Number(outstandingOverdue._sum.balance_due || 0),
+        overdueCount: byStatus.overdue,
+      },
+    };
+  }
+
+  /**
    * Get a single purchase invoice with items.
    */
   async findOne(orgId: string, id: string) {

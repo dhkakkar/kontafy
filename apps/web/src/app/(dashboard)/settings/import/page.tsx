@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -120,6 +121,7 @@ function readTypeFromUrl(): EntityType {
 }
 
 export default function DataImportPage() {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<ImportStep>("upload");
   const [entityType, setEntityType] = useState<EntityType>(() => readTypeFromUrl());
   const [file, setFile] = useState<File | null>(null);
@@ -132,6 +134,21 @@ export default function DataImportPage() {
   const [progress, setProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
+
+  // Entity type → list of React Query keys that should be wiped when
+  // an import for that type lands. The global staleTime is 60s, so
+  // without this the user sees the OLD purchases list when they
+  // navigate to /purchases right after the import — they had to
+  // hard-reload to see the new rows. Each entry covers the list
+  // page, its stats sidecar, and the dashboard widgets that read
+  // from the same data.
+  const cacheKeysForType: Record<EntityType, string[][]> = {
+    contacts: [["contacts"], ["dashboard"]],
+    products: [["products"], ["dashboard"]],
+    opening_balances: [["accounts"], ["coa"], ["trial-balance"], ["dashboard"]],
+    sales_invoices: [["invoices"], ["invoices-stats"], ["dashboard"]],
+    purchase_bills: [["purchases"], ["purchases-stats"], ["dashboard"]],
+  };
 
   // Keep the URL ?type= in sync with the dropdown using the native
   // History API — bypassing Next.js's router avoids the Suspense
@@ -346,6 +363,21 @@ export default function DataImportPage() {
       setImportResult(result);
       setProgress(100);
       setStep("import");
+
+      // Invalidate every cache the imported rows are visible in, so
+      // the user doesn't have to hard-reload after import. The keys
+      // are scoped per type — purchase_bills doesn't wipe contacts,
+      // etc — to keep unrelated lists from refetching pointlessly.
+      if (!migrationSource) {
+        const keys = cacheKeysForType[entityType] || [];
+        for (const k of keys) {
+          queryClient.invalidateQueries({ queryKey: k });
+        }
+      } else {
+        // Migration imports touch everything — easier to be blunt
+        // here than to enumerate every possible side-effect.
+        queryClient.invalidateQueries();
+      }
     } catch (err: any) {
       console.error("Import error:", err);
       setImportResult({

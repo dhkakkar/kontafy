@@ -108,8 +108,12 @@ export class PurchaseBillsImport {
       return { total: 0, imported: 0, skipped: 0, errors: [], created: [] };
     }
 
-    // ── Pre-load lookup data in three parallel queries ────────────
-    const [contacts, org, existing] = await Promise.all([
+    // ── Pre-load lookup data in four parallel queries ─────────────
+    // The fourth query resolves the COA accounts needed to post the
+    // purchase JE (DR Expense + DR Input GST, CR A/P). Resolving
+    // once up front means the per-bill loop is pure CPU — no per-bill
+    // DB hit for account IDs.
+    const [contacts, org, existing, accounts] = await Promise.all([
       this.prisma.contact.findMany({
         where: {
           org_id: orgId,
@@ -134,7 +138,33 @@ export class PurchaseBillsImport {
         },
         select: { contact_id: true, e_invoice_irn: true },
       }),
+      this.prisma.account.findMany({
+        where: { org_id: orgId, code: { in: ['5001', '2101', '1105', '1106', '1107'] } },
+        select: { id: true, code: true },
+      }),
     ]);
+
+    // Account code → id map. Missing entries mean the org's COA
+    // wasn't fully seeded — we still import the bill (so the user
+    // sees it in /purchases) but skip the JE and surface a warning
+    // so the missing-account problem is loud rather than silent.
+    const acctId: Record<string, string | undefined> = {};
+    for (const a of accounts) {
+      if (a.code) acctId[a.code] = a.id;
+    }
+    const requiredCoreAccounts = ['5001', '2101'];
+    const coreAccountsMissing = requiredCoreAccounts.filter((c) => !acctId[c]);
+    // Human-friendly label for account codes — keeps error messages
+    // self-explanatory ("missing 2101 Accounts Payable") instead of
+    // forcing the user to look up codes in a separate table.
+    const ACCT_NAMES: Record<string, string> = {
+      '5001': '5001 Cost of Goods Sold',
+      '2101': '2101 Accounts Payable',
+      '1105': '1105 GST Input (CGST)',
+      '1106': '1106 GST Input (SGST)',
+      '1107': '1107 GST Input (IGST)',
+    };
+    const acctCodeLabel = (code: string) => ACCT_NAMES[code] || code;
 
     const byGstin = new Map<string, string>();
     const byName = new Map<string, string>();
@@ -157,10 +187,18 @@ export class PurchaseBillsImport {
     const groups = groupRows(rows, 'bill_no');
 
     // ── Pass 1: validate + build records in memory ────────────────
+    // Each staged bill carries an optional journal entry + lines.
+    // Bills get a JE only when the org's COA has the accounts we
+    // need; otherwise we still import the bill (status=sent so it
+    // appears in Total Outstanding Payables) but leave journal_id
+    // null and surface a warning. Per-bill JE flags (totalCgst etc)
+    // determine which optional accounts (CGST/SGST or IGST input)
+    // need to be present for that specific bill.
     type StagedBill = {
       invoiceId: string;
       data: any;
       items: any[];
+      journal: { entry: any; lines: any[] } | null;
       fyShort: string;
       billDate: Date;
     };
@@ -278,6 +316,114 @@ export class PurchaseBillsImport {
         const grandTotal =
           Math.round((subtotal - totalDiscount + totalTax) * 100) / 100;
 
+        // Aggregate GST totals across this bill's line items for the
+        // single JE that posts the whole bill (matches what the
+        // manual create + JournalPostingService.postInvoice flow
+        // emits: one entry per invoice, one line per ledger account).
+        const totalCgst = items.reduce((s, it) => s + it.cgst_amount, 0);
+        const totalSgst = items.reduce((s, it) => s + it.sgst_amount, 0);
+        const totalIgst = items.reduce((s, it) => s + it.igst_amount, 0);
+
+        // Build the JE only when both core accounts (Expense 5001
+        // and A/P 2101) exist, AND the optional GST input accounts
+        // for the specific tax type this bill uses are present.
+        // Otherwise the bill still imports but the JE is skipped
+        // with a warning — better than silently dropping ledger
+        // entries.
+        const billNumber = ''; // filled after FY counts; reference patched later
+        let journal: { entry: any; lines: any[] } | null = null;
+
+        if (coreAccountsMissing.length > 0) {
+          errors.push({
+            group: billNo,
+            message: `Bill imported but journal entry skipped — missing chart of accounts: ${coreAccountsMissing.map((c) => acctCodeLabel(c)).join(', ')}. Seed these in /books/accounts and re-import or use Mark as Approved.`,
+          });
+        } else {
+          // Per-tax-type optional account check.
+          const missingTaxAccounts: string[] = [];
+          if (!isIgst) {
+            if (totalCgst > 0 && !acctId['1105']) missingTaxAccounts.push(acctCodeLabel('1105'));
+            if (totalSgst > 0 && !acctId['1106']) missingTaxAccounts.push(acctCodeLabel('1106'));
+          } else if (totalIgst > 0 && !acctId['1107']) {
+            missingTaxAccounts.push(acctCodeLabel('1107'));
+          }
+
+          if (missingTaxAccounts.length > 0) {
+            errors.push({
+              group: billNo,
+              message: `Bill imported but journal entry skipped — missing GST input account(s): ${missingTaxAccounts.join(', ')}. Seed in /books/accounts.`,
+            });
+          } else {
+            const entryId = randomUUID();
+            const jeLines: any[] = [];
+            // DR Expense (default 5001) for the taxable amount.
+            jeLines.push({
+              id: randomUUID(),
+              entry_id: entryId,
+              account_id: acctId['5001']!,
+              debit: subtotal - totalDiscount,
+              credit: 0,
+              description: `Bill (pending number) — taxable`,
+            });
+            if (!isIgst) {
+              if (totalCgst > 0) {
+                jeLines.push({
+                  id: randomUUID(),
+                  entry_id: entryId,
+                  account_id: acctId['1105']!,
+                  debit: totalCgst,
+                  credit: 0,
+                  description: 'CGST input',
+                });
+              }
+              if (totalSgst > 0) {
+                jeLines.push({
+                  id: randomUUID(),
+                  entry_id: entryId,
+                  account_id: acctId['1106']!,
+                  debit: totalSgst,
+                  credit: 0,
+                  description: 'SGST input',
+                });
+              }
+            } else if (totalIgst > 0) {
+              jeLines.push({
+                id: randomUUID(),
+                entry_id: entryId,
+                account_id: acctId['1107']!,
+                debit: totalIgst,
+                credit: 0,
+                description: 'IGST input',
+              });
+            }
+            // CR Accounts Payable for the gross total — what we owe
+            // the vendor (matches the bill's balance_due field).
+            jeLines.push({
+              id: randomUUID(),
+              entry_id: entryId,
+              account_id: acctId['2101']!,
+              debit: 0,
+              credit: grandTotal,
+              description: `Bill (pending number)`,
+            });
+
+            journal = {
+              entry: {
+                id: entryId,
+                org_id: orgId,
+                date: billDate,
+                narration: `Auto-post: purchase ${billNumber || 'pending'}`,
+                reference: null, // filled in after FY-based bill numbers are assigned
+                reference_type: 'invoice',
+                reference_id: invoiceId,
+                is_posted: true,
+                created_by: userId,
+              },
+              lines: jeLines,
+            };
+          }
+        }
+
         staged.push({
           invoiceId,
           data: {
@@ -285,7 +431,12 @@ export class PurchaseBillsImport {
             org_id: orgId,
             invoice_number: '', // assigned after FY counts are known
             type: 'purchase',
-            status: 'draft',
+            // Imported bills are real vendor documents — the org
+            // already owes the money. "Draft" implies "still being
+            // entered". Sent matches the user's mental model and
+            // also routes the row into the AP outstanding totals on
+            // /purchases.
+            status: 'sent',
             contact_id: contactId,
             date: billDate,
             due_date: dueDate,
@@ -301,9 +452,14 @@ export class PurchaseBillsImport {
             // Supplier-side invoice number lives on the e_invoice_irn
             // column (legacy reuse — Invoice has no dedicated field).
             e_invoice_irn: vendorInvoiceNo || null,
+            // Wire the JE up front so we don't need a follow-up
+            // update query per bill. Null when the JE was skipped
+            // due to missing accounts.
+            journal_id: journal?.entry.id ?? null,
             created_by: userId,
           },
           items,
+          journal,
           fyShort: formatFyShort(billDate),
           billDate,
         });
@@ -358,19 +514,55 @@ export class PurchaseBillsImport {
     for (const s of staged) {
       const next = (fyCounts.get(s.fyShort) || 0) + 1;
       fyCounts.set(s.fyShort, next);
-      s.data.invoice_number = `BILL/${s.fyShort}/${String(next).padStart(4, '0')}`;
+      const num = `BILL/${s.fyShort}/${String(next).padStart(4, '0')}`;
+      s.data.invoice_number = num;
+      // Patch the JE references now that the bill has a number —
+      // these were set to "pending" during Pass 1 because numbers
+      // depend on FY counts that we resolve after the loop.
+      if (s.journal) {
+        s.journal.entry.narration = `Auto-post: purchase ${num}`;
+        s.journal.entry.reference = num;
+        for (const line of s.journal.lines) {
+          if (line.description?.includes('pending number')) {
+            line.description = line.description.replace('(pending number)', num);
+          }
+        }
+      }
     }
 
     // ── Pass 2: bulk insert in one transaction ────────────────────
-    // Two createMany calls. The transaction guarantees we don't end
-    // up with orphan invoices if items fail (or orphan items if
-    // invoices fail). On Neon/PgBouncer the array form of
-    // $transaction is the fast path — no transaction-mode session
-    // hold between queries.
-    await this.prisma.$transaction([
-      this.prisma.invoice.createMany({ data: staged.map((s) => s.data) }),
+    // Order matters because of FKs:
+    //   1. journal_entries — referenced by invoice.journal_id
+    //   2. invoices — referenced by invoice_items.invoice_id and
+    //      already wired to journal_entries via the field set in
+    //      Pass 1
+    //   3. journal_lines — references journal_entries (FK)
+    //   4. invoice_items — references invoices (FK)
+    //
+    // The array form of $transaction runs all queries inside a
+    // single Postgres TX so partial failure rolls back cleanly.
+    // On Neon/PgBouncer this is the fast path; the interactive
+    // form holds a connection per await which is exactly what we
+    // were trying to avoid.
+    const allJournalEntries = staged
+      .filter((s) => s.journal)
+      .map((s) => s.journal!.entry);
+    const allJournalLines = staged
+      .filter((s) => s.journal)
+      .flatMap((s) => s.journal!.lines);
+
+    const txOps: any[] = [];
+    if (allJournalEntries.length > 0) {
+      txOps.push(this.prisma.journalEntry.createMany({ data: allJournalEntries }));
+    }
+    txOps.push(this.prisma.invoice.createMany({ data: staged.map((s) => s.data) }));
+    if (allJournalLines.length > 0) {
+      txOps.push(this.prisma.journalLine.createMany({ data: allJournalLines }));
+    }
+    txOps.push(
       this.prisma.invoiceItem.createMany({ data: staged.flatMap((s) => s.items) }),
-    ]);
+    );
+    await this.prisma.$transaction(txOps);
 
     return {
       total: groups.size,

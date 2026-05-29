@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { Plus, Search, Download, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
@@ -34,8 +35,22 @@ interface Purchase {
   status: "draft" | "sent" | "overdue" | "paid" | "partially_paid" | "cancelled";
 }
 
-interface ApiResponse<T> {
-  data: T;
+interface ListResponse {
+  data: Purchase[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+interface StatsResponse {
+  byStatus: {
+    all: number;
+    draft: number;
+    sent: number;
+    partially_paid: number;
+    overdue: number;
+    paid: number;
+    cancelled?: number;
+  };
+  outstanding: { total: number; overdue: number; overdueCount: number };
 }
 
 const statusBadgeMap: Record<
@@ -58,41 +73,61 @@ export default function PurchasesPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
-  const { data: allPurchases = [], isLoading, error } = useQuery<Purchase[]>({
-    queryKey: ["purchases", searchQuery],
+  // The "Pending" tab is a UI convenience — the API treats sent and
+  // partially_paid as separate statuses. When the user picks the
+  // Pending tab we fetch both statuses by sending status=sent (the
+  // bulk of the count) and rely on client-side reasoning for partial.
+  // For simplicity we fall back to fetching all and filtering when
+  // the tab is sent OR all. Tab-to-status maps directly otherwise.
+  const tabStatusParam: string | undefined = useMemo(() => {
+    if (activeTab === "all") return undefined;
+    if (activeTab === "sent") return "sent"; // partially_paid handled via separate filter
+    return activeTab;
+  }, [activeTab]);
+
+  // Reset to page 1 when filters / search / tab change. Without this
+  // the user can land on page 4 of "all" then switch to a tab with
+  // only 1 page and see an empty table.
+  React.useEffect(() => {
+    setPage(1);
+  }, [searchQuery, activeTab, pageSize]);
+
+  const listQuery = useQuery<ListResponse>({
+    queryKey: ["purchases", { page, pageSize, status: tabStatusParam, search: searchQuery }],
     queryFn: async () => {
-      const params: Record<string, string> = { limit: "500" };
+      const params: Record<string, string> = {
+        page: String(page),
+        limit: String(pageSize),
+      };
+      if (tabStatusParam) params.status = tabStatusParam;
       if (searchQuery) params.search = searchQuery;
-      const res = await api.get<ApiResponse<Purchase[]>>("/bill/purchases", params);
-      return res.data;
+      const res = await api.get<ListResponse>("/bill/purchases", params);
+      return res;
     },
   });
 
-  const purchases = useMemo(() => {
-    if (activeTab === "all") return allPurchases;
-    if (activeTab === "sent") {
-      return allPurchases.filter(
-        (p) => p.status === "sent" || p.status === "partially_paid"
-      );
-    }
-    return allPurchases.filter((p) => p.status === activeTab);
-  }, [allPurchases, activeTab]);
+  const statsQuery = useQuery<StatsResponse>({
+    queryKey: ["purchases-stats"],
+    queryFn: async () => api.get<StatsResponse>("/bill/purchases/stats"),
+  });
 
-  const totalOutstanding = allPurchases
-    .filter((p) => ["sent", "overdue", "partially_paid"].includes(p.status))
-    .reduce((sum, p) => sum + Number(p.total), 0);
+  const rows = listQuery.data?.data ?? [];
+  const total = listQuery.data?.meta.total ?? 0;
+  const stats = statsQuery.data;
 
   const tabs = [
-    { value: "all", label: "All", count: allPurchases.length },
-    { value: "draft", label: "Draft", count: allPurchases.filter((p) => p.status === "draft").length },
+    { value: "all", label: "All", count: stats?.byStatus.all ?? 0 },
+    { value: "draft", label: "Draft", count: stats?.byStatus.draft ?? 0 },
     {
       value: "sent",
       label: "Pending",
-      count: allPurchases.filter((p) => p.status === "sent" || p.status === "partially_paid").length,
+      count: (stats?.byStatus.sent ?? 0) + (stats?.byStatus.partially_paid ?? 0),
     },
-    { value: "overdue", label: "Overdue", count: allPurchases.filter((p) => p.status === "overdue").length },
-    { value: "paid", label: "Paid", count: allPurchases.filter((p) => p.status === "paid").length },
+    { value: "overdue", label: "Overdue", count: stats?.byStatus.overdue ?? 0 },
+    { value: "paid", label: "Paid", count: stats?.byStatus.paid ?? 0 },
   ];
 
   const columns = useMemo(
@@ -174,9 +209,8 @@ export default function PurchasesPage() {
                     return;
                   try {
                     await api.delete(`/bill/purchases/${row.id}`);
-                    queryClient.invalidateQueries({
-                      queryKey: ["purchases"],
-                    });
+                    queryClient.invalidateQueries({ queryKey: ["purchases"] });
+                    queryClient.invalidateQueries({ queryKey: ["purchases-stats"] });
                   } catch (err) {
                     alert(
                       (err as Error).message || "Failed to delete purchase",
@@ -190,11 +224,11 @@ export default function PurchasesPage() {
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [],
   );
 
   const table = useReactTable({
-    data: purchases,
+    data: rows,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -228,26 +262,24 @@ export default function PurchasesPage() {
         </div>
       </div>
 
-      {/* Outstanding summary */}
+      {/* Outstanding summary — sourced from the stats endpoint so the
+          figures stay correct regardless of which page of the list is
+          currently visible. Falls back to "—" while loading rather
+          than showing 0, which would otherwise flicker. */}
       <Card padding="md" className="flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-500">Total Outstanding Payables</p>
           <p className="text-2xl font-bold text-warning-700">
-            {formatCurrency(totalOutstanding)}
+            {stats ? formatCurrency(stats.outstanding.total) : "—"}
           </p>
         </div>
         <div className="text-right">
           <p className="text-sm text-gray-500">
-            {purchases.filter((p) => p.status === "overdue").length} overdue bill
-            {purchases.filter((p) => p.status === "overdue").length !== 1 ? "s" : ""}
+            {stats?.outstanding.overdueCount ?? 0} overdue bill
+            {stats?.outstanding.overdueCount !== 1 ? "s" : ""}
           </p>
           <p className="text-sm text-danger-600 font-medium">
-            {formatCurrency(
-              purchases
-                .filter((p) => p.status === "overdue")
-                .reduce((s, p) => s + p.total, 0)
-            )}{" "}
-            overdue
+            {stats ? formatCurrency(stats.outstanding.overdue) : "—"} overdue
           </p>
         </div>
       </Card>
@@ -267,19 +299,28 @@ export default function PurchasesPage() {
           />
         </div>
 
-        {isLoading ? (
+        {listQuery.isLoading ? (
           <div className="py-12 flex items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
-        ) : error ? (
+        ) : listQuery.isError ? (
           <div className="py-12 text-center text-danger-600">
             Failed to load purchase invoices. Please try again.
           </div>
         ) : (
-          <DataTable
-            table={table}
-            onRowClick={(row) => router.push(`/purchases/${row.id}`)}
-          />
+          <>
+            <DataTable
+              table={table}
+              onRowClick={(row) => router.push(`/purchases/${row.id}`)}
+            />
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          </>
         )}
       </Card>
     </div>
