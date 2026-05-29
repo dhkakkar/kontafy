@@ -35,6 +35,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
+import { BankCashAccountSelect } from "@/components/payments/BankCashAccountSelect";
 
 interface Payment {
   id: string;
@@ -83,6 +84,20 @@ export default function PaymentsPage() {
   const [formMethod, setFormMethod] = useState("");
   const [formReference, setFormReference] = useState("");
   const [formNotes, setFormNotes] = useState("");
+  // Bank/Cash account state — required so postPayment can pick the
+  // correct cash-side ledger. `bankSelectValue` is the dropdown's own
+  // value (uuid or "__cash__"); `bankAccountId` is the uuid we send
+  // to the API; `isCash` flags the "pay/receive via cash in hand"
+  // path so the backend falls back to ledger 1101.
+  const [formBankAccountId, setFormBankAccountId] = useState<string | null>(null);
+  const [formIsCash, setFormIsCash] = useState(false);
+  const [formBankSelectValue, setFormBankSelectValue] = useState<string | null>(null);
+  // Bill-against-payment selection. Holds either an invoice id or the
+  // literal "__advance__" sentinel for "no specific bill / on account".
+  // Defaulting to "" means "user hasn't picked yet" — distinct from
+  // explicit advance because we want to nudge them to make a choice.
+  const [formAgainstBillId, setFormAgainstBillId] = useState<string>("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Inline "Add new contact" modal so users don't have to leave the
   // Record Payment flow to create a missing customer/vendor.
@@ -103,31 +118,101 @@ export default function PaymentsPage() {
     },
   });
 
-  // Fetch contacts for the dropdown
-  const { data: contacts = [] } = useQuery<Array<{ id: string; name: string }>>({
+  // Fetch contacts for the dropdown — filtered to the side that
+  // makes sense for the chosen payment type. Received → customers and
+  // both; Made → vendors and both. Without this filter a user
+  // recording a vendor payment would see all customers too.
+  const { data: allContacts = [] } = useQuery<
+    Array<{ id: string; name: string; type: string }>
+  >({
     queryKey: ["contacts-list"],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<Array<{ id: string; name: string }>>>("/bill/contacts");
+      const res = await api.get<
+        ApiResponse<Array<{ id: string; name: string; type: string }>>
+      >("/bill/contacts", { limit: "500" });
       return res.data;
     },
   });
 
+  const contacts = useMemo(() => {
+    const want = formType === "made" ? "vendor" : "customer";
+    return allContacts.filter((c) => c.type === want || c.type === "both");
+  }, [allContacts, formType]);
+
+  // Fetch the selected contact's outstanding invoices/bills as soon
+  // as a contact is picked — the "Against Bill" dropdown's options
+  // come from here, FIFO-sorted by the backend so the user lands on
+  // the oldest unpaid bill first if they accept the suggestion.
+  const { data: outstandingBills = [], isFetching: outstandingLoading } =
+    useQuery<
+      Array<{
+        id: string;
+        invoice_number: string;
+        date: string;
+        total: number;
+        balance_due: number;
+      }>
+    >({
+      queryKey: [
+        "payment-outstanding-modal",
+        formContactId,
+        formType === "made" ? "pay" : "receive",
+      ],
+      enabled: !!formContactId,
+      queryFn: async () => {
+        const direction = formType === "made" ? "pay" : "receive";
+        const raw = (await api.get(
+          `/bill/payments/outstanding/contact/${formContactId}`,
+          { direction },
+        )) as any;
+        // Endpoint returns { data: [...], meta } which becomes
+        // { success, data, meta } through the ResponseInterceptor.
+        const list = raw?.data && Array.isArray(raw.data) ? raw.data : raw?.data?.data || [];
+        return list;
+      },
+    });
+
   const createMutation = useMutation({
     mutationFn: async () => {
+      const amount = parseFloat(formAmount);
+      // Resolve the "Against Bill" choice into the API's allocations
+      // array shape. A specific invoice becomes a 1-row allocation
+      // for the full payment amount; "__advance__" leaves the
+      // allocations empty so the backend posts the whole thing to
+      // 2116 / 1112. Picking neither (empty string) shouldn't reach
+      // here — the submit button is disabled until one is chosen.
+      const allocations =
+        formAgainstBillId && formAgainstBillId !== "__advance__"
+          ? [{ invoice_id: formAgainstBillId, amount }]
+          : [];
       return api.post("/bill/payments", {
         type: formType,
         contact_id: formContactId || undefined,
-        amount: parseFloat(formAmount),
+        amount,
         date: formDate,
         method: formMethod,
         reference: formReference || undefined,
         notes: formNotes || undefined,
+        bank_account_id: formIsCash ? null : formBankAccountId,
+        allocations,
       });
     },
     onSuccess: () => {
+      // Invalidate every cache that surfaces payment / invoice data
+      // so the next visited page shows fresh numbers (the global
+      // staleTime: 60s would otherwise hide the change).
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["purchases-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["payment-outstanding-modal"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setShowModal(false);
       resetForm();
+    },
+    onError: (err: Error) => {
+      setFormError(err.message || "Failed to record payment");
     },
   });
 
@@ -165,7 +250,43 @@ export default function PaymentsPage() {
     setFormMethod("");
     setFormReference("");
     setFormNotes("");
+    setFormBankAccountId(null);
+    setFormIsCash(false);
+    setFormBankSelectValue(null);
+    setFormAgainstBillId("");
+    setFormError(null);
   };
+
+  // When the user switches payment type, the previously-selected
+  // contact may no longer belong to the right side (e.g. they picked
+  // a customer then switched to "Made"). Reset both contact and
+  // bill picks so the cascading dropdowns stay consistent.
+  React.useEffect(() => {
+    setFormContactId("");
+    setFormAgainstBillId("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formType]);
+
+  // Picking a bill auto-fills the amount to that bill's balance_due
+  // — the Tally-style data-entry flow the user asked for. The
+  // "__advance__" choice leaves the amount alone so the user can
+  // type a free-form advance figure.
+  React.useEffect(() => {
+    if (!formAgainstBillId || formAgainstBillId === "__advance__") return;
+    const bill = outstandingBills.find((b) => b.id === formAgainstBillId);
+    if (bill && bill.balance_due > 0) {
+      setFormAmount(String(bill.balance_due));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formAgainstBillId]);
+
+  // Changing contact mid-flow invalidates whichever bill was picked —
+  // it belonged to a different contact. Clear so the user re-picks
+  // from the new contact's outstanding list.
+  React.useEffect(() => {
+    setFormAgainstBillId("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formContactId]);
 
   // Amounts come back from the API as Decimal-serialised strings; coerce
   // before reducing or `sum + p.amount` concatenates ("0" + "9000" + ...)
@@ -412,7 +533,7 @@ export default function PaymentsPage() {
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-gray-700">
-                Contact
+                {formType === "made" ? "Vendor" : "Customer"}
               </label>
               <button
                 type="button"
@@ -433,15 +554,73 @@ export default function PaymentsPage() {
               value={formContactId}
               onChange={setFormContactId}
               searchable
-              placeholder="Select contact"
+              placeholder={
+                formType === "made" ? "Select vendor" : "Select customer"
+              }
             />
           </div>
+
+          {/* Against Bill / Invoice — appears as soon as the contact is
+              picked. Single-bill in this lite modal (full multi-bill
+              allocation lives on the invoice-scoped record-payment
+              pages). Auto-fills the Amount field when a bill is chosen
+              so the most common path (full settlement of one bill) is
+              one click. */}
+          {formContactId && (
+            <div className="md:col-span-2">
+              <Select
+                label={
+                  formType === "made"
+                    ? "Against Bill"
+                    : "Against Invoice"
+                }
+                options={[
+                  ...outstandingBills.map((b) => ({
+                    value: b.id,
+                    label: `${b.invoice_number} — ${formatCurrency(b.balance_due)} due`,
+                  })),
+                  // "On Account" sentinel — backend leaves allocations
+                  // empty and books the full amount to the advance
+                  // ledger (2116 for customers, 1112 for vendors).
+                  {
+                    value: "__advance__",
+                    label: outstandingBills.length
+                      ? `— On Account / Advance (no specific ${formType === "made" ? "bill" : "invoice"}) —`
+                      : `No outstanding ${formType === "made" ? "bills" : "invoices"} — record as Advance`,
+                  },
+                ]}
+                value={formAgainstBillId}
+                onChange={setFormAgainstBillId}
+                placeholder={
+                  outstandingLoading
+                    ? "Loading outstanding…"
+                    : `Select ${formType === "made" ? "bill" : "invoice"} to settle`
+                }
+                searchable
+              />
+              {formAgainstBillId === "__advance__" && (
+                <p className="text-xs text-amber-700 mt-1">
+                  This will be recorded as an{" "}
+                  {formType === "made"
+                    ? "Advance to Vendor (1112)"
+                    : "Advance from Customer (2116)"}{" "}
+                  in the books.
+                </p>
+              )}
+            </div>
+          )}
+
           <Input
             label="Amount"
             type="number"
             value={formAmount}
             onChange={(e) => setFormAmount(e.target.value)}
             placeholder="0.00"
+            hint={
+              formAgainstBillId && formAgainstBillId !== "__advance__"
+                ? "Auto-filled from bill — edit to record a partial payment"
+                : undefined
+            }
           />
           <Input
             label="Payment Date"
@@ -462,6 +641,17 @@ export default function PaymentsPage() {
             onChange={setFormMethod}
             placeholder="Select mode"
           />
+          <BankCashAccountSelect
+            value={formBankSelectValue}
+            paymentMethod={formMethod}
+            onChange={(next) => {
+              setFormBankAccountId(next.bankAccountId);
+              setFormIsCash(next.isCash);
+              setFormBankSelectValue(
+                next.isCash ? "__cash__" : next.bankAccountId,
+              );
+            }}
+          />
           <Input
             label="Reference / Transaction ID"
             value={formReference}
@@ -477,14 +667,44 @@ export default function PaymentsPage() {
             />
           </div>
         </div>
+        {formError && (
+          <div className="mt-4 p-3 bg-danger-50 text-danger-700 text-sm rounded-lg">
+            {formError}
+          </div>
+        )}
         <div className="flex justify-end gap-3 pt-6">
           <Button variant="outline" onClick={() => setShowModal(false)}>
             Cancel
           </Button>
           <Button
-            onClick={() => createMutation.mutate()}
+            onClick={() => {
+              setFormError(null);
+              if (!formContactId) {
+                setFormError(
+                  `Please select a ${formType === "made" ? "vendor" : "customer"}.`,
+                );
+                return;
+              }
+              if (!formAgainstBillId) {
+                setFormError(
+                  `Please pick which ${formType === "made" ? "bill" : "invoice"} this payment is against (or choose On Account).`,
+                );
+                return;
+              }
+              if (!formBankSelectValue) {
+                setFormError("Please select a Bank or Cash account.");
+                return;
+              }
+              createMutation.mutate();
+            }}
             loading={createMutation.isPending}
-            disabled={!formAmount || !formMethod}
+            disabled={
+              !formAmount ||
+              !formMethod ||
+              !formContactId ||
+              !formAgainstBillId ||
+              !formBankSelectValue
+            }
           >
             Record Payment
           </Button>
