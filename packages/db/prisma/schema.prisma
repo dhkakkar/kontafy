@@ -560,6 +560,7 @@ model BankAccount {
   account      Account?          @relation(fields: [account_id], references: [id])
   transactions BankTransaction[]
   payments     Payment[]
+  expenses     Expense[]
 
   @@index([org_id])
   @@map("bank_accounts")
@@ -1201,11 +1202,17 @@ model Expense {
   vendor_name    String?
   notes          String?
   status         String   @default("pending")
+  // Bank account the expense was paid from. Required by accounting:
+  // every non-cash expense must hit a specific 1102.NNN ledger so
+  // reconciliation works. Null = paid via cash (auto-routes to 1101
+  // when expense journal posting is wired up).
+  bank_account_id String? @db.Uuid
   created_by     String?  @db.Uuid
   created_at     DateTime @default(now()) @db.Timestamptz
   updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz
 
   organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  bank_account BankAccount? @relation(fields: [bank_account_id], references: [id], onDelete: SetNull)
 
   @@index([org_id, status])
   @@index([org_id, date])

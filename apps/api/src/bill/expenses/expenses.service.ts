@@ -85,6 +85,9 @@ export class ExpensesService {
         reference: data.reference || null,
         vendor_name: data.vendor_name || null,
         notes: data.notes || null,
+        // Cash mode → null; future expense JE poster falls back to 1101.
+        bank_account_id:
+          data.payment_method === 'cash' ? null : data.bank_account_id ?? null,
         status: 'pending',
         created_by: userId,
       },
@@ -115,6 +118,15 @@ export class ExpensesService {
     if (data.vendor_name !== undefined) updateData.vendor_name = data.vendor_name;
     if (data.notes !== undefined) updateData.notes = data.notes;
     if (data.status !== undefined) updateData.status = data.status;
+    if (data.bank_account_id !== undefined) {
+      // Honour an explicit null (user switched to cash) — but if the
+      // method is being changed to cash via the same patch, force
+      // bank_account_id to null even if the caller omitted it.
+      updateData.bank_account_id = data.bank_account_id ?? null;
+    }
+    if (data.payment_method === 'cash') {
+      updateData.bank_account_id = null;
+    }
     updateData.updated_at = new Date();
 
     return this.prisma.expense.update({

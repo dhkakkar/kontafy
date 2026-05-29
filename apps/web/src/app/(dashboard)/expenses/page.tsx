@@ -33,6 +33,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
+import { BankCashAccountSelect } from "@/components/payments/BankCashAccountSelect";
+import { getPaymentModeUi } from "@/components/payments/paymentModeFields";
 
 interface Expense {
   id: string;
@@ -59,6 +61,10 @@ interface CreateExpensePayload {
   reference?: string;
   vendor_name?: string;
   notes?: string;
+  // Bank account the expense was paid from. Null for cash mode —
+  // backend skips the FK and the (future) expense JE poster falls
+  // back to ledger 1101 Cash in Hand.
+  bank_account_id?: string | null;
 }
 
 const statusBadgeMap: Record<
@@ -111,6 +117,7 @@ const initialFormState: CreateExpensePayload = {
   reference: "",
   vendor_name: "",
   notes: "",
+  bank_account_id: null,
 };
 
 export default function ExpensesPage() {
@@ -161,6 +168,10 @@ export default function ExpensesPage() {
     },
   });
 
+  // Mode-driven UI hints (bank picker visibility + reference label).
+  // Same helper as the payment surfaces so behaviour stays identical.
+  const modeUi = getPaymentModeUi(form.payment_method);
+
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const payload: CreateExpensePayload = {
@@ -169,6 +180,9 @@ export default function ExpensesPage() {
       description: form.description,
       amount: form.amount,
       payment_method: form.payment_method,
+      // Cash mode → null; backend forces null in this case anyway
+      // but sending it explicitly keeps the contract clear.
+      bank_account_id: modeUi.isCash ? null : form.bank_account_id ?? null,
     };
     if (form.reference) payload.reference = form.reference;
     if (form.vendor_name) payload.vendor_name = form.vendor_name;
@@ -339,7 +353,14 @@ export default function ExpensesPage() {
   });
 
   const isFormValid =
-    form.date && form.category && form.description && form.amount > 0 && form.payment_method;
+    form.date &&
+    form.category &&
+    form.description &&
+    form.amount > 0 &&
+    form.payment_method &&
+    // Non-cash modes require a bank pick. Cash routes to 1101 with
+    // no FK, so bank_account_id may stay null in that case.
+    (modeUi.isCash || !!form.bank_account_id);
 
   return (
     <div className="space-y-6">
@@ -508,15 +529,38 @@ export default function ExpensesPage() {
               label="Payment Method"
               options={paymentMethodOptions}
               value={form.payment_method}
-              onChange={(val) => updateField("payment_method", val)}
+              onChange={(val) => {
+                updateField("payment_method", val);
+                // Switching to cash → drop any stale bank pick so it
+                // doesn't leak into the cash-mode payload.
+                if (val === "cash") updateField("bank_account_id", null);
+              }}
               placeholder="Select method..."
             />
           </div>
 
+          {/* Bank picker — only meaningful for non-cash methods. Cash
+              auto-routes to the 1101 Cash in Hand ledger. */}
+          {modeUi.showBankPicker && (
+            <div>
+              <BankCashAccountSelect
+                value={form.bank_account_id ?? null}
+                onChange={(next) =>
+                  updateField("bank_account_id", next.bankAccountId)
+                }
+              />
+              {modeUi.bankHint && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {modeUi.bankHint}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Reference"
-              placeholder="Transaction ID, cheque no., etc."
+              label={modeUi.referenceLabel}
+              placeholder={modeUi.referencePlaceholder}
               value={form.reference || ""}
               onChange={(e) => updateField("reference", e.target.value)}
             />
