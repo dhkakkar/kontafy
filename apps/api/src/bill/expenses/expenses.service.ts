@@ -88,7 +88,12 @@ export class ExpensesService {
         // Cash mode → null; future expense JE poster falls back to 1101.
         bank_account_id:
           data.payment_method === 'cash' ? null : data.bank_account_id ?? null,
-        status: 'pending',
+        // Default to 'approved' instead of 'pending' — the modal is
+        // a self-service entry point used by the org owner, not a
+        // multi-approver workflow, so the extra approval step was
+        // friction with no payoff. Users who do want a review queue
+        // can still patch status back to 'pending' via Edit.
+        status: 'approved',
         created_by: userId,
       },
     });
