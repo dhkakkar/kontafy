@@ -197,19 +197,35 @@ export default function ExpensesPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Summary calculations
+  // Summary calculations. Amounts come back from the API as
+  // Decimal-serialised strings (Prisma's Decimal type doesn't auto-
+  // coerce to Number on JSON serialise), so every reducer must wrap
+  // with Number() — otherwise `sum + "100000" + "30000"` concatenates
+  // ("010000030000…") and the Largest Category card shows a 30-digit
+  // garbled figure instead of an arithmetic sum.
   const now = new Date();
   const thisMonthExpenses = expenses.filter((exp) => {
     const d = new Date(exp.date);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
 
-  const totalThisMonth = thisMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalThisMonth = thisMonthExpenses.reduce(
+    (sum, e) => sum + (Number(e.amount) || 0),
+    0,
+  );
+
+  // All-time total — used by the Total Expenses card so the figure
+  // is meaningful even when the org has no expenses in the current
+  // calendar month (common for back-dated opening data).
+  const totalAllExpenses = expenses.reduce(
+    (sum, e) => sum + (Number(e.amount) || 0),
+    0,
+  );
 
   const pendingCount = expenses.filter((e) => e.status === "pending").length;
 
   const categoryTotals = expenses.reduce<Record<string, number>>((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount;
+    acc[e.category] = (acc[e.category] || 0) + (Number(e.amount) || 0);
     return acc;
   }, {});
 
@@ -396,9 +412,12 @@ export default function ExpensesPage() {
             <IndianRupee className="h-5 w-5 text-primary-700" />
           </div>
           <div>
-            <p className="text-sm text-gray-500">Total Expenses (This Month)</p>
+            <p className="text-sm text-gray-500">Total Expenses</p>
             <p className="text-xl font-bold text-gray-900">
-              {formatCurrency(totalThisMonth)}
+              {formatCurrency(totalAllExpenses)}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              This month: {formatCurrency(totalThisMonth)}
             </p>
           </div>
         </Card>
