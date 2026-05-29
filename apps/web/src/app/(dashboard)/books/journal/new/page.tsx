@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
-import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Send } from "lucide-react";
 import { api } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -144,17 +144,15 @@ export default function NewJournalEntryPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            icon={<Save className="h-4 w-4" />}
-            onClick={() => createEntry.mutate(false)}
-            loading={createEntry.isPending}
-          >
-            Save as Draft
-          </Button>
+          {/* Save-as-Draft removed — every manual entry lands as
+              Posted now. Drafts were noise: the only way users hit
+              them was the old narration-required guard, not by
+              choice. Narration is optional here for the same reason
+              (accountants leave it blank routinely when the source
+              document already says enough). */}
           <Button
             icon={<Send className="h-4 w-4" />}
-            disabled={!isBalanced || !narration}
+            disabled={!isBalanced}
             onClick={() => createEntry.mutate(true)}
             loading={createEntry.isPending}
           >

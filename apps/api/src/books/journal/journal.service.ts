@@ -163,7 +163,12 @@ export class JournalService {
           reference: data.reference,
           reference_type: data.reference_type,
           reference_id: data.reference_id,
-          is_posted: data.is_posted || false,
+          // Default to posted — the new-entry form no longer offers
+          // a Draft option (was noise) and every internal caller
+          // (JournalPostingService.postInvoice / postPayment etc)
+          // explicitly passes is_posted: true. The nullish-coalesce
+          // keeps a caller that explicitly passes false in draft.
+          is_posted: data.is_posted ?? true,
           created_by: userId,
         },
       });
