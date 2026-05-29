@@ -682,6 +682,84 @@ export class SettingsService {
           );
         }
       }
+
+      // Mirror each bank into the `bank_accounts` table so the
+      // Record Payment / Receipt dropdown (which reads from that
+      // table, not from settings JSON) sees them. The JSON form
+      // shipped before the bank_accounts table existed, so until
+      // this sync landed users had to add banks twice — once here
+      // for the PDF, once at /bank/accounts for payments. account_id
+      // is the natural key: every bank has a 1102.NNN sub-ledger, no
+      // two banks share one, so we use it for the upsert. Inactive-
+      // sweep at the end so banks the user removed don't keep
+      // appearing in the dropdown.
+      try {
+        const existingRows = await this.prisma.bankAccount.findMany({
+          where: { org_id: orgId },
+          select: { id: true, account_id: true },
+        });
+        const byAccountId = new Map<string, string>();
+        for (const r of existingRows) {
+          if (r.account_id) byAccountId.set(r.account_id, r.id);
+        }
+
+        const keptIds = new Set<string>();
+        for (const b of nextBankAccounts) {
+          if (!b.account_id) continue;
+          const payload = {
+            org_id: orgId,
+            account_name: b.account_name || b.bank_name || 'Bank',
+            bank_name: b.bank_name || null,
+            account_number: b.account_number || null,
+            ifsc: b.ifsc || null,
+            account_type: b.account_type || 'current',
+            opening_balance: b.opening_balance || 0,
+            // current_balance: keep in sync with opening on
+            // create; we don't recompute the running balance here
+            // because bank-transactions ingestion owns that field.
+            account_id: b.account_id,
+            is_active: true,
+          };
+
+          const existing = byAccountId.get(b.account_id);
+          if (existing) {
+            await this.prisma.bankAccount.update({
+              where: { id: existing },
+              data: {
+                account_name: payload.account_name,
+                bank_name: payload.bank_name,
+                account_number: payload.account_number,
+                ifsc: payload.ifsc,
+                account_type: payload.account_type,
+                opening_balance: payload.opening_balance,
+                is_active: true,
+              },
+            });
+            keptIds.add(existing);
+          } else {
+            const created = await this.prisma.bankAccount.create({
+              data: { ...payload, current_balance: payload.opening_balance },
+            });
+            keptIds.add(created.id);
+          }
+        }
+
+        // Soft-deactivate any rows that aren't in the new settings
+        // list — hard delete would cascade-null payment FKs and lose
+        // the audit trail. updateMany is idempotent so even already-
+        // inactive rows are fine.
+        const toDeactivate = existingRows.filter((r) => !keptIds.has(r.id));
+        if (toDeactivate.length > 0) {
+          await this.prisma.bankAccount.updateMany({
+            where: { id: { in: toDeactivate.map((r) => r.id) } },
+            data: { is_active: false },
+          });
+        }
+      } catch (err) {
+        this.logger.warn(
+          `bank_accounts table sync failed for org ${orgId}: ${(err as Error).message}`,
+        );
+      }
     }
 
     const { bank_accounts: _ignore, ...flatInputs } = data;
