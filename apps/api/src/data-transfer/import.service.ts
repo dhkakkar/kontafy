@@ -52,9 +52,21 @@ export class ImportService {
       throw new BadRequestException('File is empty or has no data rows');
     }
 
+    // Header normalisation — strip user-facing decorations before
+    // snake-casing so the resulting key matches what handlers and
+    // the validate switch look up by. Without this, "Name *" → "name_"
+    // and "Type * (customer/vendor/both)" → "type___customer_vendor_both_" —
+    // both rejected by the per-type allowlists, leaving rows with no
+    // recognisable values and emitting cryptic "undefined" errors.
     const headers: string[] = [];
     sheet.getRow(1).eachCell((cell, colNum) => {
-      headers[colNum] = String(cell.value || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      headers[colNum] = String(cell.value || '')
+        .replace(/\([^)]*\)/g, '') // drop parenthetical hints first
+        .replace(/\*/g, '') // and required-marker asterisks
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
     });
 
     // Pre-compute the header order so every parsed row carries

@@ -66,9 +66,26 @@ export async function parseSheetToRows(
     throw new BadRequestException('File is empty or has no data rows');
   }
 
+  // Header normalisation runs in two passes so user-facing template
+  // decorations don't poison the snake_case key the handlers look
+  // up by. Strip first, then normalise:
+  //
+  //   "Customer Name *"                     → "customer_name"
+  //   "Mode * (cash/upi/bank_transfer/...)" → "mode"
+  //   "Bank Name (required if not cash)"    → "bank_name"
+  //   "Reference / Transaction ID"          → "reference_transaction_id"
+  //
+  // Without the strip step the parenthetical hints would survive into
+  // the key — "Mode * (cash/upi/...)" becomes a 30-char monster that
+  // the handler's allowedKeys filter rejects, leaving row.mode as
+  // undefined and emitting unhelpful "Customer not found ('undefined')"
+  // errors per row. The fix is centralised here so every runner picks
+  // it up for free.
   const headers: string[] = [];
   sheet.getRow(1).eachCell((cell, colNum) => {
     headers[colNum] = String(cell.value || '')
+      .replace(/\([^)]*\)/g, '') // drop parenthetical hints first
+      .replace(/\*/g, '') // and required-marker asterisks
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')

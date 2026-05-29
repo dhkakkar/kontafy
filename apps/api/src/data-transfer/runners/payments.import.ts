@@ -59,22 +59,69 @@ export class PaymentsImport {
     format: string,
     direction: 'received' | 'made',
   ): Promise<ImportRunResult> {
+    // Accept both the direction-specific header keys (`customer_*`
+    // for receipts, `vendor_*` for payments) AND the legacy
+    // `contact_*` aliases. The downloaded template uses the direction-
+    // specific labels ("Customer Name *" / "Vendor Name *") which
+    // normalise to `customer_name` / `vendor_name` — handlers used to
+    // look up `contact_name`, returning undefined and emitting the
+    // famous "Customer not found ('undefined')" error per row.
+    // Similarly for `against_invoice` vs `against_bill`.
     const rows = await parseSheetToRows(buffer, format, {
       allowedKeys: [
         'payment_date',
         'contact_name',
+        'customer_name',
+        'vendor_name',
         'contact_gstin',
+        'customer_gstin',
+        'vendor_gstin',
         'amount',
         'mode',
         'reference',
         'bank_name',
         'against_invoice',
+        'against_bill',
         'notes',
       ],
     });
 
     if (rows.length === 0) {
       return { total: 0, imported: 0, skipped: 0, errors: [], created: [] };
+    }
+
+    // Pre-import header validation: catch missing required columns
+    // before per-row processing so the user gets one clear error
+    // instead of N copies of "amount must be > 0". The first row
+    // tells us which keys made it through normalisation.
+    const presentKeys = new Set(Object.keys(rows[0]));
+    const hasContactCol =
+      presentKeys.has('contact_name') ||
+      (direction === 'received' && presentKeys.has('customer_name')) ||
+      (direction === 'made' && presentKeys.has('vendor_name'));
+    const requiredChecks: Array<{ key: string; label: string; present: boolean }> = [
+      { key: 'payment_date', label: 'Payment Date', present: presentKeys.has('payment_date') },
+      {
+        key: direction === 'received' ? 'customer_name' : 'vendor_name',
+        label: direction === 'received' ? 'Customer Name' : 'Vendor Name',
+        present: hasContactCol,
+      },
+      { key: 'amount', label: 'Amount', present: presentKeys.has('amount') },
+      { key: 'mode', label: 'Mode', present: presentKeys.has('mode') },
+    ];
+    const missing = requiredChecks.filter((c) => !c.present).map((c) => c.label);
+    if (missing.length > 0) {
+      return {
+        total: rows.length,
+        imported: 0,
+        skipped: rows.length,
+        errors: [
+          {
+            message: `Required column${missing.length === 1 ? '' : 's'} missing: ${missing.join(', ')}. Please re-download the template (Download button on the import page) and use that file.`,
+          },
+        ],
+        created: [],
+      };
     }
 
     // ── Pre-load lookup data in parallel ─────────────────────────
@@ -250,41 +297,82 @@ export class PaymentsImport {
     let skipped = 0;
     const seenInBatch = new Set<string>();
 
+    // Helper: read a cell value tolerantly across the legacy
+    // contact_* alias and the direction-specific customer_* /
+    // vendor_* keys. The first non-empty wins. Templates we
+    // generate emit only the direction-specific labels, but a
+    // user could hand-edit the headers — either spelling works.
+    const pickRow = (row: Record<string, string>, ...keys: string[]) => {
+      for (const k of keys) {
+        const v = (row[k] || '').trim();
+        if (v) return v;
+      }
+      return '';
+    };
+
     rows.forEach((row, idx) => {
       const rowNum = idx + 2; // +2: 1 for the header row, 1 for 1-indexing
       try {
-        const date = this.parseDate(row.payment_date);
+        const rawDate = pickRow(row, 'payment_date');
+        const date = this.parseDate(rawDate);
         if (!date) {
           throw new Error(
-            `payment_date is missing or unparseable (got "${row.payment_date}"). Use YYYY-MM-DD or DD/MM/YYYY.`,
+            rawDate
+              ? `Row ${rowNum}: Date "${rawDate}" is invalid. Use YYYY-MM-DD or DD/MM/YYYY.`
+              : `Row ${rowNum}: Payment Date is empty.`,
+          );
+        }
+
+        const contactName = pickRow(
+          row,
+          'contact_name',
+          direction === 'received' ? 'customer_name' : 'vendor_name',
+        );
+        const contactGstin = pickRow(
+          row,
+          'contact_gstin',
+          direction === 'received' ? 'customer_gstin' : 'vendor_gstin',
+        );
+
+        if (!contactName && !contactGstin) {
+          throw new Error(
+            `Row ${rowNum}: ${direction === 'received' ? 'Customer Name' : 'Vendor Name'} is empty.`,
           );
         }
 
         const contactId = this.resolveContact(
-          row.contact_name,
-          row.contact_gstin,
+          contactName,
+          contactGstin,
           byGstin,
           byName,
         );
         if (!contactId) {
+          const label = contactName || contactGstin;
           throw new Error(
-            `${direction === 'received' ? 'Customer' : 'Vendor'} not found ("${row.contact_name || row.contact_gstin}"). Add the contact first, then re-import.`,
+            `Row ${rowNum}: ${direction === 'received' ? 'Customer' : 'Vendor'} "${label}" not found. Create the contact in /contacts first, then re-import.`,
           );
         }
 
-        const amount = this.parseNumber(row.amount);
+        const rawAmount = pickRow(row, 'amount');
+        const amount = this.parseNumber(rawAmount);
         if (!amount || amount <= 0) {
-          throw new Error(`amount must be > 0 (got "${row.amount}")`);
+          throw new Error(
+            rawAmount
+              ? `Row ${rowNum}: Amount "${rawAmount}" is not a positive number.`
+              : `Row ${rowNum}: Amount is empty.`,
+          );
         }
 
-        const mode = (row.mode || '').trim().toLowerCase();
+        const mode = pickRow(row, 'mode').toLowerCase();
         if (!PaymentsImport.VALID_MODES.has(mode)) {
           throw new Error(
-            `mode must be one of cash, upi, bank_transfer, cheque, card (got "${row.mode}")`,
+            mode
+              ? `Row ${rowNum}: Mode "${mode}" is invalid. Use one of: cash, upi, bank_transfer, cheque, card.`
+              : `Row ${rowNum}: Mode is empty. Use one of: cash, upi, bank_transfer, cheque, card.`,
           );
         }
 
-        const reference = (row.reference || '').trim() || null;
+        const reference = pickRow(row, 'reference') || null;
 
         // Idempotency check — DB + within-file dedupe.
         const key = dedupeKey(contactId, date, amount, reference);
@@ -314,16 +402,16 @@ export class PaymentsImport {
         let bankAccountId: string | null = null;
         let bankLedgerId: string | undefined;
         if (mode !== 'cash') {
-          const bankRaw = (row.bank_name || '').trim();
+          const bankRaw = pickRow(row, 'bank_name');
           if (!bankRaw) {
             throw new Error(
-              `bank_name required for mode "${mode}" (only cash works without a bank).`,
+              `Row ${rowNum}: Bank Name is required for mode "${mode}". (Only cash works without a bank.)`,
             );
           }
           const bank = bankByName.get(bankRaw.toLowerCase());
           if (!bank) {
             throw new Error(
-              `Bank "${bankRaw}" not found. Add it in Settings → Invoices → Bank Accounts first.`,
+              `Row ${rowNum}: Bank "${bankRaw}" not found. Add it in Settings → Invoices → Bank Accounts first.`,
             );
           }
           bankAccountId = bank.id;
@@ -332,14 +420,17 @@ export class PaymentsImport {
           bankLedgerId = acctId['1101'];
           if (!bankLedgerId) {
             throw new Error(
-              `Cash ledger (1101 Cash in Hand) not found in chart of accounts.`,
+              `Row ${rowNum}: Cash ledger (1101 Cash in Hand) missing from chart of accounts.`,
             );
           }
         }
 
         // Allocation against a specific invoice/bill (optional).
-        // Empty → pure advance (whole amount → 2116/1112).
-        const againstRaw = (row.against_invoice || '').trim();
+        // Empty → pure advance (whole amount → 2116/1112). Accept
+        // both `against_invoice` (receipts template) and
+        // `against_bill` (vendor-payments template) — the parser
+        // emits whichever the user's template uses.
+        const againstRaw = pickRow(row, 'against_invoice', 'against_bill');
         let allocation: StagedPayment['allocation'] = null;
         let invoiceUpdate: InvoiceTally | null = null;
         const paymentId = randomUUID();
@@ -348,18 +439,18 @@ export class PaymentsImport {
           const inv = invoiceByNumber.get(againstRaw.toLowerCase());
           if (!inv) {
             throw new Error(
-              `Invoice/bill "${againstRaw}" not found among outstanding ${direction === 'received' ? 'invoices' : 'bills'}. It may already be fully paid, cancelled, or not yet sent.`,
+              `Row ${rowNum}: ${direction === 'received' ? 'Invoice' : 'Bill'} "${againstRaw}" not found among outstanding ${direction === 'received' ? 'invoices' : 'bills'}. It may already be fully paid, cancelled, or still in draft.`,
             );
           }
           if (inv.contact_id !== contactId) {
             throw new Error(
-              `Invoice "${againstRaw}" belongs to a different ${direction === 'received' ? 'customer' : 'vendor'} than the one on this row.`,
+              `Row ${rowNum}: ${direction === 'received' ? 'Invoice' : 'Bill'} "${againstRaw}" belongs to a different ${direction === 'received' ? 'customer' : 'vendor'} than the one on this row.`,
             );
           }
           const tally = invoiceTallies.get(inv.id)!;
           if (amount > tally.balance_due + 0.005) {
             throw new Error(
-              `Allocation ${amount} exceeds remaining balance ${tally.balance_due.toFixed(2)} on invoice ${inv.invoice_number}.`,
+              `Row ${rowNum}: Allocation ${amount} exceeds remaining balance ${tally.balance_due.toFixed(2)} on ${direction === 'received' ? 'invoice' : 'bill'} ${inv.invoice_number}.`,
             );
           }
           // Compound the running tally so the NEXT row that targets
@@ -500,7 +591,7 @@ export class PaymentsImport {
             method: mode,
             reference,
             bank_account_id: bankAccountId,
-            notes: row.notes || null,
+            notes: pickRow(row, 'notes') || null,
             journal_id: journal?.entry.id ?? null,
           },
           allocation,
