@@ -6,6 +6,7 @@ import { SalesInvoicesImport } from './runners/sales-invoices.import';
 import { PurchaseBillsImport } from './runners/purchase-bills.import';
 import { PaymentsImport } from './runners/payments.import';
 import { ExpensesImport } from './runners/expenses.import';
+import { JournalEntriesImport } from './runners/journal-entries.import';
 import { BillModule } from '../bill/bill.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { BillModule } from '../bill/bill.module';
     PurchaseBillsImport,
     PaymentsImport,
     ExpensesImport,
+    JournalEntriesImport,
   ],
   exports: [ExportService, ImportService],
 })

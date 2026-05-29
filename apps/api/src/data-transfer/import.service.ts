@@ -14,7 +14,8 @@ export type ImportEntityType =
   | 'purchase_bills'
   | 'payments_received'
   | 'payments_made'
-  | 'expenses';
+  | 'expenses'
+  | 'journal_entries';
 
 export interface ValidationError {
   row: number;
@@ -714,6 +715,11 @@ export class ImportService {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./runners/expenses.import') as typeof import('./runners/expenses.import');
       return mod.ExpensesImport.buildTemplate();
+    }
+    if (type === 'journal_entries') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./runners/journal-entries.import') as typeof import('./runners/journal-entries.import');
+      return mod.JournalEntriesImport.buildTemplate();
     }
 
     const buffer = await workbook.xlsx.writeBuffer();

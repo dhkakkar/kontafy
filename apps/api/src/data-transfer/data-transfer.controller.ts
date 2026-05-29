@@ -21,6 +21,7 @@ import { SalesInvoicesImport } from './runners/sales-invoices.import';
 import { PurchaseBillsImport } from './runners/purchase-bills.import';
 import { PaymentsImport } from './runners/payments.import';
 import { ExpensesImport } from './runners/expenses.import';
+import { JournalEntriesImport } from './runners/journal-entries.import';
 
 @ApiTags('Data Transfer')
 @ApiBearerAuth('access-token')
@@ -34,6 +35,7 @@ export class DataTransferController {
     private readonly purchaseBillsImport: PurchaseBillsImport,
     private readonly paymentsImport: PaymentsImport,
     private readonly expensesImport: ExpensesImport,
+    private readonly journalEntriesImport: JournalEntriesImport,
   ) {}
 
   // ─── Export Endpoints ─────────────────────────────────────────
@@ -378,6 +380,42 @@ export class DataTransferController {
     };
   }
 
+  @Post('import/journal_entries')
+  @ApiOperation({ summary: 'Bulk-import manual journal entries' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async importJournalEntries(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    this.validateUploadedFile(file);
+    const format = this.detectFileFormat(file);
+    const result = await this.journalEntriesImport.run(
+      orgId,
+      userId,
+      file.buffer,
+      format,
+    );
+    return {
+      success: result.errors.length === 0,
+      total: result.total,
+      imported: result.imported,
+      skipped: result.skipped,
+      errors: result.errors.map((e) => ({
+        row: e.row,
+        field: e.group ? `Entry ${e.group}` : e.field,
+        message: e.message,
+      })),
+    };
+  }
+
   @Post('import/expenses')
   @ApiOperation({ summary: 'Bulk-import business expenses' })
   @ApiConsumes('multipart/form-data')
@@ -425,6 +463,7 @@ export class DataTransferController {
       'payments_received',
       'payments_made',
       'expenses',
+      'journal_entries',
     ];
     if (!validTypes.includes(type as ImportEntityType)) {
       throw new BadRequestException(`Invalid template type. Must be one of: ${validTypes.join(', ')}`);
@@ -456,6 +495,7 @@ export class DataTransferController {
             'payments_received',
             'payments_made',
             'expenses',
+            'journal_entries',
           ],
         },
       },
@@ -483,6 +523,7 @@ export class DataTransferController {
       'payments_received',
       'payments_made',
       'expenses',
+      'journal_entries',
     ];
     if (!validTypes.includes(type as ImportEntityType)) {
       throw new BadRequestException(`Invalid type. Must be one of: ${validTypes.join(', ')}`);

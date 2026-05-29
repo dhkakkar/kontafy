@@ -34,7 +34,8 @@ type EntityType =
   | "purchase_bills"
   | "payments_received"
   | "payments_made"
-  | "expenses";
+  | "expenses"
+  | "journal_entries";
 type MigrationSource = "tally" | "busy" | null;
 
 interface ValidationError {
@@ -70,6 +71,7 @@ const entityOptions = [
   { value: "payments_received", label: "Payments Received (Receipts)" },
   { value: "payments_made", label: "Payments Made (Vendor Payments)" },
   { value: "expenses", label: "Expenses" },
+  { value: "journal_entries", label: "Journal Entries" },
 ];
 
 const templateTypes = [
@@ -118,6 +120,12 @@ const templateTypes = [
     description:
       "Business expenses — one row per expense, with category and payment method",
   },
+  {
+    type: "journal_entries" as EntityType,
+    label: "Journal Entries Template",
+    description:
+      "Manual journal entries grouped by Entry No, with debit/credit lines",
+  },
 ];
 
 // Map of valid entity types — used to validate the `?type=` URL
@@ -131,6 +139,7 @@ const VALID_ENTITY_TYPES = new Set<EntityType>([
   "payments_received",
   "payments_made",
   "expenses",
+  "journal_entries",
 ]);
 
 // Read the ?type= URL param on the client without pulling in
@@ -199,6 +208,19 @@ export default function DataImportPage() {
     // surface expense totals. No invoice/bill balances to bust since
     // expenses don't allocate against transactions.
     expenses: [["expenses"], ["dashboard"]],
+    // Journal entries land in the books — every downstream view that
+    // reads ledger balances (COA / accounts / trial balance / ledger
+    // detail / dashboard widgets) needs a refresh.
+    journal_entries: [
+      ["journal-entries"],
+      ["accounts"],
+      ["accounts-tree"],
+      ["accounts-flat"],
+      ["coa"],
+      ["trial-balance"],
+      ["ledger"],
+      ["dashboard"],
+    ],
   };
 
   // Keep the URL ?type= in sync with the dropdown using the native
