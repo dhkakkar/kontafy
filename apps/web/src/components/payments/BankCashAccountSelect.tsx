@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useMemo } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 
@@ -102,15 +104,50 @@ export function BankCashAccountSelect({
     }
   };
 
+  // Track whether the org has any real bank accounts. Used to nudge
+  // the user toward `/bank/accounts` when the dropdown only shows
+  // the synthetic "Cash in Hand" row — otherwise the empty state is
+  // silent and users assume the dropdown is broken.
+  const hasRealBanks = accounts.some((a) => a.is_active !== false);
+
   return (
-    <Select
-      label={label + (required ? " *" : "")}
-      options={options}
-      value={value || ""}
-      onChange={handleChange}
-      placeholder={isLoading ? "Loading…" : "Select an account"}
-      disabled={disabled || isLoading}
-    />
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-sm font-medium text-gray-700">
+          {label + (required ? " *" : "")}
+        </label>
+        {!isLoading && !hasRealBanks && (
+          <Link
+            href="/bank/accounts"
+            target="_blank"
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-900"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add bank account
+          </Link>
+        )}
+      </div>
+      <Select
+        options={options}
+        value={value || ""}
+        onChange={handleChange}
+        placeholder={isLoading ? "Loading…" : "Select an account"}
+        disabled={disabled || isLoading}
+      />
+      {!isLoading && !hasRealBanks && (
+        <p className="text-xs text-gray-500 mt-1">
+          No bank accounts yet — only Cash in Hand is available. Add one in{" "}
+          <Link
+            href="/bank/accounts"
+            target="_blank"
+            className="text-primary-700 hover:underline"
+          >
+            Bank → Accounts
+          </Link>{" "}
+          to record bank transfers.
+        </p>
+      )}
+    </div>
   );
 }
 
