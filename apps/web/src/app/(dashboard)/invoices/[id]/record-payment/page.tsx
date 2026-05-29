@@ -16,6 +16,7 @@ import {
   type PaymentAllocation,
 } from "@/components/payments/PaymentAllocationTable";
 import { BankCashAccountSelect } from "@/components/payments/BankCashAccountSelect";
+import { getPaymentModeUi } from "@/components/payments/paymentModeFields";
 
 /**
  * Record Receipt page — customer paying us.
@@ -77,13 +78,13 @@ export default function RecordPaymentPage() {
     notes: "",
   });
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
-  const [isCash, setIsCash] = useState(false);
-  // Sentinel that drives the BankCashAccountSelect's "value" prop —
-  // distinct from bank_account_id so we can tell "user picked cash"
-  // ("__cash__") apart from "nothing selected yet" (null).
-  const [bankSelectValue, setBankSelectValue] = useState<string | null>(null);
   const [allocations, setAllocations] = useState<PaymentAllocation[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Mode-driven UI hints: bank picker visibility, reference field
+  // label/placeholder, optional bank hint. Centralised so all three
+  // Record Payment surfaces stay consistent.
+  const modeUi = getPaymentModeUi(form.method);
 
   const { data: invoice, isLoading } = useQuery<Invoice>({
     queryKey: ["invoice", invoiceId],
@@ -136,8 +137,9 @@ export default function RecordPaymentPage() {
       return;
     }
 
-    if (!bankSelectValue) {
-      setError("Please select a Bank or Cash account.");
+    // Cash mode skips the bank picker — every other mode requires it.
+    if (!modeUi.isCash && !bankAccountId) {
+      setError("Please select a bank account for this payment mode.");
       return;
     }
 
@@ -168,7 +170,9 @@ export default function RecordPaymentPage() {
       method: form.method,
       reference: form.reference || undefined,
       notes: form.notes || undefined,
-      bank_account_id: isCash ? null : bankAccountId,
+      // Cash mode → null; backend falls back to 1101 Cash in Hand
+      // via the method='cash' branch in postPayment().
+      bank_account_id: modeUi.isCash ? null : bankAccountId,
       // Backend treats empty allocations as a pure advance — exactly
       // what we want when the user clears every cell or there are no
       // outstanding invoices for the contact.
@@ -294,29 +298,44 @@ export default function RecordPaymentPage() {
                   label="Payment Method"
                   options={paymentMethods}
                   value={form.method}
-                  onChange={(v) => setForm({ ...form, method: v })}
-                />
-                <BankCashAccountSelect
-                  value={bankSelectValue}
-                  paymentMethod={form.method}
-                  onChange={(next) => {
-                    setBankAccountId(next.bankAccountId);
-                    setIsCash(next.isCash);
-                    setBankSelectValue(
-                      next.isCash ? "__cash__" : next.bankAccountId,
-                    );
+                  onChange={(v) => {
+                    setForm({ ...form, method: v });
+                    // Clear bank pick when switching to cash so a
+                    // stale selection doesn't carry over (also no-ops
+                    // when switching the other way).
+                    if (v === "cash") setBankAccountId(null);
                   }}
                 />
+                {/* Bank picker is only meaningful for non-cash modes —
+                    cash auto-routes to ledger 1101. */}
+                {modeUi.showBankPicker ? (
+                  <div>
+                    <BankCashAccountSelect
+                      value={bankAccountId}
+                      onChange={(next) => setBankAccountId(next.bankAccountId)}
+                    />
+                    {modeUi.bankHint && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {modeUi.bankHint}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  // Reserve the column so the grid layout stays stable
+                  // when cash is selected (avoids "Method" centering
+                  // alone on its row).
+                  <div className="hidden md:block" />
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
-                  label="Reference Number"
+                  label={modeUi.referenceLabel}
                   value={form.reference}
                   onChange={(e) =>
                     setForm({ ...form, reference: e.target.value })
                   }
-                  placeholder="e.g., UTR, cheque number"
+                  placeholder={modeUi.referencePlaceholder}
                 />
                 <Input
                   label="Notes (Optional)"
@@ -343,7 +362,11 @@ export default function RecordPaymentPage() {
                 <Button
                   type="submit"
                   loading={createPaymentMutation.isPending}
-                  disabled={!form.amount || !form.date || !bankSelectValue}
+                  disabled={
+                    !form.amount ||
+                    !form.date ||
+                    (!modeUi.isCash && !bankAccountId)
+                  }
                   icon={<CreditCard className="h-4 w-4" />}
                 >
                   Record Payment

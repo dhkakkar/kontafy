@@ -16,6 +16,7 @@ import {
   type PaymentAllocation,
 } from "@/components/payments/PaymentAllocationTable";
 import { BankCashAccountSelect } from "@/components/payments/BankCashAccountSelect";
+import { getPaymentModeUi } from "@/components/payments/paymentModeFields";
 
 /**
  * Record Payment page — we are paying a vendor.
@@ -81,10 +82,13 @@ export default function RecordPurchasePaymentPage() {
     notes: "",
   });
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
-  const [isCash, setIsCash] = useState(false);
-  const [bankSelectValue, setBankSelectValue] = useState<string | null>(null);
   const [allocations, setAllocations] = useState<PaymentAllocation[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Mode-driven UI hints: bank picker visibility, reference field
+  // label/placeholder, optional bank hint. Centralised so all three
+  // Record Payment surfaces stay consistent.
+  const modeUi = getPaymentModeUi(form.method);
 
   const { data: purchase, isLoading } = useQuery<Purchase>({
     queryKey: ["purchase", billId],
@@ -143,8 +147,8 @@ export default function RecordPurchasePaymentPage() {
       return;
     }
 
-    if (!bankSelectValue) {
-      setError("Please select a Bank or Cash account.");
+    if (!modeUi.isCash && !bankAccountId) {
+      setError("Please select a bank account for this payment mode.");
       return;
     }
 
@@ -176,7 +180,7 @@ export default function RecordPurchasePaymentPage() {
       method: form.method,
       reference: form.reference || undefined,
       notes: form.notes || undefined,
-      bank_account_id: isCash ? null : bankAccountId,
+      bank_account_id: modeUi.isCash ? null : bankAccountId,
       allocations,
     });
   };
@@ -302,29 +306,36 @@ export default function RecordPurchasePaymentPage() {
                   label="Payment Method"
                   options={paymentMethods}
                   value={form.method}
-                  onChange={(v) => setForm({ ...form, method: v })}
-                />
-                <BankCashAccountSelect
-                  value={bankSelectValue}
-                  paymentMethod={form.method}
-                  onChange={(next) => {
-                    setBankAccountId(next.bankAccountId);
-                    setIsCash(next.isCash);
-                    setBankSelectValue(
-                      next.isCash ? "__cash__" : next.bankAccountId,
-                    );
+                  onChange={(v) => {
+                    setForm({ ...form, method: v });
+                    if (v === "cash") setBankAccountId(null);
                   }}
                 />
+                {modeUi.showBankPicker ? (
+                  <div>
+                    <BankCashAccountSelect
+                      value={bankAccountId}
+                      onChange={(next) => setBankAccountId(next.bankAccountId)}
+                    />
+                    {modeUi.bankHint && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {modeUi.bankHint}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="hidden md:block" />
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
-                  label="Reference Number"
+                  label={modeUi.referenceLabel}
                   value={form.reference}
                   onChange={(e) =>
                     setForm({ ...form, reference: e.target.value })
                   }
-                  placeholder="e.g., UTR, cheque number"
+                  placeholder={modeUi.referencePlaceholder}
                 />
                 <Input
                   label="Notes (Optional)"
@@ -362,7 +373,11 @@ export default function RecordPurchasePaymentPage() {
                 <Button
                   type="submit"
                   loading={createPaymentMutation.isPending}
-                  disabled={!form.amount || !form.date || !bankSelectValue}
+                  disabled={
+                    !form.amount ||
+                    !form.date ||
+                    (!modeUi.isCash && !bankAccountId)
+                  }
                   icon={<CreditCard className="h-4 w-4" />}
                 >
                   Record Payment

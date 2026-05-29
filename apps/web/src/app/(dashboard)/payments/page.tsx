@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { BankCashAccountSelect } from "@/components/payments/BankCashAccountSelect";
+import { getPaymentModeUi } from "@/components/payments/paymentModeFields";
 
 interface Payment {
   id: string;
@@ -84,20 +85,19 @@ export default function PaymentsPage() {
   const [formMethod, setFormMethod] = useState("");
   const [formReference, setFormReference] = useState("");
   const [formNotes, setFormNotes] = useState("");
-  // Bank/Cash account state — required so postPayment can pick the
-  // correct cash-side ledger. `bankSelectValue` is the dropdown's own
-  // value (uuid or "__cash__"); `bankAccountId` is the uuid we send
-  // to the API; `isCash` flags the "pay/receive via cash in hand"
-  // path so the backend falls back to ledger 1101.
+  // Bank account state — required when method != cash. For cash mode
+  // we leave this null and the backend falls back to ledger 1101.
   const [formBankAccountId, setFormBankAccountId] = useState<string | null>(null);
-  const [formIsCash, setFormIsCash] = useState(false);
-  const [formBankSelectValue, setFormBankSelectValue] = useState<string | null>(null);
   // Bill-against-payment selection. Holds either an invoice id or the
   // literal "__advance__" sentinel for "no specific bill / on account".
   // Defaulting to "" means "user hasn't picked yet" — distinct from
   // explicit advance because we want to nudge them to make a choice.
   const [formAgainstBillId, setFormAgainstBillId] = useState<string>("");
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Mode-driven UI hints (bank picker visibility + reference label).
+  // Same shape used by the invoice-scoped record-payment pages.
+  const formModeUi = getPaymentModeUi(formMethod);
 
   // Inline "Add new contact" modal so users don't have to leave the
   // Record Payment flow to create a missing customer/vendor.
@@ -193,7 +193,7 @@ export default function PaymentsPage() {
         method: formMethod,
         reference: formReference || undefined,
         notes: formNotes || undefined,
-        bank_account_id: formIsCash ? null : formBankAccountId,
+        bank_account_id: formModeUi.isCash ? null : formBankAccountId,
         allocations,
       });
     },
@@ -251,8 +251,6 @@ export default function PaymentsPage() {
     setFormReference("");
     setFormNotes("");
     setFormBankAccountId(null);
-    setFormIsCash(false);
-    setFormBankSelectValue(null);
     setFormAgainstBillId("");
     setFormError(null);
   };
@@ -638,25 +636,39 @@ export default function PaymentsPage() {
               { value: "card", label: "Card" },
             ]}
             value={formMethod}
-            onChange={setFormMethod}
+            onChange={(v) => {
+              setFormMethod(v);
+              // Clear stale bank selection when switching to cash so
+              // a previously-picked bank doesn't leak into the cash JE.
+              if (v === "cash") setFormBankAccountId(null);
+            }}
             placeholder="Select mode"
           />
-          <BankCashAccountSelect
-            value={formBankSelectValue}
-            paymentMethod={formMethod}
-            onChange={(next) => {
-              setFormBankAccountId(next.bankAccountId);
-              setFormIsCash(next.isCash);
-              setFormBankSelectValue(
-                next.isCash ? "__cash__" : next.bankAccountId,
-              );
-            }}
-          />
+          {/* Bank picker is only meaningful for non-cash modes — cash
+              auto-routes to ledger 1101. */}
+          {formModeUi.showBankPicker ? (
+            <div>
+              <BankCashAccountSelect
+                value={formBankAccountId}
+                onChange={(next) => setFormBankAccountId(next.bankAccountId)}
+              />
+              {formModeUi.bankHint && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {formModeUi.bankHint}
+                </p>
+              )}
+            </div>
+          ) : (
+            // Reserve the grid column so the layout stays stable when
+            // the user toggles to cash — otherwise the Method dropdown
+            // jumps to the centre on its own row.
+            <div className="hidden md:block" />
+          )}
           <Input
-            label="Reference / Transaction ID"
+            label={formModeUi.referenceLabel}
             value={formReference}
             onChange={(e) => setFormReference(e.target.value)}
-            placeholder="Optional reference number"
+            placeholder={formModeUi.referencePlaceholder}
           />
           <div className="md:col-span-2">
             <Input
@@ -691,8 +703,10 @@ export default function PaymentsPage() {
                 );
                 return;
               }
-              if (!formBankSelectValue) {
-                setFormError("Please select a Bank or Cash account.");
+              if (!formModeUi.isCash && !formBankAccountId) {
+                setFormError(
+                  "Please select a bank account for this payment mode.",
+                );
                 return;
               }
               createMutation.mutate();
@@ -703,7 +717,7 @@ export default function PaymentsPage() {
               !formMethod ||
               !formContactId ||
               !formAgainstBillId ||
-              !formBankSelectValue
+              (!formModeUi.isCash && !formBankAccountId)
             }
           >
             Record Payment
