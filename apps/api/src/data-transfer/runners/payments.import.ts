@@ -374,25 +374,11 @@ export class PaymentsImport {
 
         const reference = pickRow(row, 'reference') || null;
 
-        // Idempotency check — DB + within-file dedupe.
-        const key = dedupeKey(contactId, date, amount, reference);
-        if (existingKeys.has(key)) {
-          skipped += 1;
-          errors.push({
-            row: rowNum,
-            message: `Already imported earlier (same contact + date + amount + reference). Skipped.`,
-          });
-          return;
-        }
-        if (seenInBatch.has(key)) {
-          skipped += 1;
-          errors.push({
-            row: rowNum,
-            message: `Duplicate within this import file. Skipped.`,
-          });
-          return;
-        }
-        seenInBatch.add(key);
+        // Idempotency check is computed against the EFFECTIVE
+        // contact (after a possible bill-vendor override below).
+        // Doing it here would key on the row's stated vendor and
+        // miss duplicates after the override, so we defer until
+        // both the bill lookup and effectiveContactId are known.
 
         // Bank account resolution. Required for every non-cash mode
         // because the JE poster needs a specific 1102.NNN ledger to
@@ -435,6 +421,16 @@ export class PaymentsImport {
         let invoiceUpdate: InvoiceTally | null = null;
         const paymentId = randomUUID();
 
+        // Effective contact ID — the row's contact from the lookup
+        // by default, but the bill's contact takes over if a bill
+        // number is provided that resolves to a different contact.
+        // The bill number is the canonical, unique identifier; the
+        // vendor name on the row is informational and can drift
+        // (typo, vendor renamed, re-imported bills got resequenced).
+        // Trusting the bill means opening-data imports survive minor
+        // mismatches between the user's template and the live DB.
+        let effectiveContactId = contactId;
+
         if (againstRaw) {
           const inv = invoiceByNumber.get(againstRaw.toLowerCase());
           if (!inv) {
@@ -442,10 +438,18 @@ export class PaymentsImport {
               `Row ${rowNum}: ${direction === 'received' ? 'Invoice' : 'Bill'} "${againstRaw}" not found among outstanding ${direction === 'received' ? 'invoices' : 'bills'}. It may already be fully paid, cancelled, or still in draft.`,
             );
           }
-          if (inv.contact_id !== contactId) {
-            throw new Error(
-              `Row ${rowNum}: ${direction === 'received' ? 'Invoice' : 'Bill'} "${againstRaw}" belongs to a different ${direction === 'received' ? 'customer' : 'vendor'} than the one on this row.`,
-            );
+          if (inv.contact_id && inv.contact_id !== contactId) {
+            // Bill belongs to a different contact than the row's
+            // vendor — trust the bill and warn. The payment lands
+            // against the bill's actual vendor, so the JE is
+            // correct. Surfacing the warning in errors[] lets the
+            // user spot-check whether the override was intentional.
+            const actualName = contacts.find((c) => c.id === inv.contact_id)?.name;
+            errors.push({
+              row: rowNum,
+              message: `Vendor on row ("${contactName || contactGstin}") doesn't match the vendor on ${direction === 'received' ? 'invoice' : 'bill'} ${inv.invoice_number}${actualName ? ` ("${actualName}")` : ''}. Recorded against the ${direction === 'received' ? 'invoice' : 'bill'}'s actual ${direction === 'received' ? 'customer' : 'vendor'} — please verify.`,
+            });
+            effectiveContactId = inv.contact_id;
           }
           const tally = invoiceTallies.get(inv.id)!;
           if (amount > tally.balance_due + 0.005) {
@@ -579,13 +583,40 @@ export class PaymentsImport {
           };
         }
 
+        // Idempotency — deferred from earlier so the key uses the
+        // EFFECTIVE contact (post bill-vendor override). Without
+        // this, re-runs of a file that got vendor-overridden would
+        // create duplicates because the row's stated vendor doesn't
+        // match the DB-stored contact_id.
+        const key = dedupeKey(effectiveContactId, date, amount, reference);
+        if (existingKeys.has(key)) {
+          skipped += 1;
+          errors.push({
+            row: rowNum,
+            message: `Already imported earlier (same contact + date + amount + reference). Skipped.`,
+          });
+          return;
+        }
+        if (seenInBatch.has(key)) {
+          skipped += 1;
+          errors.push({
+            row: rowNum,
+            message: `Duplicate within this import file. Skipped.`,
+          });
+          return;
+        }
+        seenInBatch.add(key);
+
         staged.push({
           paymentId,
           data: {
             id: paymentId,
             org_id: orgId,
             type: direction,
-            contact_id: contactId,
+            // Use the bill-derived contact when the row had a vendor
+            // mismatch — the warning was already pushed to errors[]
+            // above so the user can audit the override.
+            contact_id: effectiveContactId,
             amount,
             date,
             method: mode,
