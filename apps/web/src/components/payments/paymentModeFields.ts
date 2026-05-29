@@ -29,9 +29,14 @@ export interface PaymentModeUi {
   bankHint: string;
 }
 
+// Default = "no mode picked yet" (empty string from the dropdown).
+// We intentionally hide the bank picker in this state — showing it
+// before the user knows which method they're using looks like the
+// form is asking for unrelated info. Submit stays blocked by the
+// !formMethod guard upstream, so this never traps a real submission.
 const DEFAULT: PaymentModeUi = {
   isCash: false,
-  showBankPicker: true,
+  showBankPicker: false,
   showReference: true,
   referenceLabel: "Reference Number",
   referencePlaceholder: "Optional reference",
