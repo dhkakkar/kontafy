@@ -30,10 +30,14 @@ export interface PaymentModeUi {
 }
 
 // Default = "no mode picked yet" (empty string from the dropdown).
-// We intentionally hide the bank picker in this state — showing it
-// before the user knows which method they're using looks like the
-// form is asking for unrelated info. Submit stays blocked by the
+// Bank picker stays hidden in this state — showing it before the
+// user knows which method they're using looks like the form is
+// asking for unrelated info. Submit stays blocked by the
 // !formMethod guard upstream, so this never traps a real submission.
+//
+// Important: every non-cash mode below must EXPLICITLY set
+// showBankPicker: true. Spreading ...DEFAULT alone won't suffice
+// because it would inherit `false` from this base.
 const DEFAULT: PaymentModeUi = {
   isCash: false,
   showBankPicker: false,
@@ -61,6 +65,7 @@ export function getPaymentModeUi(method: string): PaymentModeUi {
       // receipt (e.g. 4239xxxxxx@oksbi or a Razorpay txn id).
       return {
         ...DEFAULT,
+        showBankPicker: true,
         referenceLabel: "UPI Transaction ID",
         referencePlaceholder: "e.g. 4239xxxxxx",
         bankHint: "Which bank received the UPI settlement",
@@ -68,6 +73,7 @@ export function getPaymentModeUi(method: string): PaymentModeUi {
     case "bank_transfer":
       return {
         ...DEFAULT,
+        showBankPicker: true,
         referenceLabel: "UTR Number",
         referencePlaceholder: "e.g. UTRNXXXXXXXXXXXX",
         bankHint: "Which bank account received the transfer",
@@ -75,6 +81,7 @@ export function getPaymentModeUi(method: string): PaymentModeUi {
     case "cheque":
       return {
         ...DEFAULT,
+        showBankPicker: true,
         referenceLabel: "Cheque Number",
         referencePlaceholder: "e.g. 123456",
         bankHint: "Which bank account the cheque is drawn on / deposited into",
@@ -85,6 +92,7 @@ export function getPaymentModeUi(method: string): PaymentModeUi {
       // card last-4 — single field keeps the modal lean.
       return {
         ...DEFAULT,
+        showBankPicker: true,
         referenceLabel: "Auth Code / Card Last 4",
         referencePlaceholder: "e.g. AUTH123 or ****1234",
         bankHint: "Merchant settlement bank",
