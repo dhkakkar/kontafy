@@ -95,6 +95,14 @@ export default function PurchasesPage() {
     setPage(1);
   }, [searchQuery, activeTab, pageSize]);
 
+  // The ResponseInterceptor on the backend wraps every payload as
+  // { success, data, meta }. For *paginated* endpoints it preserves
+  // the controller's { data, meta } at the top level (so res.data is
+  // the array, res.meta is the pagination block). For *plain* object
+  // endpoints (like /stats) it nests the whole object under data:
+  // res.data IS the stats object. Both shapes are handled below with
+  // the same defensive `.data ?? res` unwrap so a controller switch
+  // either way won't surprise us.
   const listQuery = useQuery<ListResponse>({
     queryKey: ["purchases", { page, pageSize, status: tabStatusParam, search: searchQuery }],
     queryFn: async () => {
@@ -104,14 +112,19 @@ export default function PurchasesPage() {
       };
       if (tabStatusParam) params.status = tabStatusParam;
       if (searchQuery) params.search = searchQuery;
-      const res = await api.get<ListResponse>("/bill/purchases", params);
-      return res;
+      const res = (await api.get("/bill/purchases", params)) as any;
+      // Paginated: res = { success, data: [...], meta: {...} }
+      return { data: res?.data ?? [], meta: res?.meta ?? { total: 0 } };
     },
   });
 
   const statsQuery = useQuery<StatsResponse>({
     queryKey: ["purchases-stats"],
-    queryFn: async () => api.get<StatsResponse>("/bill/purchases/stats"),
+    queryFn: async () => {
+      const res = (await api.get("/bill/purchases/stats")) as any;
+      // Plain object: res = { success, data: { byStatus, outstanding }, meta: {...} }
+      return (res?.data ?? res) as StatsResponse;
+    },
   });
 
   const rows = listQuery.data?.data ?? [];
