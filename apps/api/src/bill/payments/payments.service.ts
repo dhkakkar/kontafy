@@ -89,13 +89,19 @@ export class PaymentsService {
   }
 
   /**
-   * Get a single payment with allocations.
+   * Get a single payment with allocations + the bank account behind
+   * it. The detail page uses bank_account.{bank_name, account_name}
+   * to render "Bank Account: ICICI Bank — ..." in the read view and
+   * to pre-fill the edit modal's picker.
    */
   async findOne(orgId: string, id: string) {
     const payment = await this.prisma.payment.findFirst({
       where: { id, org_id: orgId },
       include: {
         contact: true,
+        bank_account: {
+          select: { id: true, bank_name: true, account_name: true },
+        },
         allocations: {
           include: {
             invoice: {
