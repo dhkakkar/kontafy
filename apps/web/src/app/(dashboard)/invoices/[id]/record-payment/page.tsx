@@ -108,12 +108,16 @@ export default function RecordPaymentPage() {
     onSuccess: () => {
       // Touch every cache that surfaces invoice/payment data so the
       // user doesn't see stale numbers on the next page (the global
-      // staleTime: 60s would otherwise hide the new receipt).
+      // staleTime: 60s would otherwise hide the new receipt). The
+      // payment-outstanding-modal key is also wiped — the standalone
+      // /payments Record Payment modal reads outstanding from there
+      // and would otherwise still list this just-settled invoice.
       queryClient.invalidateQueries({ queryKey: ["invoice", invoiceId] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["invoices-stats"] });
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["payment-outstanding"] });
+      queryClient.invalidateQueries({ queryKey: ["payment-outstanding-modal"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       router.push(`/invoices/${invoiceId}`);
     },

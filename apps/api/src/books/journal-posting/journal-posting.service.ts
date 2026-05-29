@@ -291,6 +291,16 @@ export class JournalPostingService {
     type Line = { account_id: string; debit: number; credit: number; description: string };
     const lines: Line[] = [];
 
+    // When advance rounds to 0 (full allocation within ₹0.01 of the
+    // payment), use `amount` for the counter line — not
+    // `allocatedTotal`. Decimal sums of many lines can leave 0.001
+    // residue, which would otherwise post Dr 100.00 / Cr 99.998 and
+    // leave the entry unbalanced. The `advance > 0` branch already
+    // takes care of the case where there's a genuine gap.
+    const counterFullAmount = advance > 0
+      ? Math.round(allocatedTotal * 100) / 100
+      : amount;
+
     if (isReceive) {
       lines.push({
         account_id: cashAccountId,
@@ -302,7 +312,7 @@ export class JournalPostingService {
         lines.push({
           account_id: counterId,
           debit: 0,
-          credit: Math.round(allocatedTotal * 100) / 100,
+          credit: counterFullAmount,
           description: 'AR settled',
         });
       }
@@ -320,7 +330,7 @@ export class JournalPostingService {
       if (allocatedTotal > 0) {
         lines.push({
           account_id: counterId,
-          debit: Math.round(allocatedTotal * 100) / 100,
+          debit: counterFullAmount,
           credit: 0,
           description: 'AP settled',
         });

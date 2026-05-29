@@ -286,7 +286,10 @@ export class PaymentsService {
         if (!inv) {
           throw new NotFoundException(`Invoice ${alloc.invoice_id} not found`);
         }
-        if (inv.contact_id && inv.contact_id !== data.contact_id) {
+        // Strict equality — a contactless invoice (legacy / orphan)
+        // shouldn't be allocatable to any contact either, since the
+        // resulting JE would imply the wrong A/R sub-ledger.
+        if (inv.contact_id !== data.contact_id) {
           throw new BadRequestException(
             `Invoice ${inv.invoice_number} does not belong to the selected contact.`,
           );

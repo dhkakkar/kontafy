@@ -106,7 +106,16 @@ export function PaymentAllocationTable({
     if (defaultInvoiceId) {
       const target = invoices.find((i) => i.id === defaultInvoiceId);
       if (target) {
-        const seed = Math.min(paymentAmount || target.balance_due, target.balance_due);
+        // When invoices arrive before the parent's amount pre-fill
+        // effect has run, paymentAmount is still 0 — fall back to
+        // the invoice's full balance_due so the row seeds anyway.
+        // Otherwise the user lands on an empty table even though
+        // the obvious default (full settlement of this bill) was
+        // available.
+        const seed =
+          paymentAmount > 0
+            ? Math.min(paymentAmount, target.balance_due)
+            : target.balance_due;
         if (seed > 0) {
           setDraft({ [target.id]: seed.toString() });
         }

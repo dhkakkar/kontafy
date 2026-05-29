@@ -176,15 +176,27 @@ export default function PaymentsPage() {
     mutationFn: async () => {
       const amount = parseFloat(formAmount);
       // Resolve the "Against Bill" choice into the API's allocations
-      // array shape. A specific invoice becomes a 1-row allocation
-      // for the full payment amount; "__advance__" leaves the
-      // allocations empty so the backend posts the whole thing to
-      // 2116 / 1112. Picking neither (empty string) shouldn't reach
-      // here — the submit button is disabled until one is chosen.
-      const allocations =
-        formAgainstBillId && formAgainstBillId !== "__advance__"
-          ? [{ invoice_id: formAgainstBillId, amount }]
-          : [];
+      // array shape. A specific invoice becomes a 1-row allocation;
+      // "__advance__" leaves the allocations empty so the backend
+      // posts the whole thing to 2116 / 1112. The submit button is
+      // disabled until one is chosen.
+      //
+      // Overpay handling: if the user picked a specific bill but
+      // edited the amount to be larger than the bill's balance,
+      // clamp the allocation to balance_due and let the remainder
+      // flow to advance — otherwise the backend would throw a hard
+      // "Allocation exceeds balance" error and reject the whole
+      // payment, which is a worse UX than the user expects.
+      let allocations: Array<{ invoice_id: string; amount: number }> = [];
+      if (formAgainstBillId && formAgainstBillId !== "__advance__") {
+        const bill = outstandingBills.find(
+          (b) => b.id === formAgainstBillId,
+        );
+        const allocAmount = bill
+          ? Math.min(amount, bill.balance_due)
+          : amount;
+        allocations = [{ invoice_id: formAgainstBillId, amount: allocAmount }];
+      }
       return api.post("/bill/payments", {
         type: formType,
         contact_id: formContactId || undefined,
@@ -200,12 +212,18 @@ export default function PaymentsPage() {
     onSuccess: () => {
       // Invalidate every cache that surfaces payment / invoice data
       // so the next visited page shows fresh numbers (the global
-      // staleTime: 60s would otherwise hide the change).
+      // staleTime: 60s would otherwise hide the change). Detail
+      // pages (`["invoice", id]` / `["purchase", id]`) need broad
+      // invalidation too — without it the user navigates to the
+      // affected invoice and sees the old balance_due.
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["invoice"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["invoices-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["purchase"] });
       queryClient.invalidateQueries({ queryKey: ["purchases"] });
       queryClient.invalidateQueries({ queryKey: ["purchases-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["payment-outstanding"] });
       queryClient.invalidateQueries({ queryKey: ["payment-outstanding-modal"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setShowModal(false);
@@ -279,10 +297,14 @@ export default function PaymentsPage() {
   }, [formAgainstBillId]);
 
   // Changing contact mid-flow invalidates whichever bill was picked —
-  // it belonged to a different contact. Clear so the user re-picks
-  // from the new contact's outstanding list.
+  // it belonged to a different contact. Clear the bill pick AND the
+  // amount, since the amount was auto-filled from the old bill's
+  // balance_due and would otherwise carry over to the new contact
+  // as a misleading default (₹41,300 against a vendor who has no
+  // bill anywhere near that figure).
   React.useEffect(() => {
     setFormAgainstBillId("");
+    setFormAmount("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formContactId]);
 

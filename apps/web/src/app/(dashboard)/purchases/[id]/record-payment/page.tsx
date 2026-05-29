@@ -116,13 +116,17 @@ export default function RecordPurchasePaymentPage() {
       api.post("/bill/payments", data),
     onSuccess: async () => {
       // Bust every cache that surfaces purchase/payment data so the
-      // user sees the new state immediately on the next page.
+      // user sees the new state immediately on the next page. The
+      // payment-outstanding-modal key is also wiped — the standalone
+      // /payments Record Payment modal reads outstanding from there
+      // and would otherwise still list this just-settled bill.
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["purchase", billId] }),
         queryClient.invalidateQueries({ queryKey: ["purchases"] }),
         queryClient.invalidateQueries({ queryKey: ["purchases-stats"] }),
         queryClient.invalidateQueries({ queryKey: ["payments"] }),
         queryClient.invalidateQueries({ queryKey: ["payment-outstanding"] }),
+        queryClient.invalidateQueries({ queryKey: ["payment-outstanding-modal"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
       router.push(`/purchases/${billId}`);
