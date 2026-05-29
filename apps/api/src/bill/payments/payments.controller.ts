@@ -56,6 +56,24 @@ export class PaymentsController {
     return this.paymentsService.getOutstandingSummary(orgId);
   }
 
+  @Get('outstanding/contact/:contactId')
+  @ApiOperation({
+    summary:
+      'Outstanding invoices/bills for a single contact (used by the Record Payment allocation table)',
+  })
+  @ApiQuery({ name: 'direction', required: true, description: 'receive | pay' })
+  async getOutstandingForContact(
+    @OrgId() orgId: string,
+    @Param('contactId') contactId: string,
+    @Query('direction') direction: 'receive' | 'pay',
+  ) {
+    return this.paymentsService.getOutstandingForContact(
+      orgId,
+      contactId,
+      direction === 'pay' ? 'pay' : 'receive',
+    );
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get payment details with allocations' })
   async findOne(@OrgId() orgId: string, @Param('id') id: string) {

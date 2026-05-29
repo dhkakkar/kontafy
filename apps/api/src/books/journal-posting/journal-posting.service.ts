@@ -191,15 +191,38 @@ export class JournalPostingService {
   }
 
   /**
-   * Post a journal entry for a payment. For 'receive' (customer paid us):
-   *   DR Bank/Cash, CR Accounts Receivable
-   * For 'pay' (we paid a vendor):
-   *   DR Accounts Payable, CR Bank/Cash
+   * Post a journal entry for a payment. Three shapes depending on
+   * allocations:
+   *
+   *   1. Fully allocated receive (the common case):
+   *        DR Bank/Cash       payment.amount
+   *        CR Accounts Receivable   payment.amount
+   *
+   *   2. Receive with advance portion (e.g. ₹50k received but only
+   *      ₹41.3k allocated to invoices):
+   *        DR Bank/Cash       50,000
+   *        CR Accounts Receivable   41,300
+   *        CR Advance from Customers (2116)   8,700
+   *
+   *   3. Receive with no allocations at all (pure advance):
+   *        DR Bank/Cash       50,000
+   *        CR Advance from Customers (2116)   50,000
+   *
+   * The 'pay' (vendor) side mirrors all three, using 2101 (A/P) and
+   * 1112 (Advance to Vendors) as the counter accounts.
+   *
+   * 2116 / 1112 are auto-created on first use if missing — they live
+   * in the default seed but are flagged `is_system: false`, so older
+   * orgs may not have them and a bill-wise advance shouldn't fail
+   * just because someone hasn't manually created the account.
    */
   async postPayment(paymentId: string): Promise<string | null> {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
-      include: { allocations: true, bank_account: { select: { account_id: true } } },
+      include: {
+        allocations: true,
+        bank_account: { select: { account_id: true } },
+      },
     });
     if (!payment) return null;
 
@@ -207,7 +230,16 @@ export class JournalPostingService {
     const amount = this.toNum(payment.amount);
     if (amount <= 0) return null;
 
-    const codes = ['1101', '1102', '1103', '2101'];
+    const allocatedTotal = payment.allocations.reduce(
+      (s, a) => s + this.toNum(a.amount),
+      0,
+    );
+    // Tiny rounding tolerance — Decimal arithmetic can leave 0.001
+    // residues after summing many lines. Anything under ₹0.01 is
+    // treated as zero advance.
+    const advance = Math.max(0, Math.round((amount - allocatedTotal) * 100) / 100);
+
+    const codes = ['1101', '1102', '1103', '2101', '2116', '1112'];
     const ids = await this.resolveAccountIds(orgId, codes);
 
     // Pick the cash side. If a bank_account is linked, use its underlying
@@ -233,30 +265,103 @@ export class JournalPostingService {
     );
     const counterCode = isReceive ? '1103' : '2101'; // AR or AP
     const counterId = ids[counterCode];
-    if (!counterId) return null;
+    if (!counterId) {
+      this.logger.warn(
+        `Counter account ${counterCode} missing for payment ${paymentId} — JE skipped`,
+      );
+      return null;
+    }
+
+    // Lazy-create the advance account on first use. Done outside the
+    // posting transaction since createMany with skipDuplicates would
+    // be cleaner but the schema requires us to know parent_id etc;
+    // ensureAdvanceAccount handles the small upsert.
+    const advanceCode = isReceive ? '2116' : '1112';
+    let advanceAccountId: string | undefined = ids[advanceCode];
+    if (advance > 0 && !advanceAccountId) {
+      advanceAccountId = await this.ensureAdvanceAccount(orgId, advanceCode);
+      if (!advanceAccountId) {
+        this.logger.warn(
+          `Could not provision advance account ${advanceCode} for org ${orgId} — JE skipped`,
+        );
+        return null;
+      }
+    }
 
     type Line = { account_id: string; debit: number; credit: number; description: string };
-    const lines: Line[] = isReceive
-      ? [
-          { account_id: cashAccountId, debit: amount, credit: 0, description: 'Payment received' },
-          { account_id: counterId, debit: 0, credit: amount, description: 'AR settled' },
-        ]
-      : [
-          { account_id: counterId, debit: amount, credit: 0, description: 'AP settled' },
-          { account_id: cashAccountId, debit: 0, credit: amount, description: 'Payment made' },
-        ];
+    const lines: Line[] = [];
+
+    if (isReceive) {
+      lines.push({
+        account_id: cashAccountId,
+        debit: amount,
+        credit: 0,
+        description: 'Payment received',
+      });
+      if (allocatedTotal > 0) {
+        lines.push({
+          account_id: counterId,
+          debit: 0,
+          credit: Math.round(allocatedTotal * 100) / 100,
+          description: 'AR settled',
+        });
+      }
+      if (advance > 0 && advanceAccountId) {
+        lines.push({
+          account_id: advanceAccountId,
+          debit: 0,
+          credit: advance,
+          description: 'Advance from customer',
+        });
+      }
+    } else {
+      // Vendor payment side: cash goes out, A/P comes down, advance
+      // becomes an asset (we paid more than we owe).
+      if (allocatedTotal > 0) {
+        lines.push({
+          account_id: counterId,
+          debit: Math.round(allocatedTotal * 100) / 100,
+          credit: 0,
+          description: 'AP settled',
+        });
+      }
+      if (advance > 0 && advanceAccountId) {
+        lines.push({
+          account_id: advanceAccountId,
+          debit: advance,
+          credit: 0,
+          description: 'Advance to vendor',
+        });
+      }
+      lines.push({
+        account_id: cashAccountId,
+        debit: 0,
+        credit: amount,
+        description: 'Payment made',
+      });
+    }
+
+    // Defensive: if no allocated-or-advance lines got built (e.g. a
+    // 0-amount payment slipped through), bail rather than write a
+    // single-sided entry that wouldn't balance.
+    if (lines.length < 2) {
+      this.logger.warn(`Payment ${paymentId}: not enough lines to post (got ${lines.length})`);
+      return null;
+    }
 
     return this.prisma.$transaction(async (tx) => {
       if (payment.journal_id) {
-        await tx.journalLine.deleteMany({ where: { entry_id:payment.journal_id } });
-        await tx.journalEntry.delete({ where: { id: payment.journal_id } }).catch(() => undefined);
+        await tx.journalLine.deleteMany({ where: { entry_id: payment.journal_id } });
+        await tx.journalEntry
+          .delete({ where: { id: payment.journal_id } })
+          .catch(() => undefined);
       }
 
       const entry = await tx.journalEntry.create({
         data: {
           org_id: orgId,
           date: payment.date,
-          narration: `Auto-post: ${isReceive ? 'Payment received' : 'Payment made'}`,
+          narration: `Auto-post: ${isReceive ? 'Payment received' : 'Payment made'}${advance > 0 ? ' (with advance)' : ''}`,
           reference: payment.reference || null,
           reference_type: 'payment',
           reference_id: payment.id,
@@ -279,6 +384,74 @@ export class JournalPostingService {
 
       return entry.id;
     });
+  }
+
+  /**
+   * Ensure an "Advance from Customers" (2116) or "Advance to Vendors"
+   * (1112) ledger exists for the org, returning its id. These accounts
+   * are present in the default chart-of-accounts seed but flagged
+   * `is_system: false`, so older orgs created before the bill-wise
+   * settlement feature shipped may be missing them. Auto-creating on
+   * first use means a customer-advance receipt doesn't fail with a
+   * cryptic "advance account missing" error.
+   *
+   * Returns the account id, or undefined if creation failed (which
+   * the caller treats as "skip JE posting and log").
+   */
+  private async ensureAdvanceAccount(
+    orgId: string,
+    code: '2116' | '1112',
+  ): Promise<string | undefined> {
+    // Fast path: it might exist but our earlier lookup missed it due
+    // to a race or just being newly seeded.
+    const existing = await this.prisma.account.findFirst({
+      where: { org_id: orgId, code },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
+    const isCustomerAdvance = code === '2116';
+    // Find the parent account so the new row hangs off the right
+    // branch of the COA tree. 2100 = Current Liabilities for
+    // customer advances, 1100 = Current Assets for vendor advances.
+    const parentCode = isCustomerAdvance ? '2100' : '1100';
+    const parent = await this.prisma.account.findFirst({
+      where: { org_id: orgId, code: parentCode },
+      select: { id: true },
+    });
+
+    try {
+      const created = await this.prisma.account.create({
+        data: {
+          org_id: orgId,
+          code,
+          name: isCustomerAdvance ? 'Advance from Customers' : 'Advance to Vendors',
+          type: isCustomerAdvance ? 'liability' : 'asset',
+          sub_type: isCustomerAdvance ? 'current_liability' : 'current_asset',
+          parent_id: parent?.id ?? null,
+          is_system: false,
+          is_active: true,
+        },
+        select: { id: true },
+      });
+      this.logger.log(
+        `Provisioned advance account ${code} for org ${orgId} (id=${created.id})`,
+      );
+      return created.id;
+    } catch (err) {
+      // Race with a parallel create (likely if two advance receipts
+      // land at the same instant) — re-read and use whichever row won.
+      const retry = await this.prisma.account.findFirst({
+        where: { org_id: orgId, code },
+        select: { id: true },
+      });
+      if (retry) return retry.id;
+      this.logger.error(
+        `Failed to provision advance account ${code} for org ${orgId}`,
+        err as any,
+      );
+      return undefined;
+    }
   }
 
   /** Delete a journal entry and its lines. Used when reversing a post. */

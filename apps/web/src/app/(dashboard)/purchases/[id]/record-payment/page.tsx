@@ -10,15 +10,29 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { ArrowLeft, CreditCard, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, CreditCard, CheckCircle2, Info } from "lucide-react";
+import {
+  PaymentAllocationTable,
+  type PaymentAllocation,
+} from "@/components/payments/PaymentAllocationTable";
+import { BankCashAccountSelect } from "@/components/payments/BankCashAccountSelect";
 
 /**
- * Vendor payment recording — mirror of the sales-side Record
- * Receipt page. Allocates a payment of type="made" against the
- * given purchase bill, with the option to record a partial
- * amount. Backend's PaymentsService.create creates the journal
- * (Dr Accounts Payable / Cr Bank or Cash) and updates the bill's
- * amount_paid + balance_due + status.
+ * Record Payment page — we are paying a vendor.
+ *
+ * Mirror of the sales-side Record Receipt page. Allocates the payment
+ * across one or more outstanding vendor bills (FIFO suggested via
+ * "Apply to Oldest"); the gap between payment amount and total
+ * allocations is booked to 1112 (Advance to Vendors) by the JE poster.
+ *
+ * Bank/Cash account is mandatory — the cash side of the JE.
+ *
+ * TDS note: v1 of bill-wise settlement enters the *gross* payment
+ * amount (₹17,700 in the spec example). If the user is deducting
+ * TDS, they should currently pay the gross and post a separate
+ * journal entry for the TDS deduction. Wiring the TDS-deducted-on-
+ * bill flow through postPayment is a v2 task (TdsEntry model has no
+ * JE integration today).
  */
 
 interface Purchase {
@@ -66,6 +80,10 @@ export default function RecordPurchasePaymentPage() {
     reference: "",
     notes: "",
   });
+  const [bankAccountId, setBankAccountId] = useState<string | null>(null);
+  const [isCash, setIsCash] = useState(false);
+  const [bankSelectValue, setBankSelectValue] = useState<string | null>(null);
+  const [allocations, setAllocations] = useState<PaymentAllocation[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const { data: purchase, isLoading } = useQuery<Purchase>({
@@ -79,7 +97,6 @@ export default function RecordPurchasePaymentPage() {
   });
 
   // Pre-fill amount with the balance due as soon as the bill loads.
-  // Same default as sales: most payments are full settlements.
   React.useEffect(() => {
     if (purchase && !form.amount) {
       const balanceDue = toNum(purchase.balance_due);
@@ -94,12 +111,14 @@ export default function RecordPurchasePaymentPage() {
     mutationFn: (data: Record<string, unknown>) =>
       api.post("/bill/payments", data),
     onSuccess: async () => {
-      // Bust the bill + purchases list + dashboard caches so the
-      // balance / status updates propagate everywhere.
+      // Bust every cache that surfaces purchase/payment data so the
+      // user sees the new state immediately on the next page.
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["purchase", billId] }),
         queryClient.invalidateQueries({ queryKey: ["purchases"] }),
+        queryClient.invalidateQueries({ queryKey: ["purchases-stats"] }),
         queryClient.invalidateQueries({ queryKey: ["payments"] }),
+        queryClient.invalidateQueries({ queryKey: ["payment-outstanding"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
       router.push(`/purchases/${billId}`);
@@ -119,32 +138,46 @@ export default function RecordPurchasePaymentPage() {
       return;
     }
 
-    const balanceDue = toNum(purchase?.balance_due);
-    if (amount > balanceDue) {
-      setError(
-        `Amount cannot exceed balance due (${formatCurrency(balanceDue)})`,
-      );
-      return;
-    }
-
     if (!purchase?.contact_id) {
       setError("Bill has no vendor linked. Cannot record payment.");
       return;
     }
 
+    if (!bankSelectValue) {
+      setError("Please select a Bank or Cash account.");
+      return;
+    }
+
+    const totalAllocated = allocations.reduce((s, a) => s + a.amount, 0);
+    const advance = Math.max(0, Math.round((amount - totalAllocated) * 100) / 100);
+
+    if (Math.round(totalAllocated * 100) > Math.round(amount * 100)) {
+      setError(
+        `Total allocated (${formatCurrency(totalAllocated)}) exceeds payment amount (${formatCurrency(amount)}). Adjust the allocation rows.`,
+      );
+      return;
+    }
+
+    if (advance > 0) {
+      const ok = window.confirm(
+        `${formatCurrency(advance)} will be recorded as an Advance to Vendor (account 1112). Continue?`,
+      );
+      if (!ok) return;
+    }
+
     createPaymentMutation.mutate({
       // type=made marks this as money going OUT to a vendor.
       // PaymentsService.create routes the JE accordingly: Dr A/P,
-      // Cr Bank/Cash. Allocation to the purchase invoice happens
-      // via invoice_id.
+      // Cr Bank/Cash.
       type: "made",
       contact_id: purchase.contact_id,
-      invoice_id: billId,
       amount,
       date: form.date,
       method: form.method,
       reference: form.reference || undefined,
       notes: form.notes || undefined,
+      bank_account_id: isCash ? null : bankAccountId,
+      allocations,
     });
   };
 
@@ -213,6 +246,8 @@ export default function RecordPurchasePaymentPage() {
     );
   }
 
+  const paymentAmountNum = Number(form.amount) || 0;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -238,7 +273,7 @@ export default function RecordPurchasePaymentPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Payment Form */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
           <Card>
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -250,7 +285,7 @@ export default function RecordPurchasePaymentPage() {
                     setForm({ ...form, amount: e.target.value })
                   }
                   placeholder="0.00"
-                  hint={`Balance due: ${formatCurrency(balanceDue)}`}
+                  hint={`This bill's balance: ${formatCurrency(balanceDue)}`}
                 />
                 <Input
                   label="Payment Date"
@@ -269,6 +304,20 @@ export default function RecordPurchasePaymentPage() {
                   value={form.method}
                   onChange={(v) => setForm({ ...form, method: v })}
                 />
+                <BankCashAccountSelect
+                  value={bankSelectValue}
+                  paymentMethod={form.method}
+                  onChange={(next) => {
+                    setBankAccountId(next.bankAccountId);
+                    setIsCash(next.isCash);
+                    setBankSelectValue(
+                      next.isCash ? "__cash__" : next.bankAccountId,
+                    );
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
                   label="Reference Number"
                   value={form.reference}
@@ -277,14 +326,26 @@ export default function RecordPurchasePaymentPage() {
                   }
                   placeholder="e.g., UTR, cheque number"
                 />
+                <Input
+                  label="Notes (Optional)"
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  placeholder="Add a note about this payment"
+                />
               </div>
 
-              <Input
-                label="Notes (Optional)"
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                placeholder="Add a note about this payment"
-              />
+              {/* TDS guidance — v1 doesn't auto-deduct TDS at payment
+                  time. Surface a one-line nudge so users with TDS
+                  vendors know they need a separate JE. */}
+              <div className="flex items-start gap-2 text-xs text-gray-600 bg-gray-50 rounded-md px-3 py-2">
+                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-gray-400" />
+                <span>
+                  Enter the <span className="font-medium">gross</span> amount
+                  payable to the vendor. If you&apos;re deducting TDS, post a
+                  separate journal entry for the TDS portion (TDS-on-payment
+                  automation lands in a later release).
+                </span>
+              </div>
 
               {error && (
                 <div className="p-3 bg-danger-50 text-danger-700 text-sm rounded-lg">
@@ -301,13 +362,34 @@ export default function RecordPurchasePaymentPage() {
                 <Button
                   type="submit"
                   loading={createPaymentMutation.isPending}
-                  disabled={!form.amount || !form.date}
+                  disabled={!form.amount || !form.date || !bankSelectValue}
                   icon={<CreditCard className="h-4 w-4" />}
                 >
                   Record Payment
                 </Button>
               </div>
             </form>
+          </Card>
+
+          {/* Apply Payment To — bill-wise allocation */}
+          <Card>
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Apply Payment To
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Distribute this payment across one or more outstanding bills
+                from {purchase.contact?.company_name || purchase.contact?.name || "this vendor"}.
+                Leave the cells empty to record the whole amount as an advance.
+              </p>
+            </div>
+            <PaymentAllocationTable
+              contactId={purchase.contact_id}
+              paymentAmount={paymentAmountNum}
+              direction="pay"
+              defaultInvoiceId={billId}
+              onChange={setAllocations}
+            />
           </Card>
         </div>
 

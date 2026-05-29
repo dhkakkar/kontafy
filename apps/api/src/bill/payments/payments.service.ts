@@ -219,7 +219,20 @@ export class PaymentsService {
   }
 
   /**
-   * Record a new payment and optionally allocate to a single invoice.
+   * Record a new payment with bill-wise settlement.
+   *
+   * Allocation rules:
+   *  - `allocations` (array) is the primary input — each row settles
+   *    a specific invoice/bill by `amount`.
+   *  - `invoice_id` (single) is a legacy shortcut: if provided, it
+   *    collapses into a 1-row allocations array of the full payment
+   *    amount. Kept so older callers (e.g. the standalone payment
+   *    modal) and tests keep working.
+   *  - Sum of allocation amounts must be ≤ payment amount. The gap
+   *    (payment.amount − Σallocations) is the customer/vendor advance
+   *    and gets posted to 2116 / 1112 by `postPayment()`.
+   *  - Per-row: alloc.amount must be ≤ invoice.balance_due, else the
+   *    payment would over-pay that specific bill.
    */
   async create(orgId: string, data: CreatePaymentDto) {
     // Validate contact exists
@@ -230,24 +243,66 @@ export class PaymentsService {
       throw new NotFoundException('Contact not found');
     }
 
-    // If an invoice_id is provided, validate it
-    if (data.invoice_id) {
-      const invoice = await this.prisma.invoice.findFirst({
-        where: { id: data.invoice_id, org_id: orgId },
+    // Normalise legacy single-invoice form into the allocations array
+    // so the downstream code has exactly one shape to deal with.
+    const allocations =
+      data.allocations && data.allocations.length > 0
+        ? data.allocations
+        : data.invoice_id
+          ? [{ invoice_id: data.invoice_id, amount: data.amount }]
+          : [];
+
+    const totalAllocated = allocations.reduce((s, a) => s + a.amount, 0);
+    // Round to 2dp so floating-point noise on e.g. ₹1234.567 doesn't
+    // trip the "allocations exceed payment" guard.
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const advanceAmount = round2(data.amount - totalAllocated);
+
+    if (round2(totalAllocated) > round2(data.amount)) {
+      throw new BadRequestException(
+        `Total allocations (${round2(totalAllocated)}) exceed payment amount (${data.amount}).`,
+      );
+    }
+
+    // Validate every allocated invoice belongs to the org + contact
+    // and has enough balance_due to absorb the allocation.
+    if (allocations.length > 0) {
+      const invoiceIds = allocations.map((a) => a.invoice_id);
+      const invoices = await this.prisma.invoice.findMany({
+        where: { id: { in: invoiceIds }, org_id: orgId },
+        select: {
+          id: true,
+          invoice_number: true,
+          contact_id: true,
+          balance_due: true,
+          total: true,
+          amount_paid: true,
+          status: true,
+        },
       });
-      if (!invoice) {
-        throw new NotFoundException('Invoice not found');
-      }
-      const balanceDue = invoice.balance_due?.toNumber() || 0;
-      if (data.amount > balanceDue) {
-        throw new BadRequestException(
-          `Payment amount (${data.amount}) exceeds invoice balance due (${balanceDue})`,
-        );
+      const byId = new Map(invoices.map((i) => [i.id, i]));
+      for (const alloc of allocations) {
+        const inv = byId.get(alloc.invoice_id);
+        if (!inv) {
+          throw new NotFoundException(`Invoice ${alloc.invoice_id} not found`);
+        }
+        if (inv.contact_id && inv.contact_id !== data.contact_id) {
+          throw new BadRequestException(
+            `Invoice ${inv.invoice_number} does not belong to the selected contact.`,
+          );
+        }
+        const balance = inv.balance_due?.toNumber() || 0;
+        if (round2(alloc.amount) > round2(balance)) {
+          throw new BadRequestException(
+            `Allocation ${alloc.amount} exceeds balance due ${balance} on invoice ${inv.invoice_number}.`,
+          );
+        }
       }
     }
 
     const payment = await this.prisma.$transaction(async (tx) => {
-      // Create the payment
+      // Create the payment row first — its ID is needed as the FK on
+      // every allocation row.
       const pmt = await tx.payment.create({
         data: {
           org_id: orgId,
@@ -257,49 +312,56 @@ export class PaymentsService {
           date: new Date(data.date),
           method: data.method,
           reference: data.reference,
-          bank_account_id: data.bank_account_id,
+          bank_account_id: data.bank_account_id ?? null,
           notes: data.notes,
         },
       });
 
-      // If invoice_id provided, auto-allocate and update invoice
-      if (data.invoice_id) {
+      // Apply each allocation: insert the PaymentAllocation row, then
+      // bump the matching invoice's amount_paid / balance_due / status.
+      // Doing the invoice update per-row (rather than in a single
+      // batched query) lets us compute the new status from the latest
+      // balance value without a second read pass.
+      for (const alloc of allocations) {
         await tx.paymentAllocation.create({
           data: {
             payment_id: pmt.id,
-            invoice_id: data.invoice_id,
-            amount: data.amount,
+            invoice_id: alloc.invoice_id,
+            amount: alloc.amount,
           },
         });
 
-        // Update invoice paid amounts
         const invoice = await tx.invoice.findUnique({
-          where: { id: data.invoice_id },
+          where: { id: alloc.invoice_id },
         });
-        if (invoice) {
-          const newAmountPaid = (invoice.amount_paid?.toNumber() || 0) + data.amount;
-          const newBalanceDue = (invoice.total?.toNumber() || 0) - newAmountPaid;
+        if (!invoice) continue;
 
-          let newStatus = invoice.status;
-          if (newBalanceDue <= 0) {
-            newStatus = 'paid';
-          } else if (newAmountPaid > 0) {
-            newStatus = 'partially_paid';
-          }
+        const newAmountPaid = round2(
+          (invoice.amount_paid?.toNumber() || 0) + alloc.amount,
+        );
+        const newBalanceDue = round2(
+          (invoice.total?.toNumber() || 0) - newAmountPaid,
+        );
 
-          await tx.invoice.update({
-            where: { id: data.invoice_id },
-            data: {
-              amount_paid: newAmountPaid,
-              balance_due: Math.max(0, newBalanceDue),
-              status: newStatus,
-              // Invalidate the cached PDF so the next download regenerates
-              // it with the latest amount_paid / balance_due / status.
-              pdf_url: null,
-              updated_at: new Date(),
-            },
-          });
+        let newStatus = invoice.status;
+        if (newBalanceDue <= 0) {
+          newStatus = 'paid';
+        } else if (newAmountPaid > 0) {
+          newStatus = 'partially_paid';
         }
+
+        await tx.invoice.update({
+          where: { id: alloc.invoice_id },
+          data: {
+            amount_paid: newAmountPaid,
+            balance_due: Math.max(0, newBalanceDue),
+            status: newStatus,
+            // Invalidate the cached PDF so the next download regenerates
+            // it with the latest amount_paid / balance_due / status.
+            pdf_url: null,
+            updated_at: new Date(),
+          },
+        });
       }
 
       return tx.payment.findUnique({
@@ -317,16 +379,18 @@ export class PaymentsService {
       });
     });
 
-    // Post the cash/AR (or cash/AP) journal entry. Best-effort — never
-    // block the payment response on bookkeeping issues; a missing
-    // ledger account just leaves the payment unposted to be backfilled.
+    // Post the JE outside the transaction. postPayment() reads the
+    // allocations + advance gap and emits a 2-or-3-line entry:
+    //   receive: Dr Bank | Cr A/R (allocated) | Cr 2116 (advance)
+    //   pay:     Dr A/P (allocated) | Dr 1112 (advance) | Cr Bank
+    // Best-effort — a missing ledger account leaves the payment row
+    // unposted to be backfilled later rather than blocking the
+    // user's create.
     if (payment?.id) {
       try {
         await this.journalPosting.postPayment(payment.id);
-        // Allocated payments also affect invoice journals (the AR going
-        // down was already in the payment journal, but invoice's own
-        // journal stays untouched — re-post it so balance_due flows
-        // through to the cached PDF and any reconciliation views).
+        // Re-post the affected invoice journals so their balance_due
+        // flows through to the cached PDFs and ledger views.
         for (const alloc of payment.allocations || []) {
           if (alloc?.invoice?.id) {
             await this.journalPosting.postInvoice(alloc.invoice.id);
@@ -337,7 +401,9 @@ export class PaymentsService {
       }
     }
 
-    return payment;
+    // Surface the computed advance to the caller so the UI can render
+    // a confirmation banner ("₹8,700 recorded as advance").
+    return { ...payment, advance_amount: advanceAmount } as any;
   }
 
   /**
@@ -440,6 +506,61 @@ export class PaymentsService {
     });
 
     return result;
+  }
+
+  /**
+   * Outstanding invoices/bills for a specific contact — the data
+   * source for the Record Payment page's allocation table.
+   *
+   * `direction`:
+   *   - 'receive' → unpaid sales invoices for a customer (or 'both')
+   *   - 'pay'     → unpaid purchase bills for a vendor (or 'both')
+   *
+   * Returns rows sorted by date ascending (FIFO) so the allocation
+   * table's "Apply to Oldest" button can fill from index 0 down.
+   * Only statuses that can actually receive payment are included
+   * (drafts and cancelled bills don't belong in an outstanding list).
+   */
+  async getOutstandingForContact(
+    orgId: string,
+    contactId: string,
+    direction: 'receive' | 'pay',
+  ) {
+    const type = direction === 'receive' ? 'sale' : 'purchase';
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        org_id: orgId,
+        contact_id: contactId,
+        type,
+        status: { in: ['sent', 'partially_paid', 'overdue'] },
+      },
+      orderBy: [{ date: 'asc' }, { created_at: 'asc' }],
+      select: {
+        id: true,
+        invoice_number: true,
+        date: true,
+        due_date: true,
+        total: true,
+        amount_paid: true,
+        balance_due: true,
+        status: true,
+      },
+    });
+
+    // Frontend expects numbers, not Prisma Decimal instances.
+    return {
+      data: invoices.map((inv) => ({
+        ...inv,
+        total: inv.total ? Number(inv.total) : 0,
+        amount_paid: inv.amount_paid ? Number(inv.amount_paid) : 0,
+        balance_due: inv.balance_due ? Number(inv.balance_due) : 0,
+      })),
+      meta: {
+        contact_id: contactId,
+        direction,
+        count: invoices.length,
+      },
+    };
   }
 
   /**
