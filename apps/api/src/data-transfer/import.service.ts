@@ -11,7 +11,9 @@ export type ImportEntityType =
   | 'products'
   | 'opening_balances'
   | 'sales_invoices'
-  | 'purchase_bills';
+  | 'purchase_bills'
+  | 'payments_received'
+  | 'payments_made';
 
 export interface ValidationError {
   row: number;
@@ -687,6 +689,13 @@ export class ImportService {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./runners/purchase-bills.import') as typeof import('./runners/purchase-bills.import');
       return mod.PurchaseBillsImport.buildTemplate();
+    }
+    if (type === 'payments_received' || type === 'payments_made') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./runners/payments.import') as typeof import('./runners/payments.import');
+      return mod.PaymentsImport.buildTemplate(
+        type === 'payments_received' ? 'received' : 'made',
+      );
     }
 
     const buffer = await workbook.xlsx.writeBuffer();

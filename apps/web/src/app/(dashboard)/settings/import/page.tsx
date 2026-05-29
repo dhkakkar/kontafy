@@ -31,7 +31,9 @@ type EntityType =
   | "products"
   | "opening_balances"
   | "sales_invoices"
-  | "purchase_bills";
+  | "purchase_bills"
+  | "payments_received"
+  | "payments_made";
 type MigrationSource = "tally" | "busy" | null;
 
 interface ValidationError {
@@ -64,6 +66,8 @@ const entityOptions = [
   // Transactions
   { value: "sales_invoices", label: "Sales Invoices" },
   { value: "purchase_bills", label: "Purchase Bills" },
+  { value: "payments_received", label: "Payments Received (Receipts)" },
+  { value: "payments_made", label: "Payments Made (Vendor Payments)" },
 ];
 
 const templateTypes = [
@@ -94,6 +98,18 @@ const templateTypes = [
     description:
       "Multi-line vendor bills grouped by Bill No, with GST auto-calc + TDS columns",
   },
+  {
+    type: "payments_received" as EntityType,
+    label: "Payments Received Template",
+    description:
+      "Customer receipts — one row per payment, optionally allocated against an invoice",
+  },
+  {
+    type: "payments_made" as EntityType,
+    label: "Payments Made Template",
+    description:
+      "Vendor payments — one row per payment, optionally allocated against a bill",
+  },
 ];
 
 // Map of valid entity types — used to validate the `?type=` URL
@@ -104,6 +120,8 @@ const VALID_ENTITY_TYPES = new Set<EntityType>([
   "opening_balances",
   "sales_invoices",
   "purchase_bills",
+  "payments_received",
+  "payments_made",
 ]);
 
 // Read the ?type= URL param on the client without pulling in
@@ -148,6 +166,24 @@ export default function DataImportPage() {
     opening_balances: [["accounts"], ["coa"], ["trial-balance"], ["dashboard"]],
     sales_invoices: [["invoices"], ["invoices-stats"], ["dashboard"]],
     purchase_bills: [["purchases"], ["purchases-stats"], ["dashboard"]],
+    // Payments imports touch payment lists, the affected invoice/bill
+    // balance lists, the outstanding views, and dashboard widgets.
+    payments_received: [
+      ["payments"],
+      ["invoices"],
+      ["invoices-stats"],
+      ["payment-outstanding"],
+      ["payment-outstanding-modal"],
+      ["dashboard"],
+    ],
+    payments_made: [
+      ["payments"],
+      ["purchases"],
+      ["purchases-stats"],
+      ["payment-outstanding"],
+      ["payment-outstanding-modal"],
+      ["dashboard"],
+    ],
   };
 
   // Keep the URL ?type= in sync with the dropdown using the native

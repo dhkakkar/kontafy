@@ -19,6 +19,7 @@ import { ExportService, ExportFormat } from './export.service';
 import { ImportService, ImportEntityType } from './import.service';
 import { SalesInvoicesImport } from './runners/sales-invoices.import';
 import { PurchaseBillsImport } from './runners/purchase-bills.import';
+import { PaymentsImport } from './runners/payments.import';
 
 @ApiTags('Data Transfer')
 @ApiBearerAuth('access-token')
@@ -30,6 +31,7 @@ export class DataTransferController {
     private readonly importService: ImportService,
     private readonly salesInvoicesImport: SalesInvoicesImport,
     private readonly purchaseBillsImport: PurchaseBillsImport,
+    private readonly paymentsImport: PaymentsImport,
   ) {}
 
   // ─── Export Endpoints ─────────────────────────────────────────
@@ -312,6 +314,68 @@ export class DataTransferController {
     };
   }
 
+  @Post('import/payments_received')
+  @ApiOperation({ summary: 'Bulk-import customer receipts' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async importPaymentsReceived(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.runPaymentsImport(orgId, userId, file, 'received');
+  }
+
+  @Post('import/payments_made')
+  @ApiOperation({ summary: 'Bulk-import vendor payments' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async importPaymentsMade(
+    @OrgId() orgId: string,
+    @CurrentUser('sub') userId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.runPaymentsImport(orgId, userId, file, 'made');
+  }
+
+  private async runPaymentsImport(
+    orgId: string,
+    userId: string,
+    file: Express.Multer.File,
+    direction: 'received' | 'made',
+  ) {
+    this.validateUploadedFile(file);
+    const format = this.detectFileFormat(file);
+    const result = await this.paymentsImport.run(
+      orgId,
+      userId,
+      file.buffer,
+      format,
+      direction,
+    );
+    return {
+      success: result.errors.length === 0,
+      total: result.total,
+      imported: result.imported,
+      skipped: result.skipped,
+      // Pass through row-level errors as-is — the runner already
+      // attaches { row } so the frontend renders "Row 7: ..." lines.
+      errors: result.errors,
+    };
+  }
+
   @Get('import/template/:type')
   @ApiOperation({ summary: 'Download import template for an entity type' })
   async getImportTemplate(
@@ -324,6 +388,8 @@ export class DataTransferController {
       'opening_balances',
       'sales_invoices',
       'purchase_bills',
+      'payments_received',
+      'payments_made',
     ];
     if (!validTypes.includes(type as ImportEntityType)) {
       throw new BadRequestException(`Invalid template type. Must be one of: ${validTypes.join(', ')}`);
@@ -352,6 +418,8 @@ export class DataTransferController {
             'opening_balances',
             'sales_invoices',
             'purchase_bills',
+            'payments_received',
+            'payments_made',
           ],
         },
       },
@@ -376,6 +444,8 @@ export class DataTransferController {
       'opening_balances',
       'sales_invoices',
       'purchase_bills',
+      'payments_received',
+      'payments_made',
     ];
     if (!validTypes.includes(type as ImportEntityType)) {
       throw new BadRequestException(`Invalid type. Must be one of: ${validTypes.join(', ')}`);
