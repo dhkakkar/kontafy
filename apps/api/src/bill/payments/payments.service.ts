@@ -89,6 +89,67 @@ export class PaymentsService {
   }
 
   /**
+   * Aggregate stats for the /payments page header tiles: total
+   * received, total made, count per tab, and net cash flow. Lives
+   * separately from findAll() so the list can be paginated to 25
+   * rows without the summary cards collapsing to "received on the
+   * visible page" — which would be nonsensical once the list grows
+   * past one page.
+   */
+  async getStats(orgId: string) {
+    const [grouped, totals] = await Promise.all([
+      this.prisma.payment.groupBy({
+        by: ['type'],
+        where: { org_id: orgId },
+        _count: { _all: true },
+      }),
+      this.prisma.payment.groupBy({
+        by: ['type'],
+        where: { org_id: orgId },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const byType: Record<string, number> = { received: 0, made: 0 };
+    for (const g of grouped) {
+      // Historic rows used 'paid' / 'receive' / 'in' — collapse all
+      // those legacy spellings into the canonical two so the UI
+      // tabs add up correctly.
+      const t = String(g.type).toLowerCase();
+      if (t === 'received' || t === 'receive' || t === 'receipt' || t === 'in') {
+        byType.received += g._count._all;
+      } else {
+        byType.made += g._count._all;
+      }
+    }
+
+    let totalReceived = 0;
+    let totalMade = 0;
+    for (const g of totals) {
+      const t = String(g.type).toLowerCase();
+      const sum = g._sum.amount ? Number(g._sum.amount) : 0;
+      if (t === 'received' || t === 'receive' || t === 'receipt' || t === 'in') {
+        totalReceived += sum;
+      } else {
+        totalMade += sum;
+      }
+    }
+
+    return {
+      byType: {
+        all: byType.received + byType.made,
+        received: byType.received,
+        made: byType.made,
+      },
+      totals: {
+        received: totalReceived,
+        made: totalMade,
+        net: totalReceived - totalMade,
+      },
+    };
+  }
+
+  /**
    * Get a single payment with allocations + the bank account behind
    * it. The detail page uses bank_account.{bank_name, account_name}
    * to render "Bank Account: ICICI Bank — ..." in the read view and

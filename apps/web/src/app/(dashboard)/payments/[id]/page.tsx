@@ -131,6 +131,7 @@ export default function PaymentDetailPage() {
       // touches payment / invoice balance / ledger state.
       queryClient.invalidateQueries({ queryKey: ["payment", paymentId] });
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["payments-stats"] });
       queryClient.invalidateQueries({ queryKey: ["invoice"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["invoices-stats"] });
@@ -153,6 +154,7 @@ export default function PaymentDetailPage() {
       // Delete reverses allocations + JE on the backend, so every
       // payment-affected cache needs to refresh.
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["payments-stats"] });
       queryClient.invalidateQueries({ queryKey: ["invoice"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["invoices-stats"] });

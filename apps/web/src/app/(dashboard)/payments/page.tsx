@@ -20,6 +20,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { DataTable } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
+import { Pagination } from "@/components/ui/pagination";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { api } from "@/lib/api";
 import {
@@ -59,6 +60,16 @@ interface ApiResponse<T> {
   data: T;
 }
 
+interface PaymentsListResponse {
+  data: Payment[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+interface PaymentsStatsResponse {
+  byType: { all: number; received: number; made: number };
+  totals: { received: number; made: number; net: number };
+}
+
 const methodLabels: Record<string, string> = {
   cash: "Cash",
   upi: "UPI",
@@ -76,6 +87,15 @@ export default function PaymentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showModal, setShowModal] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  // Reset to page 1 when filters/search/tab change. Without this a
+  // user on page 3 of "all" who switches to a tab with only 1 page
+  // sees an empty table.
+  React.useEffect(() => {
+    setPage(1);
+  }, [searchQuery, activeTab, pageSize]);
 
   // Form state
   const [formType, setFormType] = useState("received");
@@ -107,16 +127,41 @@ export default function PaymentsPage() {
   const [newContactPhone, setNewContactPhone] = useState("");
   const [newContactEmail, setNewContactEmail] = useState("");
 
-  const { data: payments = [], isLoading, error } = useQuery<Payment[]>({
-    queryKey: ["payments", activeTab, searchQuery],
+  const listQuery = useQuery<PaymentsListResponse>({
+    queryKey: ["payments", { page, pageSize, type: activeTab, search: searchQuery }],
     queryFn: async () => {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = {
+        page: String(page),
+        limit: String(pageSize),
+      };
       if (activeTab !== "all") params.type = activeTab;
       if (searchQuery) params.search = searchQuery;
-      const res = await api.get<ApiResponse<Payment[]>>("/bill/payments", params);
-      return res.data;
+      // Paginated endpoints surface as { success, data: [...], meta }
+      // through the ResponseInterceptor. Defensive unwrap so a switch
+      // to a non-paginated shape later doesn't break this page.
+      const res = (await api.get("/bill/payments", params)) as any;
+      return {
+        data: res?.data ?? [],
+        meta: res?.meta ?? { total: 0, page: 1, limit: pageSize, totalPages: 0 },
+      };
     },
   });
+
+  const statsQuery = useQuery<PaymentsStatsResponse>({
+    queryKey: ["payments-stats"],
+    queryFn: async () => {
+      const res = (await api.get("/bill/payments/stats")) as any;
+      // Plain object → wrapped as { success, data: {...}, meta } —
+      // unwrap whichever shape the api client surfaces.
+      return (res?.data ?? res) as PaymentsStatsResponse;
+    },
+  });
+
+  const payments = listQuery.data?.data ?? [];
+  const total = listQuery.data?.meta.total ?? 0;
+  const stats = statsQuery.data;
+  const isLoading = listQuery.isLoading;
+  const error = listQuery.error;
 
   // Fetch contacts for the dropdown — filtered to the side that
   // makes sense for the chosen payment type. Received → customers and
@@ -217,6 +262,7 @@ export default function PaymentsPage() {
       // invalidation too — without it the user navigates to the
       // affected invoice and sees the old balance_due.
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["payments-stats"] });
       queryClient.invalidateQueries({ queryKey: ["invoice"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["invoices-stats"] });
@@ -308,20 +354,18 @@ export default function PaymentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formContactId]);
 
-  // Amounts come back from the API as Decimal-serialised strings; coerce
-  // before reducing or `sum + p.amount` concatenates ("0" + "9000" + ...)
-  // and totals show as 90,00,90,00,20,000 instead of 38,000.
-  const totalReceived = payments
-    .filter((p) => isReceivedType(p.type))
-    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-  const totalMade = payments
-    .filter((p) => isMadeType(p.type))
-    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  // Totals come from the dedicated stats endpoint so they stay
+  // correct regardless of which page of the paginated list is
+  // visible (per-page reducers would otherwise show only the
+  // visible-page sum and confuse anyone with >25 payments).
+  const totalReceived = stats?.totals.received ?? 0;
+  const totalMade = stats?.totals.made ?? 0;
+  const netCashFlow = stats?.totals.net ?? 0;
 
   const tabs = [
-    { value: "all", label: "All", count: payments.length },
-    { value: "received", label: "Received", count: payments.filter((p) => isReceivedType(p.type)).length },
-    { value: "made", label: "Made", count: payments.filter((p) => isMadeType(p.type)).length },
+    { value: "all", label: "All", count: stats?.byType.all ?? 0 },
+    { value: "received", label: "Received", count: stats?.byType.received ?? 0 },
+    { value: "made", label: "Made", count: stats?.byType.made ?? 0 },
   ];
 
   const columns = useMemo(
@@ -404,7 +448,20 @@ export default function PaymentsPage() {
                     return;
                   try {
                     await api.delete(`/bill/payments/${row.id}`);
+                    // Backend reverses allocations + JE on delete, so
+                    // every payment-affected cache needs a refresh —
+                    // not just the payments list.
                     queryClient.invalidateQueries({ queryKey: ["payments"] });
+                    queryClient.invalidateQueries({ queryKey: ["payments-stats"] });
+                    queryClient.invalidateQueries({ queryKey: ["invoice"] });
+                    queryClient.invalidateQueries({ queryKey: ["invoices"] });
+                    queryClient.invalidateQueries({ queryKey: ["invoices-stats"] });
+                    queryClient.invalidateQueries({ queryKey: ["purchase"] });
+                    queryClient.invalidateQueries({ queryKey: ["purchases"] });
+                    queryClient.invalidateQueries({ queryKey: ["purchases-stats"] });
+                    queryClient.invalidateQueries({ queryKey: ["payment-outstanding"] });
+                    queryClient.invalidateQueries({ queryKey: ["payment-outstanding-modal"] });
+                    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
                   } catch (err) {
                     alert((err as Error).message || "Failed to delete payment");
                   }
@@ -498,7 +555,7 @@ export default function PaymentsPage() {
           <div>
             <p className="text-sm text-gray-500">Net Cash Flow</p>
             <p className="text-xl font-bold text-primary-800">
-              {formatCurrency(totalReceived - totalMade)}
+              {formatCurrency(netCashFlow)}
             </p>
           </div>
         </Card>
@@ -528,7 +585,16 @@ export default function PaymentsPage() {
             Failed to load payments. Please try again.
           </div>
         ) : (
-          <DataTable table={table} />
+          <>
+            <DataTable table={table} />
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          </>
         )}
       </Card>
 

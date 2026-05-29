@@ -56,6 +56,15 @@ export class PaymentsController {
     return this.paymentsService.getOutstandingSummary(orgId);
   }
 
+  @Get('stats')
+  @ApiOperation({
+    summary:
+      'Aggregate payments stats — totals + per-type counts for the page header',
+  })
+  async getStats(@OrgId() orgId: string) {
+    return this.paymentsService.getStats(orgId);
+  }
+
   @Get('outstanding/contact/:contactId')
   @ApiOperation({
     summary:

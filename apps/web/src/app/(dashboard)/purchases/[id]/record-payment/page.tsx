@@ -125,6 +125,7 @@ export default function RecordPurchasePaymentPage() {
         queryClient.invalidateQueries({ queryKey: ["purchases"] }),
         queryClient.invalidateQueries({ queryKey: ["purchases-stats"] }),
         queryClient.invalidateQueries({ queryKey: ["payments"] }),
+        queryClient.invalidateQueries({ queryKey: ["payments-stats"] }),
         queryClient.invalidateQueries({ queryKey: ["payment-outstanding"] }),
         queryClient.invalidateQueries({ queryKey: ["payment-outstanding-modal"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),

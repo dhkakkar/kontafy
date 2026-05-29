@@ -170,6 +170,7 @@ export default function DataImportPage() {
     // balance lists, the outstanding views, and dashboard widgets.
     payments_received: [
       ["payments"],
+      ["payments-stats"],
       ["invoices"],
       ["invoices-stats"],
       ["payment-outstanding"],
@@ -178,6 +179,7 @@ export default function DataImportPage() {
     ],
     payments_made: [
       ["payments"],
+      ["payments-stats"],
       ["purchases"],
       ["purchases-stats"],
       ["payment-outstanding"],
