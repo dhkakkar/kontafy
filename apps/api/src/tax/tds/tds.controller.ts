@@ -19,7 +19,11 @@ export class TdsController {
   constructor(private readonly tdsService: TdsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List TDS entries' })
+  @ApiOperation({
+    summary: 'List TDS entries',
+    description:
+      'Paginated list of TDS deduction entries for the org. Filters: `section` (e.g. 194C, 194J), `status` (`deducted` / `paid` / `filed`), `from` and `to` dates, `page`, `limit`. Each row carries vendor, base amount, rate and deducted tax.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'section', required: false })
@@ -46,7 +50,11 @@ export class TdsController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a TDS deduction entry' })
+  @ApiOperation({
+    summary: 'Create a TDS deduction entry',
+    description:
+      'Records a TDS deduction against a vendor payment or bill. The entry auto-posts a journal entry debiting the expense/asset and crediting the configured TDS Payable ledger, and reduces the vendor\'s outstanding balance by the deducted amount. The section code must match one of the rates configured on the org.',
+  })
   async create(
     @OrgId() orgId: string,
     @Body() body: Record<string, any>,
@@ -60,7 +68,11 @@ export class TdsController {
   }
 
   @Get('summary')
-  @ApiOperation({ summary: 'TDS summary by section for a period' })
+  @ApiOperation({
+    summary: 'TDS summary by section for a period',
+    description:
+      'Aggregates TDS deducted between `from` and `to` dates, grouped by section. Returns vendor count, base amount and total tax per section — the same shape consumed by the quarterly 24Q/26Q assembly screen.',
+  })
   @ApiQuery({ name: 'from', required: true })
   @ApiQuery({ name: 'to', required: true })
   async getSummary(

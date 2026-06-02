@@ -27,7 +27,11 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List products with optional filters' })
+  @ApiOperation({
+    summary: 'List products with optional filters',
+    description:
+      'Returns the org\'s product catalog. Supported filters: `type` (`goods` | `services`), `search` (matches name, HSN/SAC code or SKU), and `active_only` to hide soft-deleted entries. Each row carries pricing, tax rate and current on-hand quantity.',
+  })
   @ApiQuery({ name: 'type', required: false, description: 'Filter by type: goods or services' })
   @ApiQuery({ name: 'search', required: false, description: 'Search by name, HSN code, or SKU' })
   @ApiQuery({ name: 'active_only', required: false, type: Boolean })
@@ -45,13 +49,21 @@ export class ProductsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get product details with current stock levels' })
+  @ApiOperation({
+    summary: 'Get product details with current stock levels',
+    description:
+      'Returns the full product record along with per-warehouse stock-on-hand and aggregate movement counters. Used to render the product detail page.',
+  })
   async findOne(@OrgId() orgId: string, @Param('id') id: string) {
     return this.productsService.findOne(orgId, id);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new product' })
+  @ApiOperation({
+    summary: 'Create a new product',
+    description:
+      'Creates a goods or services SKU. The HSN/SAC code, GST rate and unit drive automatic tax computation on invoices and bills. If `opening_stock` is set, an opening-balance stock movement is auto-posted against the default warehouse.',
+  })
   async create(
     @OrgId() orgId: string,
     @Body(new ZodValidationPipe(createProductSchema)) body: CreateProductDto,
@@ -60,7 +72,11 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update product' })
+  @ApiOperation({
+    summary: 'Update product',
+    description:
+      'Patches catalog fields on a product. Historical invoice/bill lines keep their snapshotted price and tax — only future documents pick up the new values.',
+  })
   async update(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -70,7 +86,11 @@ export class ProductsController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Soft delete product' })
+  @ApiOperation({
+    summary: 'Soft delete product',
+    description:
+      'Marks the product as inactive so it stops appearing in selectors. The row and its historical movements are preserved so old invoices/bills continue to render correctly. To restore, call `PATCH /stock/products/:id` with `is_active: true`.',
+  })
   async remove(@OrgId() orgId: string, @Param('id') id: string) {
     return this.productsService.remove(orgId, id);
   }

@@ -19,7 +19,11 @@ export class PdfController {
   constructor(private readonly pdfService: PdfService) {}
 
   @Get(':id/pdf')
-  @ApiOperation({ summary: 'Get or generate invoice PDF URL' })
+  @ApiOperation({
+    summary: 'Get or generate invoice PDF URL',
+    description:
+      'Returns a public R2 / S3 URL to the invoice PDF, generating and uploading it on the first call. Subsequent calls return the cached URL (with a cache-buster query string) so browsers always pick up the latest version. Response shape: `{ url: string }`.',
+  })
   async getPdfUrl(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -29,7 +33,11 @@ export class PdfController {
   }
 
   @Get(':id/pdf/download')
-  @ApiOperation({ summary: 'Download invoice PDF directly' })
+  @ApiOperation({
+    summary: 'Download invoice PDF directly',
+    description:
+      'Streams the invoice PDF as an `application/pdf` attachment (filename derived from the invoice number) rather than returning a URL. Useful for server-side fetches that need the bytes directly. `Cache-Control: no-cache` is set so each download reflects the latest render.',
+  })
   async downloadPdf(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -48,7 +56,11 @@ export class PdfController {
   }
 
   @Post(':id/pdf/regenerate')
-  @ApiOperation({ summary: 'Force regenerate invoice PDF' })
+  @ApiOperation({
+    summary: 'Force regenerate invoice PDF',
+    description:
+      'Re-renders the invoice PDF from current data and overwrites the cached object in R2 — useful after edits to invoice details, contact info or org branding. Returns `{ url, message }` with the new URL (already cache-busted).',
+  })
   async regeneratePdf(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -74,7 +86,11 @@ export class PurchasesPdfController {
   constructor(private readonly pdfService: PdfService) {}
 
   @Get(':id/pdf')
-  @ApiOperation({ summary: 'Get or generate purchase bill PDF URL' })
+  @ApiOperation({
+    summary: 'Get or generate purchase bill PDF URL',
+    description:
+      'Parallel of the sales-invoice PDF URL endpoint for purchase bills. Returns a cached R2 URL, generating and uploading on first call. The renderer keys off the stored `type` so the document is titled "Purchase Bill" but uses the same line-item layout. Response shape: `{ url: string }`.',
+  })
   async getPdfUrl(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -84,7 +100,11 @@ export class PurchasesPdfController {
   }
 
   @Get(':id/pdf/download')
-  @ApiOperation({ summary: 'Download purchase bill PDF directly' })
+  @ApiOperation({
+    summary: 'Download purchase bill PDF directly',
+    description:
+      'Streams the purchase bill PDF as an `application/pdf` attachment. Same behaviour as the sales-invoice download endpoint — `no-cache` headers, filename from the bill number — but renders under the "Purchase Bill" title.',
+  })
   async downloadPdf(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -103,7 +123,11 @@ export class PurchasesPdfController {
   }
 
   @Post(':id/pdf/regenerate')
-  @ApiOperation({ summary: 'Force regenerate purchase bill PDF' })
+  @ApiOperation({
+    summary: 'Force regenerate purchase bill PDF',
+    description:
+      'Re-renders the purchase bill PDF and overwrites the cached object. Use after editing bill line items, vendor info or branding. Returns `{ url, message }` with the new cache-busted URL.',
+  })
   async regeneratePdf(
     @OrgId() orgId: string,
     @Param('id') id: string,

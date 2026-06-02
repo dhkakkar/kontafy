@@ -21,7 +21,11 @@ export class SalesReturnsController {
   constructor(private readonly salesReturnsService: SalesReturnsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List sales returns with filtering and pagination' })
+  @ApiOperation({
+    summary: 'List sales returns with filtering and pagination',
+    description:
+      'Returns a paginated list of credit notes / sales returns for the organization. Supports filtering by `status` (draft, issued, applied), free-text `search` on customer name or return number, and a date range via `date_from` / `date_to`. The response includes header-level totals only — pair with `GET /bill/sales-returns/:id` for line items.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false })
@@ -48,13 +52,21 @@ export class SalesReturnsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get sales return details with items' })
+  @ApiOperation({
+    summary: 'Get sales return details with items',
+    description:
+      'Returns the full sales return record including line items, tax breakdown, the originating invoice reference, and any payment/credit application history. Use this to populate the return detail view or to verify a draft before issuing.',
+  })
   async findOne(@OrgId() orgId: string, @Param('id') id: string) {
     return this.salesReturnsService.findOne(orgId, id);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new sales return' })
+  @ApiOperation({
+    summary: 'Create a new sales return',
+    description:
+      'Creates a credit note for goods returned by a customer, typically linked back to an existing sales invoice. The return number is generated server-side using the configured numbering scheme, and stock is incremented for each returned line item. Once issued, the return posts a reversing journal entry to reduce revenue and receivables.',
+  })
   async create(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -64,7 +76,11 @@ export class SalesReturnsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a draft sales return' })
+  @ApiOperation({
+    summary: 'Update a draft sales return',
+    description:
+      'Updates an unposted sales return — header fields, line items, and tax overrides may all be edited. Returns that have already been issued or applied to a customer credit cannot be modified; issue a new return instead.',
+  })
   async update(
     @OrgId() orgId: string,
     @Param('id') id: string,

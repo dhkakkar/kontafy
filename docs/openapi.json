@@ -3,6 +3,7 @@
   "paths": {
     "/health": {
       "get": {
+        "description": "Returns a JSON probe with `status`, API `version`, current `timestamp`, and a per-dependency status map (currently `database`). Always responds with 200 — inspect the `services.database` value to detect a degraded DB. Used by load balancers and uptime monitors; no auth required.",
         "operationId": "HealthController_check",
         "parameters": [],
         "responses": {
@@ -18,6 +19,7 @@
     },
     "/audit": {
       "get": {
+        "description": "Returns a paginated, time-ordered stream of audit events for the org. Supports filtering by `startDate`/`endDate`, `userId`, `entityType` (e.g. invoice, payment, contact) and `action` (create / update / delete / status_change). Restricted to org owners and admins — staff roles cannot read the audit trail.",
         "operationId": "AuditController_getAuditLog",
         "parameters": [
           {
@@ -98,6 +100,7 @@
     },
     "/audit/filters": {
       "get": {
+        "description": "Returns the distinct set of users, entity types and actions that appear in the org's audit log, used to populate the dropdowns on the audit page. Cheap to call — the response is suitable for client-side caching for the duration of a session.",
         "operationId": "AuditController_getFilterOptions",
         "parameters": [],
         "responses": {
@@ -121,6 +124,7 @@
     },
     "/audit/export": {
       "get": {
+        "description": "Streams the filtered audit log as a CSV download (`Content-Disposition: attachment`). Accepts the same `startDate`/`endDate`/`userId`/`entityType`/`action` filters as the list endpoint but is unpaginated — useful for compliance exports. The filename is stamped with today's date.",
         "operationId": "AuditController_exportAuditLog",
         "parameters": [
           {
@@ -185,6 +189,7 @@
     },
     "/audit/{entityType}/{entityId}": {
       "get": {
+        "description": "Returns every audit event recorded against a single entity (e.g. one invoice or one contact), oldest first, so you can render a timeline of who changed what and when. `entityType` matches the audit log's recorded type (invoice, payment, contact, etc.); `entityId` is the row's UUID.",
         "operationId": "AuditController_getEntityHistory",
         "parameters": [
           {
@@ -528,6 +533,7 @@
     },
     "/email/send-invoice": {
       "post": {
+        "description": "Queues an outbound email to the supplied address with the rendered invoice PDF attached. Returns the `emailLogId` so the caller can poll delivery status via the email logs. Dispatch is asynchronous — the response only confirms the email is in the send queue.",
         "operationId": "EmailController_sendInvoiceEmail",
         "parameters": [],
         "requestBody": {
@@ -577,6 +583,7 @@
     },
     "/email/send-reminder": {
       "post": {
+        "description": "Queues a payment-reminder email for an outstanding invoice. The body uses the configured reminder template with merge fields for due date, outstanding amount, and a payment link. Each call is logged for audit and the reminder count on the invoice is incremented.",
         "operationId": "EmailController_sendReminderEmail",
         "parameters": [],
         "requestBody": {
@@ -626,6 +633,7 @@
     },
     "/email/send-receipt": {
       "post": {
+        "description": "Queues a receipt email with the rendered payment receipt PDF attached, addressed to `toEmail`. Returns the `emailLogId` for delivery tracking. Typically called automatically after a customer payment is recorded, but exposed here for manual re-sends.",
         "operationId": "EmailController_sendReceiptEmail",
         "parameters": [],
         "requestBody": {
@@ -675,6 +683,7 @@
     },
     "/bill/invoices/{id}/pdf": {
       "get": {
+        "description": "Returns a public R2 / S3 URL to the invoice PDF, generating and uploading it on the first call. Subsequent calls return the cached URL (with a cache-buster query string) so browsers always pick up the latest version. Response shape: `{ url: string }`.",
         "operationId": "PdfController_getPdfUrl",
         "parameters": [
           {
@@ -707,6 +716,7 @@
     },
     "/bill/invoices/{id}/pdf/download": {
       "get": {
+        "description": "Streams the invoice PDF as an `application/pdf` attachment (filename derived from the invoice number) rather than returning a URL. Useful for server-side fetches that need the bytes directly. `Cache-Control: no-cache` is set so each download reflects the latest render.",
         "operationId": "PdfController_downloadPdf",
         "parameters": [
           {
@@ -739,6 +749,7 @@
     },
     "/bill/invoices/{id}/pdf/regenerate": {
       "post": {
+        "description": "Re-renders the invoice PDF from current data and overwrites the cached object in R2 — useful after edits to invoice details, contact info or org branding. Returns `{ url, message }` with the new URL (already cache-busted).",
         "operationId": "PdfController_regeneratePdf",
         "parameters": [
           {
@@ -771,6 +782,7 @@
     },
     "/bill/purchases/{id}/pdf": {
       "get": {
+        "description": "Parallel of the sales-invoice PDF URL endpoint for purchase bills. Returns a cached R2 URL, generating and uploading on first call. The renderer keys off the stored `type` so the document is titled \"Purchase Bill\" but uses the same line-item layout. Response shape: `{ url: string }`.",
         "operationId": "PurchasesPdfController_getPdfUrl",
         "parameters": [
           {
@@ -803,6 +815,7 @@
     },
     "/bill/purchases/{id}/pdf/download": {
       "get": {
+        "description": "Streams the purchase bill PDF as an `application/pdf` attachment. Same behaviour as the sales-invoice download endpoint — `no-cache` headers, filename from the bill number — but renders under the \"Purchase Bill\" title.",
         "operationId": "PurchasesPdfController_downloadPdf",
         "parameters": [
           {
@@ -835,6 +848,7 @@
     },
     "/bill/purchases/{id}/pdf/regenerate": {
       "post": {
+        "description": "Re-renders the purchase bill PDF and overwrites the cached object. Use after editing bill line items, vendor info or branding. Returns `{ url, message }` with the new cache-busted URL.",
         "operationId": "PurchasesPdfController_regeneratePdf",
         "parameters": [
           {
@@ -867,6 +881,7 @@
     },
     "/organizations": {
       "get": {
+        "description": "Returns every organization the authenticated user is a member of along with their role in each. The result also drives the org-switcher in the UI — pick one id and pass it as `X-Org-Id` on subsequent requests to scope data access.",
         "operationId": "OrganizationController_list",
         "parameters": [],
         "responses": {
@@ -885,6 +900,7 @@
         ]
       },
       "post": {
+        "description": "Provisions a fresh organization with the caller as the `owner` member. As part of bootstrap the default chart of accounts is seeded and a starter subscription record is created. The returned `id` should be used as `X-Org-Id` on subsequent calls.",
         "operationId": "OrganizationController_create",
         "parameters": [],
         "requestBody": {
@@ -957,6 +973,7 @@
     },
     "/organizations/{id}": {
       "get": {
+        "description": "Returns the full organization record including legal identifiers (GSTIN, PAN, CIN), address, and the `settings` JSON blob. The caller must be a member of the org — otherwise a 403 is returned.",
         "operationId": "OrganizationController_findOne",
         "parameters": [
           {
@@ -987,6 +1004,7 @@
         ]
       },
       "patch": {
+        "description": "Patches identity, contact and settings fields on the organization. Only `owner` and `admin` members may call this. Most invoice-config and tax-specific edits should go through `PATCH /settings/*` instead — this endpoint is the low-level escape hatch.",
         "operationId": "OrganizationController_update",
         "parameters": [
           {
@@ -1081,6 +1099,7 @@
     },
     "/organizations/{id}/members": {
       "get": {
+        "description": "Returns every user attached to the org with their role and any custom permissions. Useful for rendering the team/people page and for client-side role-gating decisions.",
         "operationId": "OrganizationController_listMembers",
         "parameters": [
           {
@@ -1111,6 +1130,7 @@
         ]
       },
       "post": {
+        "description": "Adds an existing platform user to the org with the given role and optional permission overrides. The target user must already have a Kontafy account — for email-first onboarding use `POST /settings/users/invite` instead, which sends a sign-up link.",
         "operationId": "OrganizationController_inviteMember",
         "parameters": [
           {
@@ -1172,6 +1192,7 @@
     },
     "/organizations/{id}/members/{memberId}": {
       "patch": {
+        "description": "Changes a member's role (e.g. promote `accountant` to `admin`) or overrides the default permission set for the role. Demoting the last `owner` is rejected — every org must keep at least one owner.",
         "operationId": "OrganizationController_updateMember",
         "parameters": [
           {
@@ -1230,6 +1251,7 @@
         ]
       },
       "delete": {
+        "description": "Detaches the user from this org without deleting their platform account. The user immediately loses access to org-scoped data on their next request. Owners cannot be removed — transfer ownership via `PATCH /organizations/:id/members/:memberId` first.",
         "operationId": "OrganizationController_removeMember",
         "parameters": [
           {
@@ -1270,6 +1292,7 @@
     },
     "/books/accounts/seed-default": {
       "post": {
+        "description": "Loads the canonical Indian-GAAP chart-of-accounts template into this org. The call is a no-op if any accounts already exist, so the frontend can safely expose it as a \"Load template\" button on the empty-state of the COA page. Mainly useful for older orgs whose initial seed failed inside the Neon PgBouncer transaction budget at signup.",
         "operationId": "AccountsController_seedDefault",
         "parameters": [],
         "responses": {
@@ -1293,6 +1316,7 @@
     },
     "/books/accounts": {
       "get": {
+        "description": "Returns every account in the org as a flat array, optionally filtered by `type` (asset, liability, equity, income, expense) and `active_only`. Each row carries its code, name, parent_id, balance type, and current balance — pair with `GET /books/accounts/tree` if you need parent/child nesting.",
         "operationId": "AccountsController_findAll",
         "parameters": [
           {
@@ -1332,6 +1356,7 @@
         ]
       },
       "post": {
+        "description": "Creates a user-defined account under the given `type` and (optionally) `parent_id`. If `opening_balance` is non-zero, a balanced journal entry is automatically posted against the suspense account (code 3099) so the Trial Balance reflects the new opening on the chosen `opening_date`. Account `code` must be unique within the org.",
         "operationId": "AccountsController_create",
         "parameters": [],
         "responses": {
@@ -1355,6 +1380,7 @@
     },
     "/books/accounts/tree": {
       "get": {
+        "description": "Returns the chart of accounts nested by `parent_id` so the frontend can render an expandable tree without doing client-side regrouping. Roll-up balances on each parent reflect the sum of all descendants.",
         "operationId": "AccountsController_getTree",
         "parameters": [],
         "responses": {
@@ -1378,6 +1404,7 @@
     },
     "/books/accounts/opening-balances": {
       "get": {
+        "description": "Returns one row per account with its existing opening balance split into debit/credit columns, sourced from the journal lines tagged as opening-balance entries. Used to hydrate the bulk-edit grid on the Opening Balances setup page so the user sees their current values before changing them.",
         "operationId": "AccountsController_listOpeningBalances",
         "parameters": [],
         "responses": {
@@ -1401,6 +1428,7 @@
     },
     "/books/accounts/opening-balances/bulk": {
       "post": {
+        "description": "Wipes the existing opening-balance journal and posts a fresh balanced entry covering every row in `entries`. Rejects the call with 400 if total debits do not equal total credits. Optionally sets `books_begin_from` so the rest of the books treat that date as the start of the fiscal record.",
         "operationId": "AccountsController_saveOpeningBalancesBulk",
         "parameters": [],
         "responses": {
@@ -1424,6 +1452,7 @@
     },
     "/books/accounts/export": {
       "get": {
+        "description": "Streams the filtered chart of accounts as a formatted XLSX download (not raw JSON). Supports the same `type` and `search` filters as the list endpoint plus `include_inactive` (default off) and `include_system` (default on). The response is sent with a `Content-Disposition: attachment` header.",
         "operationId": "AccountsController_exportXlsx",
         "parameters": [
           {
@@ -1484,6 +1513,7 @@
     },
     "/books/accounts/{id}": {
       "get": {
+        "description": "Returns a single account record by id including its type, sub-type, parent, opening balance metadata, and current running balance. For the line-level ledger of this account, call `GET /books/ledger/:accountId`.",
         "operationId": "AccountsController_findOne",
         "parameters": [
           {
@@ -1514,6 +1544,7 @@
         ]
       },
       "patch": {
+        "description": "Updates editable fields on an account — name, code, sub-type, description, active flag, and opening balance. Changing the opening balance reposts the underlying suspense journal so reports stay in sync. Account `type` itself is immutable to protect the integrity of historical reports.",
         "operationId": "AccountsController_update",
         "parameters": [
           {
@@ -1544,6 +1575,7 @@
         ]
       },
       "delete": {
+        "description": "Hard-deletes a user-created account. The call is rejected if the account is flagged `is_system` (e.g. the bundled defaults) or has any posted journal lines referencing it. To remove an account that has activity, deactivate it via `PATCH /books/accounts/:id` with `is_active: false` instead.",
         "operationId": "AccountsController_remove",
         "parameters": [
           {
@@ -1576,6 +1608,7 @@
     },
     "/books/journal-entries": {
       "get": {
+        "description": "Returns a paginated list of journal entries scoped to the org. Filters: `from` / `to` date range (YYYY-MM-DD) and `posted` (true returns finalized entries only, false returns drafts). Each row carries the entry header plus aggregate debit/credit totals — pair with `GET /:id` for line breakdown.",
         "operationId": "JournalController_findAll",
         "parameters": [
           {
@@ -1640,6 +1673,7 @@
         ]
       },
       "post": {
+        "description": "Creates a manual journal entry. Lines must balance (sum of debits === sum of credits) or the call is rejected. Defaults to draft (`is_posted: false`); pass `is_posted: true` to post immediately, which also updates account balances and writes to the ledger. `reference_type` / `reference_id` link the entry back to a source document (e.g. invoice, bill).",
         "operationId": "JournalController_create",
         "parameters": [],
         "responses": {
@@ -1663,6 +1697,7 @@
     },
     "/books/journal-entries/{id}": {
       "get": {
+        "description": "Returns the journal entry header together with every debit/credit line (account, amount, line-level description). Use this to populate the entry detail / edit view.",
         "operationId": "JournalController_findOne",
         "parameters": [
           {
@@ -1695,6 +1730,7 @@
     },
     "/books/journal-entries/{id}/post": {
       "patch": {
+        "description": "Transitions a draft journal entry to posted status. Posting updates every referenced account balance and makes the entry immutable — further changes require voiding and reissuing. A no-op if the entry is already posted.",
         "operationId": "JournalController_postEntry",
         "parameters": [
           {
@@ -1727,6 +1763,7 @@
     },
     "/books/journal-entries/{id}/void": {
       "patch": {
+        "description": "Voids a posted journal entry by creating a new reversing entry — the original record is preserved for audit, and the net effect on account balances is zero. The reversing entry is dated today and references the original entry id.",
         "operationId": "JournalController_voidEntry",
         "parameters": [
           {
@@ -1759,6 +1796,7 @@
     },
     "/books/ledger/{accountId}": {
       "get": {
+        "description": "Returns the running ledger for one account: opening balance, every debit/credit line in the date range with date, narration, contra account, and running balance, plus the closing balance. Filters: `from` / `to` (YYYY-MM-DD) for the date window, `page` and `limit` for pagination.",
         "operationId": "LedgerController_getAccountLedger",
         "parameters": [
           {
@@ -1825,6 +1863,7 @@
     },
     "/books/ledger/trial-balance": {
       "get": {
+        "description": "Returns the trial balance as of `as_of` (defaults to today) — every account with a non-zero balance, grouped by account type, with total debits and credits that must net to zero. Use this for quick balance verification; for richer report variants see the `/books/reports` endpoints.",
         "operationId": "LedgerController_getTrialBalance",
         "parameters": [
           {
@@ -1858,6 +1897,7 @@
     },
     "/books/reports/trial-balance": {
       "get": {
+        "description": "Returns the trial balance grouped by account type with each account's closing debit/credit balance as of `asOfDate` (defaults to today). Total debits should equal total credits — if they do not, the books are out of balance and the response includes a diagnostic flag.",
         "operationId": "ReportsController_getTrialBalance",
         "parameters": [
           {
@@ -1891,6 +1931,7 @@
     },
     "/books/reports/profit-loss": {
       "get": {
+        "description": "Returns the P&L grouped into Income, Direct Expenses (cost of goods), Gross Profit, Indirect Expenses, and Net Profit, computed from posted journal lines between `fromDate` and `toDate` inclusive. Both date params are required.",
         "operationId": "ReportsController_getProfitAndLoss",
         "parameters": [
           {
@@ -1933,6 +1974,7 @@
     },
     "/books/reports/balance-sheet": {
       "get": {
+        "description": "Returns the balance sheet at the close of `asOfDate` (defaults to today) — Assets, Liabilities, and Equity sections with sub-totals. Retained earnings are computed by rolling up P&L from the start of the fiscal year through `asOfDate`. Total Assets should equal Total Liabilities + Equity.",
         "operationId": "ReportsController_getBalanceSheet",
         "parameters": [
           {
@@ -1966,6 +2008,7 @@
     },
     "/books/reports/cash-flow": {
       "get": {
+        "description": "Returns a cash-flow statement for `fromDate` to `toDate` using the indirect method: starts from Net Profit and adjusts for non-cash items and working-capital movements, broken into Operating, Investing, and Financing activities.",
         "operationId": "ReportsController_getCashFlow",
         "parameters": [
           {
@@ -2008,6 +2051,7 @@
     },
     "/books/reports/day-book": {
       "get": {
+        "description": "Returns every posted journal entry dated `date` with its full line breakdown — useful as a chronological audit log of \"what happened today\". `date` is required and must be a single YYYY-MM-DD value.",
         "operationId": "ReportsController_getDayBook",
         "parameters": [
           {
@@ -2041,6 +2085,7 @@
     },
     "/books/reports/general-ledger": {
       "get": {
+        "description": "Returns the full general ledger for the supplied `accountId`: opening balance, every dated debit/credit movement in `fromDate`-`toDate` with the contra account and narration, and the closing balance. The dates are optional — omit them to get the lifetime ledger of the account.",
         "operationId": "ReportsController_getGeneralLedger",
         "parameters": [
           {
@@ -2092,6 +2137,7 @@
     },
     "/bill/invoices": {
       "get": {
+        "description": "Returns paginated invoices for the org. Supports filtering by `status` (draft / sent / partially_paid / paid / overdue / cancelled), `type` (sale / proforma / etc.), `contact_id`, date range (`from`/`to`) and free-text `search` over invoice number and notes. Drives the main invoices list page.",
         "operationId": "InvoicesController_findAll",
         "parameters": [
           {
@@ -2178,6 +2224,7 @@
         ]
       },
       "post": {
+        "description": "Creates an invoice in `draft` status with an auto-generated invoice number. Server-side computes line totals, tax (CGST / SGST or IGST based on `is_igst` and `place_of_supply`) and the grand total from the items array. Drafts do not hit the books — move to `sent` via `PATCH /:id/status` to post the AR journal entry.",
         "operationId": "InvoicesController_create",
         "parameters": [],
         "requestBody": {
@@ -2311,6 +2358,7 @@
     },
     "/bill/invoices/{id}": {
       "get": {
+        "description": "Returns the full invoice including line items, tax breakdown (CGST / SGST / IGST / cess), applied payments and credit notes, and the current `amount_paid` / `balance_due` totals. Used by the invoice detail page and as the data source for the invoice PDF.",
         "operationId": "InvoicesController_findOne",
         "parameters": [
           {
@@ -2341,6 +2389,7 @@
         ]
       },
       "patch": {
+        "description": "Patches an invoice and recalculates line / tax / grand totals from the new items. Editing is blocked once the invoice is partially_paid, paid or cancelled — for those, issue a credit note or reverse the payment first. After commit, if the invoice is in a posted status, its journal entry is re-posted in lock-step.",
         "operationId": "InvoicesController_update",
         "parameters": [
           {
@@ -2383,6 +2432,7 @@
         ]
       },
       "delete": {
+        "description": "Hard-deletes a draft invoice and its line items. Only invoices in `draft` status can be deleted — for posted invoices, cancel them via `PATCH /:id/status` (which reverses the journal) instead of deleting, so the audit trail and number sequence stay intact.",
         "operationId": "InvoicesController_remove",
         "parameters": [
           {
@@ -2415,6 +2465,7 @@
     },
     "/bill/invoices/{id}/status": {
       "patch": {
+        "description": "Transitions the invoice through its lifecycle (draft → sent → partially_paid → paid, or → cancelled). The service validates the transition against the allowed graph. Moving away from `draft` posts the AR journal entry; moving into `cancelled` reverses it. The contact's running balance is updated as a side effect.",
         "operationId": "InvoicesController_updateStatus",
         "parameters": [
           {
@@ -2466,6 +2517,7 @@
     },
     "/bill/invoices/{id}/duplicate": {
       "post": {
+        "description": "Clones an existing invoice (line items, contact, terms) into a new `draft` invoice with today's date and a fresh auto-generated number. Useful for recurring billing handled manually or for copying a previous month's invoice as a starting point.",
         "operationId": "InvoicesController_duplicate",
         "parameters": [
           {
@@ -2498,6 +2550,7 @@
     },
     "/bill/contacts": {
       "get": {
+        "description": "Returns a paginated list of customers and vendors for the org. Filter with `type` (`customer`, `vendor` or `both`), free-text `search` over name / company / GSTIN / email / phone, and `active_only=true` to hide deactivated contacts. Used by the contacts index and as the search source in invoice / bill pickers.",
         "operationId": "ContactsController_findAll",
         "parameters": [
           {
@@ -2561,6 +2614,7 @@
         ]
       },
       "post": {
+        "description": "Creates a customer, vendor or both-type contact and auto-provisions the matching AR / AP sub-ledger accounts. Any non-zero `opening_balance` (and `payable_opening_balance` for both-type contacts) is posted as an opening journal dated `opening_date` so receivables / payables reports include this contact from day one.",
         "operationId": "ContactsController_create",
         "parameters": [],
         "responses": {
@@ -2584,6 +2638,7 @@
     },
     "/bill/contacts/{id}": {
       "get": {
+        "description": "Returns the full contact record — addresses, tax IDs, payment terms, credit limit and the metadata blob (TDS, MSME, GST treatment). For the running balance and recent transactions, call the dedicated `/:id/balance` and `/:id/transactions` endpoints instead.",
         "operationId": "ContactsController_findOne",
         "parameters": [
           {
@@ -2614,6 +2669,7 @@
         ]
       },
       "patch": {
+        "description": "Patches editable fields on a contact. Re-saving `opening_balance` rewrites the opening-balance journal entry so the AR / AP ledger stays accurate. Historical transactions tied to the contact are not touched — past invoices keep their original snapshot of the contact details.",
         "operationId": "ContactsController_update",
         "parameters": [
           {
@@ -2644,6 +2700,7 @@
         ]
       },
       "delete": {
+        "description": "Soft-deletes a contact by flipping `is_active` to false. Existing invoices, bills and payments remain intact and continue to appear on reports; the contact is just hidden from new-document pickers and from `active_only=true` lists. To re-enable, send `PATCH /:id` with `is_active: true`.",
         "operationId": "ContactsController_remove",
         "parameters": [
           {
@@ -2676,6 +2733,7 @@
     },
     "/bill/contacts/{id}/balance": {
       "get": {
+        "description": "Returns the live receivable / payable balance for the contact — invoices billed minus payments received (or bills owed minus payments made for vendors). Computed from the books, so it always reconciles with the AR / AP control accounts on the trial balance.",
         "operationId": "ContactsController_getBalance",
         "parameters": [
           {
@@ -2708,6 +2766,7 @@
     },
     "/bill/contacts/{id}/transactions": {
       "get": {
+        "description": "Returns the contact's transaction history (invoices, bills, payments and credit notes) ordered by date desc. Filter `type=invoice` or `type=payment` to scope to one kind, or omit to get an interleaved statement-style view used on the contact detail page.",
         "operationId": "ContactsController_getTransactions",
         "parameters": [
           {
@@ -2765,6 +2824,7 @@
     },
     "/bill/contacts/{id}/outstanding": {
       "get": {
+        "description": "Returns every open invoice / bill for the contact bucketed by age (Current, 1-30, 31-60, 61-90, 90+ days past due) along with the totals per bucket. Drives the aging table on the contact page and the customer statement export.",
         "operationId": "ContactsController_getOutstanding",
         "parameters": [
           {
@@ -2797,6 +2857,7 @@
     },
     "/bill/contacts/{id}/summary": {
       "get": {
+        "description": "Returns the at-a-glance KPI block shown at the top of the contact detail page — lifetime billed revenue, current outstanding balance, total number of invoices and the date / amount of the most recent transaction. Aggregates run on demand; safe to call on every page load.",
         "operationId": "ContactsController_getSummary",
         "parameters": [
           {
@@ -2829,6 +2890,7 @@
     },
     "/bill/payments": {
       "get": {
+        "description": "Returns paginated payment records for the org. Supports filtering by `type` (`received` from customers or `made` to vendors), `contact_id`, date range (`from`/`to`) and free-text `search` over reference number and notes. Drives the payments list page.",
         "operationId": "PaymentsController_findAll",
         "parameters": [
           {
@@ -2908,6 +2970,7 @@
         ]
       },
       "post": {
+        "description": "Records a customer receipt or vendor payment, posts the matching bank journal (Dr Bank | Cr AR for receipts; Dr AP | Cr Bank for payments), and applies the supplied allocations against open invoices / bills. Any unallocated remainder is parked on the customer-advance (2116) or vendor-advance (1112) account and can be applied later via `POST /:id/allocate`.",
         "operationId": "PaymentsController_create",
         "parameters": [],
         "responses": {
@@ -2931,6 +2994,7 @@
     },
     "/bill/payments/outstanding": {
       "get": {
+        "description": "Returns the org-wide AR and AP rollup: total outstanding on each side bucketed by age (Current, 1-30, 31-60, 61-90, 90+ days). Drives the cash-flow / collections dashboard and is the data behind the aging report export.",
         "operationId": "PaymentsController_getOutstanding",
         "parameters": [],
         "responses": {
@@ -2954,6 +3018,7 @@
     },
     "/bill/payments/stats": {
       "get": {
+        "description": "Returns the KPI tiles shown on top of the payments page — total received, total made, count of each, plus net cash flow. Aggregates run on demand against the payments table and are safe to call on every page load.",
         "operationId": "PaymentsController_getStats",
         "parameters": [],
         "responses": {
@@ -2977,6 +3042,7 @@
     },
     "/bill/payments/outstanding/contact/{contactId}": {
       "get": {
+        "description": "Returns the open invoices or bills for one contact that can be paid against, scoped by `direction` (`receive` for customer invoices, `pay` for vendor bills). Only statuses that can still accept a payment (sent / partially_paid / overdue) are included. Used to populate the allocation grid when recording a new payment.",
         "operationId": "PaymentsController_getOutstandingForContact",
         "parameters": [
           {
@@ -3018,6 +3084,7 @@
     },
     "/bill/payments/{id}": {
       "get": {
+        "description": "Returns the full payment record including how it has been allocated across invoices / bills, the linked bank account and any unallocated remainder (which sits on the advance ledger). Used by the payment detail drawer.",
         "operationId": "PaymentsController_findOne",
         "parameters": [
           {
@@ -3048,6 +3115,7 @@
         ]
       },
       "patch": {
+        "description": "Patches editable fields on a payment (date, reference, notes, bank account). The bank journal is reposted so the books reflect the latest details. To change allocations against invoices use `POST /:id/allocate` instead — it handles the per-invoice status recalculation.",
         "operationId": "PaymentsController_update",
         "parameters": [
           {
@@ -3078,6 +3146,7 @@
         ]
       },
       "delete": {
+        "description": "Hard-deletes a payment, reverses its own bank journal, and recomputes each previously-allocated invoice — restoring its `balance_due` and bumping its status back (paid → partially_paid → sent as appropriate). Re-posts the affected invoice journals so the books always match.",
         "operationId": "PaymentsController_remove",
         "parameters": [
           {
@@ -3110,6 +3179,7 @@
     },
     "/bill/payments/{id}/allocate": {
       "post": {
+        "description": "Distributes an existing payment's unallocated balance across one or more invoices / bills. The service validates each invoice belongs to the same contact and updates each one's `amount_paid` / `balance_due` / `status`. Use this when applying a previously-received advance to new invoices, or correcting an allocation made at payment time.",
         "operationId": "PaymentsController_allocate",
         "parameters": [
           {
@@ -3142,6 +3212,7 @@
     },
     "/bill/credit-notes": {
       "get": {
+        "description": "Returns paginated credit notes for the org. Supports filtering by `status` (draft / issued / applied / partially_applied / cancelled), `contact_id`, date range (`from`/`to`) and free-text `search` over credit-note number and notes.",
         "operationId": "CreditNotesController_findAll",
         "parameters": [
           {
@@ -3220,6 +3291,7 @@
         ]
       },
       "post": {
+        "description": "Creates a credit note in `draft` status — items and tax totals are computed server-side from the supplied line items. Drafts do not affect the books; call `POST /:id/apply` to allocate the credit against one or more invoices, which is what actually posts the reversing journal entry.",
         "operationId": "CreditNotesController_create",
         "parameters": [],
         "responses": {
@@ -3243,6 +3315,7 @@
     },
     "/bill/credit-notes/{id}": {
       "get": {
+        "description": "Returns the full credit note including its line items, tax breakdown and any allocations against invoices. Used by the credit note detail page and as the source for the credit-note PDF render.",
         "operationId": "CreditNotesController_findOne",
         "parameters": [
           {
@@ -3273,6 +3346,7 @@
         ]
       },
       "patch": {
+        "description": "Patches a credit note while it is still in `draft`. Once a credit note has been applied, paid or cancelled it is locked — to correct an applied note you must reverse the allocation first or issue a new credit / debit note.",
         "operationId": "CreditNotesController_update",
         "parameters": [
           {
@@ -3305,6 +3379,7 @@
     },
     "/bill/credit-notes/{id}/apply": {
       "post": {
+        "description": "Allocates this credit note's available balance against the supplied invoice(s), reducing each invoice's `balance_due` and posting the reversing AR journal. The credit note transitions to `applied` (fully used) or `partially_applied` (balance remaining), and each touched invoice may flip to `paid` or `partially_paid`.",
         "operationId": "CreditNotesController_apply",
         "parameters": [
           {
@@ -3337,6 +3412,7 @@
     },
     "/bill/purchases": {
       "get": {
+        "description": "Returns paginated purchase bills (vendor invoices) for the org. Supports filtering by `status` (draft / sent / partially_paid / paid / overdue / cancelled), `contact_id`, date range (`from`/`to`) and free-text `search` over bill number and notes. Drives the purchase bills list page.",
         "operationId": "PurchasesController_findAll",
         "parameters": [
           {
@@ -3415,6 +3491,7 @@
         ]
       },
       "post": {
+        "description": "Creates a vendor bill in `draft` status with an auto-generated number. Server-side computes line totals and tax based on `is_igst` and `place_of_supply`. Drafts do not hit the books — move to `sent` via `PATCH /:id/status` to post the AP journal entry.",
         "operationId": "PurchasesController_create",
         "parameters": [],
         "responses": {
@@ -3438,6 +3515,7 @@
     },
     "/bill/purchases/stats": {
       "get": {
+        "description": "Returns the KPI tiles for the purchases page — counts per status, total billed and total outstanding to vendors. Aggregates run on demand and are safe to call on every page load.",
         "operationId": "PurchasesController_getStats",
         "parameters": [],
         "responses": {
@@ -3461,6 +3539,7 @@
     },
     "/bill/purchases/{id}": {
       "get": {
+        "description": "Returns the full purchase bill including line items, tax breakdown, applied payments / debit notes and current `amount_paid` / `balance_due`. Used by the bill detail page and as the data source for the bill PDF.",
         "operationId": "PurchasesController_findOne",
         "parameters": [
           {
@@ -3491,6 +3570,7 @@
         ]
       },
       "patch": {
+        "description": "Patches a purchase bill and recalculates line / tax / grand totals. Editing is blocked once the bill is partially_paid, paid or cancelled — for those, issue a debit note or reverse the payment first. After commit, the journal is reposted if the bill is in a posted status.",
         "operationId": "PurchasesController_update",
         "parameters": [
           {
@@ -3523,6 +3603,7 @@
     },
     "/bill/purchases/{id}/status": {
       "patch": {
+        "description": "Transitions the bill through its lifecycle. Valid transitions are validated server-side. Moving away from `draft` posts the AP journal (Dr expense / asset / input GST | Cr AP); moving into `cancelled` reverses it. The vendor's running balance is updated as a side effect.",
         "operationId": "PurchasesController_updateStatus",
         "parameters": [
           {
@@ -3574,6 +3655,7 @@
     },
     "/recurring-invoices": {
       "post": {
+        "description": "Creates a recurring invoice template — line items, contact, frequency (weekly / monthly / yearly), start / end dates and whether generated invoices should be auto-sent. The template is created in `active` status; the daily cron picks it up on each `next_run_at` and emits a fresh invoice (in `draft` or `sent` depending on `auto_send`).",
         "operationId": "RecurringController_create",
         "parameters": [],
         "responses": {
@@ -3595,6 +3677,7 @@
         ]
       },
       "get": {
+        "description": "Returns paginated recurring invoice templates for the org. Filter by `status` (active / paused / stopped). Each row includes the next run date, last generated date and total invoices generated to date.",
         "operationId": "RecurringController_findAll",
         "parameters": [
           {
@@ -3643,6 +3726,7 @@
     },
     "/recurring-invoices/{id}": {
       "get": {
+        "description": "Returns the full recurring invoice template — line items, schedule, contact, auto-send flag and counts of generated invoices. Used by the recurring invoice detail page and the edit form.",
         "operationId": "RecurringController_findOne",
         "parameters": [
           {
@@ -3673,6 +3757,7 @@
         ]
       },
       "patch": {
+        "description": "Patches a recurring template — line items, frequency, end date, auto-send, etc. Changes take effect from the next generation cycle; invoices that have already been generated are not retroactively updated.",
         "operationId": "RecurringController_update",
         "parameters": [
           {
@@ -3703,6 +3788,7 @@
         ]
       },
       "delete": {
+        "description": "Hard-deletes the recurring template. Invoices that have already been generated from this template are untouched and remain in the books. Prefer pausing if you only want to halt future generation temporarily.",
         "operationId": "RecurringController_remove",
         "parameters": [
           {
@@ -3735,6 +3821,7 @@
     },
     "/recurring-invoices/{id}/history": {
       "get": {
+        "description": "Returns the paginated list of invoices that have been generated from this recurring template, newest first. Each row links to the actual invoice so you can drill into status, payments and PDF. Used by the recurring invoice detail page's history tab.",
         "operationId": "RecurringController_getHistory",
         "parameters": [
           {
@@ -3783,6 +3870,7 @@
     },
     "/recurring-invoices/{id}/pause": {
       "post": {
+        "description": "Flips the template from `active` to `paused`. The daily cron skips paused templates, so no new invoices are generated until you call `POST /:id/resume`. Only active templates can be paused.",
         "operationId": "RecurringController_pause",
         "parameters": [
           {
@@ -3815,6 +3903,7 @@
     },
     "/recurring-invoices/{id}/resume": {
       "post": {
+        "description": "Flips the template from `paused` back to `active`. The next run date is recalculated from the schedule so missed cycles during the pause window are not back-filled — generation simply resumes from today forward.",
         "operationId": "RecurringController_resume",
         "parameters": [
           {
@@ -3847,6 +3936,7 @@
     },
     "/quotations": {
       "post": {
+        "description": "Creates a quotation in `draft` status with an auto-generated quotation number. Server-side computes line totals and tax based on `is_igst` and `place_of_supply`. Quotations are pre-sale documents and never post to the books — convert to an invoice via `POST /:id/convert-to-invoice` once the customer accepts.",
         "operationId": "QuotationsController_create",
         "parameters": [],
         "requestBody": {
@@ -3973,6 +4063,7 @@
         ]
       },
       "get": {
+        "description": "Returns paginated quotations for the org. Filter by `status` (draft / sent / accepted / rejected / expired / converted) and free-text `search` over quotation number, contact name and notes. Drives the quotations list page.",
         "operationId": "QuotationsController_findAll",
         "parameters": [
           {
@@ -4029,6 +4120,7 @@
     },
     "/quotations/{id}": {
       "get": {
+        "description": "Returns the full quotation including line items, tax breakdown, validity date and a reference to the invoice it has been converted into (if any). Used by the quotation detail page and the quotation PDF render.",
         "operationId": "QuotationsController_findOne",
         "parameters": [
           {
@@ -4059,6 +4151,7 @@
         ]
       },
       "patch": {
+        "description": "Patches a quotation and recalculates line / tax / grand totals. Editing is allowed only while the quotation is in `draft` or `sent`. Once accepted, rejected, expired or converted, the document is locked — to revise, duplicate it into a new quotation instead.",
         "operationId": "QuotationsController_update",
         "parameters": [
           {
@@ -4101,6 +4194,7 @@
         ]
       },
       "delete": {
+        "description": "Hard-deletes a quotation and its line items. Only quotations in `draft` status can be deleted — for sent or accepted ones, set the status to rejected or expired instead so the number sequence stays in the audit trail.",
         "operationId": "QuotationsController_remove",
         "parameters": [
           {
@@ -4133,6 +4227,7 @@
     },
     "/quotations/{id}/status": {
       "patch": {
+        "description": "Transitions a quotation between draft, sent, accepted, rejected, expired and converted. `converted` is normally set automatically when the quotation is turned into an invoice. No journal posting occurs — quotations are pre-sale documents.",
         "operationId": "QuotationsController_updateStatus",
         "parameters": [
           {
@@ -4184,6 +4279,7 @@
     },
     "/quotations/{id}/convert-to-invoice": {
       "post": {
+        "description": "Creates a new invoice (in `draft` status) from this quotation's line items and contact, then marks the quotation as `converted`. The invoice posts to the books only when its status is moved away from draft. Cancelled or already-converted quotations cannot be converted.",
         "operationId": "QuotationsController_convertToInvoice",
         "parameters": [
           {
@@ -4216,6 +4312,7 @@
     },
     "/purchase-orders": {
       "post": {
+        "description": "Creates a purchase order in `draft` status with an auto-generated PO number. Server-side computes line totals and tax based on `is_igst` and `place_of_supply`. POs are commitments to buy — they do not post to the books until converted to a purchase bill via `POST /:id/convert-to-bill`.",
         "operationId": "PurchaseOrdersController_create",
         "parameters": [],
         "requestBody": {
@@ -4346,6 +4443,7 @@
         ]
       },
       "get": {
+        "description": "Returns paginated purchase orders for the org. Filter by `status` (draft / sent / acknowledged / received / cancelled) and free-text `search` over PO number, vendor name and notes. Drives the purchase orders list page.",
         "operationId": "PurchaseOrdersController_findAll",
         "parameters": [
           {
@@ -4402,6 +4500,7 @@
     },
     "/purchase-orders/{id}": {
       "get": {
+        "description": "Returns the full purchase order — line items, vendor, delivery address, tax breakdown — plus a reference to the purchase bill it has been converted into (if any). Used by the PO detail page and the PO PDF render.",
         "operationId": "PurchaseOrdersController_findOne",
         "parameters": [
           {
@@ -4432,6 +4531,7 @@
         ]
       },
       "patch": {
+        "description": "Patches a purchase order and recalculates line / tax / grand totals. Editing is allowed only while the PO is in `draft` or `sent` — once `acknowledged`, `received` or `cancelled`, the document is locked. POs do not post to the books, so there is no journal repost.",
         "operationId": "PurchaseOrdersController_update",
         "parameters": [
           {
@@ -4474,6 +4574,7 @@
         ]
       },
       "delete": {
+        "description": "Hard-deletes a PO and its line items. Only POs in `draft` status can be deleted — for sent or acknowledged POs, cancel them via the status endpoint instead so the number stays in the audit trail.",
         "operationId": "PurchaseOrdersController_remove",
         "parameters": [
           {
@@ -4506,6 +4607,7 @@
     },
     "/purchase-orders/{id}/status": {
       "patch": {
+        "description": "Transitions a PO between draft → sent → acknowledged → received (or → cancelled at any prior point). The valid statuses are draft, sent, acknowledged, received and cancelled. Marking `received` is normally done automatically when the PO is converted to a bill.",
         "operationId": "PurchaseOrdersController_updateStatus",
         "parameters": [
           {
@@ -4557,6 +4659,7 @@
     },
     "/purchase-orders/{id}/convert-to-bill": {
       "post": {
+        "description": "Creates a new purchase bill (in `draft` status) from this PO's line items and vendor, then marks the PO as `received`. The bill posts to the books only when its status is moved away from draft. Cancelled POs cannot be converted.",
         "operationId": "PurchaseOrdersController_convertToBill",
         "parameters": [
           {
@@ -4589,6 +4692,7 @@
     },
     "/bill/expenses": {
       "get": {
+        "description": "Returns the org's expenses for the page. Filter by `status` (pending / approved / rejected), free-text `search` over vendor name, category and notes, and date range (`from`/`to`). Used by the expenses index — the response includes the all-time expense total in addition to the rows.",
         "operationId": "ExpensesController_findAll",
         "parameters": [
           {
@@ -4643,6 +4747,7 @@
         ]
       },
       "post": {
+        "description": "Records an expense and posts the matching journal entry (Dr expense category / input GST | Cr bank or cash). New expenses default to `approved` status, so the journal is posted immediately and the bank account balance is reduced.",
         "operationId": "ExpensesController_create",
         "parameters": [],
         "responses": {
@@ -4666,6 +4771,7 @@
     },
     "/bill/expenses/{id}": {
       "get": {
+        "description": "Returns the full expense record including category, amount, attached receipt URL, tax breakdown and the bank / cash account it was paid from. Used by the expense detail drawer and the edit form.",
         "operationId": "ExpensesController_findOne",
         "parameters": [
           {
@@ -4696,6 +4802,7 @@
         ]
       },
       "patch": {
+        "description": "Patches an expense and re-posts its journal so the books always reflect the latest amount, category and bank account. Changing the status to `rejected` reverses the journal; flipping it back to `approved` re-posts it.",
         "operationId": "ExpensesController_update",
         "parameters": [
           {
@@ -4726,6 +4833,7 @@
         ]
       },
       "delete": {
+        "description": "Hard-deletes the expense and reverses its journal entry so the bank balance and P&L are restored to pre-expense state. Use sparingly — for audit-friendly correction prefer creating an offsetting entry instead.",
         "operationId": "ExpensesController_remove",
         "parameters": [
           {
@@ -4758,6 +4866,7 @@
     },
     "/bill/sales-returns": {
       "get": {
+        "description": "Returns a paginated list of credit notes / sales returns for the organization. Supports filtering by `status` (draft, issued, applied), free-text `search` on customer name or return number, and a date range via `date_from` / `date_to`. The response includes header-level totals only — pair with `GET /bill/sales-returns/:id` for line items.",
         "operationId": "SalesReturnsController_findAll",
         "parameters": [
           {
@@ -4828,6 +4937,7 @@
         ]
       },
       "post": {
+        "description": "Creates a credit note for goods returned by a customer, typically linked back to an existing sales invoice. The return number is generated server-side using the configured numbering scheme, and stock is incremented for each returned line item. Once issued, the return posts a reversing journal entry to reduce revenue and receivables.",
         "operationId": "SalesReturnsController_create",
         "parameters": [],
         "responses": {
@@ -4851,6 +4961,7 @@
     },
     "/bill/sales-returns/{id}": {
       "get": {
+        "description": "Returns the full sales return record including line items, tax breakdown, the originating invoice reference, and any payment/credit application history. Use this to populate the return detail view or to verify a draft before issuing.",
         "operationId": "SalesReturnsController_findOne",
         "parameters": [
           {
@@ -4881,6 +4992,7 @@
         ]
       },
       "patch": {
+        "description": "Updates an unposted sales return — header fields, line items, and tax overrides may all be edited. Returns that have already been issued or applied to a customer credit cannot be modified; issue a new return instead.",
         "operationId": "SalesReturnsController_update",
         "parameters": [
           {
@@ -4913,6 +5025,7 @@
     },
     "/bill/delivery-challans": {
       "get": {
+        "description": "Returns paginated delivery challans for the org. Filter by `status` (draft / sent / delivered / invoiced / cancelled), free-text `search` over challan number and notes, and date range (`date_from`/`date_to`). Delivery challans track goods movement and do not post to the books.",
         "operationId": "DeliveryChallansController_findAll",
         "parameters": [
           {
@@ -4983,6 +5096,7 @@
         ]
       },
       "post": {
+        "description": "Creates a delivery challan in `draft` status with an auto-generated challan number. No journal posting happens — challans are document-only until they are converted to a tax invoice. Move to `delivered` via `PATCH /:id/status` once goods are dispatched.",
         "operationId": "DeliveryChallansController_create",
         "parameters": [],
         "responses": {
@@ -5006,6 +5120,7 @@
     },
     "/bill/delivery-challans/{id}": {
       "get": {
+        "description": "Returns the full delivery challan including its line items, shipping address and any linked invoice. Used by the challan detail page and as the source for the challan PDF.",
         "operationId": "DeliveryChallansController_findOne",
         "parameters": [
           {
@@ -5036,6 +5151,7 @@
         ]
       },
       "patch": {
+        "description": "Patches a delivery challan while it is still in `draft` or `sent`. Once the challan is delivered, invoiced or cancelled it is locked — changes after that point need a new challan (and, if needed, a credit note on the linked invoice).",
         "operationId": "DeliveryChallansController_update",
         "parameters": [
           {
@@ -5080,6 +5196,7 @@
     },
     "/bill/delivery-challans/{id}/status": {
       "patch": {
+        "description": "Transitions the challan between draft, sent, delivered, invoiced and cancelled. Setting `invoiced` is normally done by the system when an invoice is created from the challan; setting it manually does not create the invoice document.",
         "operationId": "DeliveryChallansController_updateStatus",
         "parameters": [
           {
@@ -5131,6 +5248,7 @@
     },
     "/stock/products": {
       "get": {
+        "description": "Returns the org's product catalog. Supported filters: `type` (`goods` | `services`), `search` (matches name, HSN/SAC code or SKU), and `active_only` to hide soft-deleted entries. Each row carries pricing, tax rate and current on-hand quantity.",
         "operationId": "ProductsController_findAll",
         "parameters": [
           {
@@ -5179,6 +5297,7 @@
         ]
       },
       "post": {
+        "description": "Creates a goods or services SKU. The HSN/SAC code, GST rate and unit drive automatic tax computation on invoices and bills. If `opening_stock` is set, an opening-balance stock movement is auto-posted against the default warehouse.",
         "operationId": "ProductsController_create",
         "parameters": [],
         "responses": {
@@ -5202,6 +5321,7 @@
     },
     "/stock/products/{id}": {
       "get": {
+        "description": "Returns the full product record along with per-warehouse stock-on-hand and aggregate movement counters. Used to render the product detail page.",
         "operationId": "ProductsController_findOne",
         "parameters": [
           {
@@ -5232,6 +5352,7 @@
         ]
       },
       "patch": {
+        "description": "Patches catalog fields on a product. Historical invoice/bill lines keep their snapshotted price and tax — only future documents pick up the new values.",
         "operationId": "ProductsController_update",
         "parameters": [
           {
@@ -5262,6 +5383,7 @@
         ]
       },
       "delete": {
+        "description": "Marks the product as inactive so it stops appearing in selectors. The row and its historical movements are preserved so old invoices/bills continue to render correctly. To restore, call `PATCH /stock/products/:id` with `is_active: true`.",
         "operationId": "ProductsController_remove",
         "parameters": [
           {
@@ -5294,6 +5416,7 @@
     },
     "/stock/warehouses": {
       "get": {
+        "description": "Returns each warehouse along with a count of distinct SKUs held and the total inventory valuation at that location. Use this to power warehouse pickers and the warehouse overview screen.",
         "operationId": "WarehousesController_findAll",
         "parameters": [],
         "responses": {
@@ -5315,6 +5438,7 @@
         ]
       },
       "post": {
+        "description": "Adds a stock location (godown, retail store, branch, etc.). The first warehouse created becomes the org's default for opening stock and ad-hoc movements; you can change which one is default by patching `is_default`.",
         "operationId": "WarehousesController_create",
         "parameters": [],
         "responses": {
@@ -5338,6 +5462,7 @@
     },
     "/stock/warehouses/{id}": {
       "patch": {
+        "description": "Patches the warehouse name, address or default flag. Setting `is_default: true` automatically clears the flag on the previously-default warehouse so exactly one location remains the default at all times.",
         "operationId": "WarehousesController_update",
         "parameters": [
           {
@@ -5370,6 +5495,7 @@
     },
     "/stock/movements": {
       "get": {
+        "description": "Paginated stock ledger. Supported filters: `product_id`, `warehouse_id`, `type` (`purchase_in` / `sale_out` / `adjustment` / `transfer`), `from_date`, `to_date`, `page`, `limit`. Each row references the source document (invoice/bill/adjustment) so you can drill back to the originating transaction.",
         "operationId": "StockMovementsController_findAll",
         "parameters": [
           {
@@ -5439,6 +5565,7 @@
         ]
       },
       "post": {
+        "description": "Posts an inbound, outbound, adjustment or transfer movement. Stock-on-hand for the affected product/warehouse is updated atomically. Most callers should use this only for manual adjustments and opening stock — invoice/bill posting auto-creates movements for sale_out and purchase_in.",
         "operationId": "StockMovementsController_create",
         "parameters": [],
         "responses": {
@@ -5462,6 +5589,7 @@
     },
     "/stock/levels": {
       "get": {
+        "description": "Returns the live quantity-on-hand for every (product, warehouse) pair, with optional `product_id` and `warehouse_id` filters to narrow the slice. Useful for the stock pivot grid and for last-mile fulfilment lookups.",
         "operationId": "StockMovementsController_getStockLevels",
         "parameters": [
           {
@@ -5502,6 +5630,7 @@
     },
     "/stock/low-stock": {
       "get": {
+        "description": "Returns every product whose current on-hand quantity is at or below its configured `reorder_point`. Drives the \"Low stock\" widget on the stock dashboard and the reorder report.",
         "operationId": "StockMovementsController_getLowStock",
         "parameters": [],
         "responses": {
@@ -5525,6 +5654,7 @@
     },
     "/stock/dashboard": {
       "get": {
+        "description": "Aggregated counters for the stock landing page — total products, total warehouses, inventory valuation, low-stock count and recent movement totals. Pre-aggregated server-side to keep the dashboard responsive.",
         "operationId": "StockMovementsController_getDashboard",
         "parameters": [],
         "responses": {
@@ -5548,6 +5678,7 @@
     },
     "/tax/gst/returns": {
       "get": {
+        "description": "Paginated list of every GST return saved for the org. Filters: `return_type` (`GSTR1` / `GSTR3B`), `status` (`draft` / `computed` / `filed`), `period` (MMYYYY), `page`, `limit`. Used to power the Returns history table.",
         "operationId": "GstReturnController_findAll",
         "parameters": [
           {
@@ -5610,6 +5741,7 @@
         ]
       },
       "post": {
+        "description": "Persists a computed GSTR-1 or GSTR-3B snapshot for the org. Pass `status: \"draft\"` to save work-in-progress or `\"computed\"` once you have reviewed totals. Use `PATCH /tax/gst/returns/:id/file` to mark it as actually filed.",
         "operationId": "GstReturnController_save",
         "parameters": [],
         "responses": {
@@ -5633,6 +5765,7 @@
     },
     "/tax/gst/returns/{id}": {
       "get": {
+        "description": "Returns the stored snapshot of a GST return, including every table (B2B, B2C, exports, HSN summary, etc.) and the computed totals at the time of save/filing.",
         "operationId": "GstReturnController_findOne",
         "parameters": [
           {
@@ -5665,6 +5798,7 @@
     },
     "/tax/gst/returns/compute": {
       "post": {
+        "description": "Runs an in-memory computation of the requested return type from sales/purchase data between `from_date` and `to_date` — nothing is persisted. Use this for live preview while reviewing a period; call `POST /tax/gst/returns` afterwards to save the snapshot.",
         "operationId": "GstReturnController_compute",
         "parameters": [],
         "responses": {
@@ -5688,6 +5822,7 @@
     },
     "/tax/gst/returns/{id}/file": {
       "patch": {
+        "description": "Transitions a saved return from `computed` to `filed` and records the ARN, filing date and any payment challan reference. After filing, the snapshot becomes read-only — re-compute and save as a fresh return if a revision is needed.",
         "operationId": "GstReturnController_file",
         "parameters": [
           {
@@ -5720,6 +5855,7 @@
     },
     "/tax/gst/returns/gstr3b/compute": {
       "get": {
+        "description": "Returns the full GSTR-3B payload for a `period` in MMYYYY format — outward supplies (3.1), inward reverse-charge (3.1.d), ITC (4), interstate supplies (5) and exempt/nil rated (6). The response is preview-only; persist it via `POST /tax/gst/returns/gstr3b/save` once verified.",
         "operationId": "GstReturnController_computeGSTR3B",
         "parameters": [
           {
@@ -5753,6 +5889,7 @@
     },
     "/tax/gst/returns/gstr3b/save": {
       "post": {
+        "description": "Persists a GSTR-3B snapshot for the given `period` (MMYYYY). Status defaults to `computed` if not supplied. Saving overwrites any previous draft for the same period — only one record per (org, period) is kept until it is filed.",
         "operationId": "GstReturnController_saveGSTR3B",
         "parameters": [],
         "responses": {
@@ -5776,6 +5913,7 @@
     },
     "/tax/gst/returns/gstr3b/history": {
       "get": {
+        "description": "Returns past GSTR-3B snapshots for the org with period, status and filing metadata. Drives the GSTR-3B timeline view on the compliance dashboard.",
         "operationId": "GstReturnController_gstr3bHistory",
         "parameters": [],
         "responses": {
@@ -5799,6 +5937,7 @@
     },
     "/tax/gst/returns/gstr1/export": {
       "get": {
+        "description": "Returns a GSTR-1 payload in the exact JSON schema accepted by the GST portal offline tool for the given `period` (MMYYYY). When `format=json` the response is sent as a downloadable `GSTR1_<gstin>_<period>.json` attachment; otherwise it is returned inline for inspection.",
         "operationId": "GstReturnController_exportGSTR1",
         "parameters": [
           {
@@ -5841,6 +5980,7 @@
     },
     "/tax/gst/returns/gstr1/validate": {
       "get": {
+        "description": "Runs the GSTR-1 dataset for the `period` through the same checks the portal applies — missing GSTINs, mismatched place-of-supply, invalid HSN codes, etc. Returns a list of `errors` (must-fix) and `warnings` (should-review) so customers can clean their data before uploading.",
         "operationId": "GstReturnController_validateGSTR1",
         "parameters": [
           {
@@ -5874,6 +6014,7 @@
     },
     "/tax/tds": {
       "get": {
+        "description": "Paginated list of TDS deduction entries for the org. Filters: `section` (e.g. 194C, 194J), `status` (`deducted` / `paid` / `filed`), `from` and `to` dates, `page`, `limit`. Each row carries vendor, base amount, rate and deducted tax.",
         "operationId": "TdsController_findAll",
         "parameters": [
           {
@@ -5944,6 +6085,7 @@
         ]
       },
       "post": {
+        "description": "Records a TDS deduction against a vendor payment or bill. The entry auto-posts a journal entry debiting the expense/asset and crediting the configured TDS Payable ledger, and reduces the vendor's outstanding balance by the deducted amount. The section code must match one of the rates configured on the org.",
         "operationId": "TdsController_create",
         "parameters": [],
         "responses": {
@@ -5967,6 +6109,7 @@
     },
     "/tax/tds/summary": {
       "get": {
+        "description": "Aggregates TDS deducted between `from` and `to` dates, grouped by section. Returns vendor count, base amount and total tax per section — the same shape consumed by the quarterly 24Q/26Q assembly screen.",
         "operationId": "TdsController_getSummary",
         "parameters": [
           {
@@ -6007,6 +6150,7 @@
     },
     "/bank/accounts": {
       "get": {
+        "description": "Returns every bank, cash and wallet account configured for the org along with each one's metadata (account number, IFSC, opening balance, currency). The list is unpaginated and used to populate account pickers in payments, expenses and transfers.",
         "operationId": "BankAccountsController_findAll",
         "parameters": [],
         "responses": {
@@ -6028,6 +6172,7 @@
         ]
       },
       "post": {
+        "description": "Creates a bank, cash or wallet account and auto-provisions the matching ledger account in the chart of accounts. Any non-zero `opening_balance` is posted as an opening-balance journal entry so the books reconcile from day one.",
         "operationId": "BankAccountsController_create",
         "parameters": [],
         "responses": {
@@ -6051,6 +6196,7 @@
     },
     "/bank/accounts/{id}": {
       "patch": {
+        "description": "Patches the editable fields of a bank account (name, branch, IFSC, currency, etc.). The opening balance can be adjusted here — the linked opening-balance journal entry is rewritten in lock-step so the ledger stays consistent.",
         "operationId": "BankAccountsController_update",
         "parameters": [
           {
@@ -6083,6 +6229,7 @@
     },
     "/bank/accounts/{id}/balance": {
       "get": {
+        "description": "Computes the live running balance for a single account: opening balance plus the net of every recorded credit and debit transaction. Use this on the bank account detail page header rather than the books-side ledger total, which lags slightly during background journal posting.",
         "operationId": "BankAccountsController_getBalance",
         "parameters": [
           {
@@ -6115,6 +6262,7 @@
     },
     "/bank/transactions": {
       "get": {
+        "description": "Returns paginated bank statement rows for the org. Filter by `bank_account_id` to scope to one account, `from`/`to` for a date range and `is_reconciled` (true/false) to separate matched from open items. Results include both manually entered transactions and rows imported from CSV.",
         "operationId": "BankTransactionsController_findAll",
         "parameters": [
           {
@@ -6185,6 +6333,7 @@
         ]
       },
       "post": {
+        "description": "Records a single debit or credit on the chosen bank account — used when you spot a transaction in your statement that has no matching payment or expense yet. The row starts unreconciled and can be matched later via the reconciliation flow or by recording a payment that auto-links to it.",
         "operationId": "BankTransactionsController_create",
         "parameters": [],
         "responses": {
@@ -6208,6 +6357,7 @@
     },
     "/bank/transactions/import": {
       "post": {
+        "description": "Bulk-creates bank transactions for one account from rows parsed client-side from a bank statement CSV. The import is idempotent on (date + amount + reference) so re-uploading the same statement does not duplicate rows. After import, call `POST /bank/reconciliation/auto-match` to pair the rows with existing payments and invoices.",
         "operationId": "BankTransactionsController_importCsv",
         "parameters": [],
         "responses": {
@@ -6231,6 +6381,7 @@
     },
     "/bank/transactions/unreconciled": {
       "get": {
+        "description": "Returns the open (not-yet-matched) bank transactions for the org, ordered by date. Used to power the manual matching UI and as the input set for the auto-match engine. Pass `bank_account_id` to restrict to one account.",
         "operationId": "BankTransactionsController_getUnreconciled",
         "parameters": [
           {
@@ -6263,6 +6414,7 @@
     },
     "/bank/transactions/{id}/reconcile": {
       "patch": {
+        "description": "Confirms a bank transaction as matched to a payment, invoice or expense — flipping `is_reconciled` to true and recording the linked entity for the audit trail. Once reconciled, the row contributes to the reconciled total in the summary endpoint and is hidden from the unreconciled queue.",
         "operationId": "BankTransactionsController_reconcile",
         "parameters": [
           {
@@ -6295,6 +6447,7 @@
     },
     "/bank/reconciliation/summary": {
       "get": {
+        "description": "Returns the reconciliation dashboard payload — counts of reconciled vs unreconciled transactions, total amounts on each side and the resulting book-vs-bank variance. Pass `bank_account_id` to scope to one account; omit it for an org-wide rollup.",
         "operationId": "ReconciliationController_getSummary",
         "parameters": [
           {
@@ -6327,6 +6480,7 @@
     },
     "/bank/reconciliation/auto-match": {
       "post": {
+        "description": "Runs the reconciliation engine: scans unreconciled bank transactions and pairs them with payments / invoices that match by amount (within tolerance) and date (within a few days). Returns the list of proposed matches and the count auto-reconciled. High-confidence matches are committed in place; ambiguous ones surface for manual confirmation via `PATCH /bank/transactions/:id/reconcile`.",
         "operationId": "ReconciliationController_autoMatch",
         "parameters": [],
         "responses": {
@@ -6350,6 +6504,7 @@
     },
     "/whatsapp/send-invoice": {
       "post": {
+        "description": "Sends an invoice to the supplied phone number via the WhatsApp Business API, attaching the invoice PDF and a short message. The send is logged against the customer contact so it shows up in `GET /whatsapp/messages/:contactId`. Delivery status flows back asynchronously through the webhook.",
         "operationId": "WhatsAppController_sendInvoice",
         "parameters": [],
         "requestBody": {
@@ -6398,6 +6553,7 @@
     },
     "/whatsapp/send-reminder": {
       "post": {
+        "description": "Pushes a polite payment-reminder message for an overdue invoice to the customer's registered WhatsApp number. Phone number is read from the customer record on the invoice; if missing, the request returns a 400. For batch reminders across every overdue invoice use `POST /whatsapp/bulk-reminders`.",
         "operationId": "WhatsAppController_sendReminder",
         "parameters": [],
         "requestBody": {
@@ -6441,6 +6597,7 @@
     },
     "/whatsapp/send-receipt": {
       "post": {
+        "description": "Sends a payment confirmation receipt for a recorded payment to the customer's WhatsApp number. Useful as the final touch in a closed-loop billing flow — `send-invoice` → customer pays → `send-receipt`.",
         "operationId": "WhatsAppController_sendReceipt",
         "parameters": [],
         "requestBody": {
@@ -6484,6 +6641,7 @@
     },
     "/whatsapp/bulk-reminders": {
       "post": {
+        "description": "Sweeps every overdue invoice for the org and fires a WhatsApp reminder to each customer that has a phone number on file. Customers without a phone number are skipped silently. Returns a summary of sent / skipped / failed counts.",
         "operationId": "WhatsAppController_bulkReminders",
         "parameters": [],
         "responses": {
@@ -6507,6 +6665,7 @@
     },
     "/whatsapp/messages/{contactId}": {
       "get": {
+        "description": "Returns the chronological message log between this org and a single customer/vendor contact, including delivery status (`sent` / `delivered` / `read` / `failed`). Drives the per-contact conversation pane.",
         "operationId": "WhatsAppController_getMessageHistory",
         "parameters": [
           {
@@ -6539,6 +6698,7 @@
     },
     "/whatsapp/stats": {
       "get": {
+        "description": "Returns aggregate counters for the org — total messages sent, delivery rate, read rate and breakdown by message type (invoice / reminder / receipt). Used on the WhatsApp dashboard tab.",
         "operationId": "WhatsAppController_getStats",
         "parameters": [],
         "responses": {
@@ -6562,6 +6722,7 @@
     },
     "/whatsapp/recent": {
       "get": {
+        "description": "Returns the latest WhatsApp messages across all contacts in the org, with recipient and delivery status. Powers the \"Recent activity\" feed on the WhatsApp dashboard.",
         "operationId": "WhatsAppController_getRecentMessages",
         "parameters": [],
         "responses": {
@@ -6585,6 +6746,7 @@
     },
     "/whatsapp/webhook": {
       "post": {
+        "description": "Public callback URL invoked by the WhatsApp Business API to deliver message status updates (`sent` / `delivered` / `read` / `failed`) and inbound user replies. The handler updates the matching message log row so downstream stats and conversation panes stay in sync.",
         "operationId": "WhatsAppController_webhook",
         "parameters": [],
         "responses": {
@@ -6608,6 +6770,7 @@
     },
     "/notifications": {
       "get": {
+        "description": "Returns the authenticated user's notifications (newest first) with type, title, body, link, and read state. Pagination via `page` and `limit` (default 20). Scoped to the calling user — the org-id header is required for routing but the list is per-user.",
         "operationId": "NotificationsController_findAll",
         "parameters": [
           {
@@ -6648,6 +6811,7 @@
     },
     "/notifications/unread-count": {
       "get": {
+        "description": "Returns just the integer count of unread notifications for the current user — cheap to poll from the topbar bell icon without fetching the full list.",
         "operationId": "NotificationsController_getUnreadCount",
         "parameters": [],
         "responses": {
@@ -6671,6 +6835,7 @@
     },
     "/notifications/{id}/read": {
       "patch": {
+        "description": "Flips `is_read` to true on a single notification and stamps the read time. No-op if the notification is already marked read. Returns the updated record.",
         "operationId": "NotificationsController_markRead",
         "parameters": [
           {
@@ -6703,6 +6868,7 @@
     },
     "/notifications/read-all": {
       "patch": {
+        "description": "Bulk-marks every unread notification for the current user as read. Returns the number of rows updated. Use to clear the bell badge when the user opens the notifications drawer.",
         "operationId": "NotificationsController_markAllRead",
         "parameters": [],
         "responses": {
@@ -6726,6 +6892,7 @@
     },
     "/dashboard/stats": {
       "get": {
+        "description": "Returns the headline KPI cards for the main dashboard in a single call: total revenue, expenses, net profit, receivables, payables, cash balance, and month-over-month deltas. Period defaults to the current fiscal year so the response is cacheable.",
         "operationId": "DashboardController_getStats",
         "parameters": [],
         "responses": {
@@ -6749,6 +6916,7 @@
     },
     "/dashboard/revenue-chart": {
       "get": {
+        "description": "Returns one data point per month for the last `months` (default 6) with revenue, expenses, and net profit. Feeds the bar / line chart on the main dashboard.",
         "operationId": "DashboardController_getRevenueChart",
         "parameters": [
           {
@@ -6782,6 +6950,7 @@
     },
     "/dashboard/cash-flow-chart": {
       "get": {
+        "description": "Returns monthly cash inflow and outflow figures for the last `months` (default 6), computed from posted bank/cash account movements. Feeds the cash-flow visualization on the dashboard.",
         "operationId": "DashboardController_getCashFlowChart",
         "parameters": [
           {
@@ -6815,6 +6984,7 @@
     },
     "/dashboard/recent-transactions": {
       "get": {
+        "description": "Returns the most recent posted journal entries (newest first) with their line items expanded. Use `limit` (default 10) to control the page size — used to populate the \"Recent activity\" card on the dashboard.",
         "operationId": "DashboardController_getRecentTransactions",
         "parameters": [
           {
@@ -6848,6 +7018,7 @@
     },
     "/dashboard/overdue-invoices": {
       "get": {
+        "description": "Returns every issued sales invoice whose due date has passed without full payment, sorted most-overdue first. Each row carries customer, outstanding amount, and the days-overdue count for the collections worklist on the dashboard.",
         "operationId": "DashboardController_getOverdueInvoices",
         "parameters": [],
         "responses": {
@@ -6871,6 +7042,7 @@
     },
     "/dashboard/top-customers": {
       "get": {
+        "description": "Returns the top `limit` (default 5) customers by total invoiced revenue in the current fiscal year, with name, total billed, and number of invoices. Used as a leaderboard card on the dashboard.",
         "operationId": "DashboardController_getTopCustomers",
         "parameters": [
           {
@@ -6904,6 +7076,7 @@
     },
     "/dashboard/aging": {
       "get": {
+        "description": "Returns outstanding amounts bucketed by age (0, 1-15, 16-30, 31-45, 45+ days) for either receivables (sales invoices) or payables (purchase bills) based on the `type` query parameter. Drives the aging summary widget; drill into a bucket via `GET /dashboard/aging/invoices`.",
         "operationId": "DashboardController_getAging",
         "parameters": [
           {
@@ -6937,6 +7110,7 @@
     },
     "/dashboard/aging/invoices": {
       "get": {
+        "description": "Returns the individual receivable or payable documents (depending on `type`) that fall within the supplied `bucket` (e.g. \"1-15\", \"16-30\", \"31-45\", \"45+\"). Used as the drill-down companion to `GET /dashboard/aging`.",
         "operationId": "DashboardController_getAgingInvoices",
         "parameters": [
           {
@@ -6978,6 +7152,7 @@
     },
     "/dashboard/revenue-chart-period": {
       "get": {
+        "description": "Like `/revenue-chart` but the time window is selected by a named `period`: `fiscal_year` (current FY), `prev_fiscal_year`, or `last_12_months`. Returns monthly buckets across that window so the chart can swap range without computing dates client-side.",
         "operationId": "DashboardController_getRevenueChartByPeriod",
         "parameters": [
           {
@@ -7011,6 +7186,7 @@
     },
     "/settings/organization": {
       "get": {
+        "description": "Returns the organization's identity block — legal name, GSTIN/PAN/CIN, address, contacts, fiscal year start and the extended profile metadata stashed in `settings.profile` (TAN, website, incorporation date, etc.). Drives the \"Organization\" tab in Settings.",
         "operationId": "SettingsController_getOrganization",
         "parameters": [],
         "responses": {
@@ -7032,6 +7208,7 @@
         ]
       },
       "patch": {
+        "description": "Patches identity, contact and accounting fields on the org. Fields without dedicated columns (TAN, website, incorporation/registration dates, books-begin-from) are persisted under `settings.profile` so the schema stays stable while the surface area grows. Restricted to `owner` and `admin`.",
         "operationId": "SettingsController_updateOrganization",
         "parameters": [],
         "requestBody": {
@@ -7145,6 +7322,7 @@
     },
     "/settings/organization/logo": {
       "post": {
+        "description": "Accepts a base64 data URL, uploads the image to R2 and writes the resulting URL to `Organization.logo_url`. The logo is embedded in invoice PDFs, share links and the docs portal. Restricted to `owner` and `admin`.",
         "operationId": "SettingsController_uploadLogo",
         "parameters": [],
         "requestBody": {
@@ -7188,6 +7366,7 @@
     },
     "/settings/users": {
       "get": {
+        "description": "Returns each member of the org along with their role, joined date and last activity. Pending invitations also appear (with status `invited`) so the Team Members screen can show \"Invite sent\" rows.",
         "operationId": "SettingsController_listMembers",
         "parameters": [],
         "responses": {
@@ -7211,6 +7390,7 @@
     },
     "/settings/users/invite": {
       "post": {
+        "description": "Sends a signed invite link to the supplied email. If the user already has a Kontafy account they are added as a member directly; otherwise the invite carries through to a one-click sign-up flow. Restricted to `owner` and `admin`.",
         "operationId": "SettingsController_inviteUser",
         "parameters": [],
         "requestBody": {
@@ -7259,6 +7439,7 @@
     },
     "/settings/users/{id}/role": {
       "patch": {
+        "description": "Promotes or demotes a member between `owner`, `admin`, `accountant` and `viewer`. Demoting the last `owner` is rejected — promote someone else first. Restricted to `owner` and `admin`.",
         "operationId": "SettingsController_updateMemberRole",
         "parameters": [
           {
@@ -7310,6 +7491,7 @@
     },
     "/settings/users/{id}": {
       "delete": {
+        "description": "Revokes the user's access to this org but keeps their platform account intact. The user is signed out of the org on their next request. The last `owner` cannot be removed. Restricted to `owner` and `admin`.",
         "operationId": "SettingsController_removeMember",
         "parameters": [
           {
@@ -7342,6 +7524,7 @@
     },
     "/settings/invoice-config": {
       "get": {
+        "description": "Returns the invoice configuration block: prefix, next sequence number, payment terms, default T&C / notes, and the multi-bank account list. These values populate the New Invoice form and the PDF template.",
         "operationId": "SettingsController_getInvoiceConfig",
         "parameters": [],
         "responses": {
@@ -7363,6 +7546,7 @@
         ]
       },
       "patch": {
+        "description": "Updates invoice prefix, sequence, terms and bank accounts. When `bank_accounts` is supplied the primary entry is mirrored into the legacy flat `bank_*` fields so older PDF templates still render. Any new bank with a non-zero `opening_balance` auto-creates a 1102.NNN sub-ledger under \"Bank Accounts\" and posts an opening journal entry. Restricted to `owner`, `admin` and `accountant`.",
         "operationId": "SettingsController_updateInvoiceConfig",
         "parameters": [],
         "requestBody": {
@@ -7512,6 +7696,7 @@
     },
     "/settings/capital": {
       "get": {
+        "description": "Returns the company's share-capital block (authorized capital, authorized shares, face value, paid-up capital, issued shares, share type). Persisted under `settings.capital` and surfaced on statutory documents and the ROC compliance dashboard.",
         "operationId": "SettingsController_getCapitalStructure",
         "parameters": [],
         "responses": {
@@ -7533,6 +7718,7 @@
         ]
       },
       "patch": {
+        "description": "Replaces the share-capital settings on the organization. No journal entries are auto-posted — capital ledger movements must still be recorded via Journal Entries. Restricted to `owner` and `admin`.",
         "operationId": "SettingsController_updateCapitalStructure",
         "parameters": [],
         "requestBody": {
@@ -7592,6 +7778,7 @@
     },
     "/settings/directors": {
       "get": {
+        "description": "Returns the configured directors / authorised signatories with their identity details and KYC document links. The list feeds compliance forms (DIR-3 KYC, board resolutions) and signature blocks on outgoing PDFs.",
         "operationId": "SettingsController_getDirectors",
         "parameters": [],
         "responses": {
@@ -7613,6 +7800,7 @@
         ]
       },
       "patch": {
+        "description": "Overwrites the entire `settings.directors` array — there is no per-director PATCH, callers must merge their changes client-side and submit the full list. Document URLs already uploaded via `POST /settings/director-documents` should be preserved verbatim. Restricted to `owner` and `admin`.",
         "operationId": "SettingsController_updateDirectors",
         "parameters": [],
         "requestBody": {
@@ -7658,6 +7846,7 @@
     },
     "/settings/director-documents": {
       "post": {
+        "description": "Accepts a base64 data URL, uploads the file to R2 under the org/director namespace and returns the public URL. Persist the returned URL inside the director object yourself and call `PATCH /settings/directors` to save — this endpoint only handles the upload, not the linkage. Restricted to `owner` and `admin`.",
         "operationId": "SettingsController_uploadDirectorDocument",
         "parameters": [],
         "requestBody": {
@@ -7712,6 +7901,7 @@
     },
     "/settings/tax": {
       "get": {
+        "description": "Returns the org's GST registration block (GSTIN, PAN, registration type, filing frequency, place of supply) plus TDS flags. These settings drive default tax computation on new invoices/bills and gate the TDS module.",
         "operationId": "SettingsController_getTaxSettings",
         "parameters": [],
         "responses": {
@@ -7733,6 +7923,7 @@
         ]
       },
       "patch": {
+        "description": "Updates GSTIN/PAN, GST registration type, filing frequency, place of supply and TDS toggles. Flipping `enable_tds` from false to true activates TDS section selectors on bill forms. Restricted to `owner`, `admin` and `accountant`.",
         "operationId": "SettingsController_updateTaxSettings",
         "parameters": [],
         "requestBody": {
@@ -7800,6 +7991,7 @@
     },
     "/settings/units/uqc-codes": {
       "get": {
+        "description": "Returns the GSTN-published Unit Quantity Code list (NOS, KGS, MTR, etc.) used on invoices and GST returns. Static reference data — kept server-side so frontend changes do not require a redeploy when GSTN publishes additions.",
         "operationId": "UnitsController_listUqcCodes",
         "parameters": [],
         "responses": {
@@ -7823,6 +8015,7 @@
     },
     "/settings/units": {
       "get": {
+        "description": "Returns every active unit of measurement configured for the organization (both system seeds and custom units). Each unit carries its display symbol, mapped UQC code and the number of decimals it allows in quantity inputs.",
         "operationId": "UnitsController_findAll",
         "parameters": [],
         "responses": {
@@ -7844,6 +8037,7 @@
         ]
       },
       "post": {
+        "description": "Adds a new unit of measurement to the org. The `uqc_code` must be one of the 45 standard GST UQC codes (see `GET /settings/units/uqc-codes`) — the API rejects unknown codes to keep downstream GST returns valid. Once created the unit can be assigned to products.",
         "operationId": "UnitsController_create",
         "parameters": [],
         "responses": {
@@ -7867,6 +8061,7 @@
     },
     "/settings/units/{id}": {
       "patch": {
+        "description": "Patches the unit's display name, symbol, category, decimals or UQC code. Existing invoice/bill line items keep their snapshotted unit text, so renaming is non-destructive.",
         "operationId": "UnitsController_update",
         "parameters": [
           {
@@ -7897,6 +8092,7 @@
         ]
       },
       "delete": {
+        "description": "Flips `is_active` to false so the unit no longer appears in selectors. The unit row is preserved (not deleted) to avoid breaking historical product references. To revive it, set `is_active: true` via `PATCH /settings/units/:id`.",
         "operationId": "UnitsController_deactivate",
         "parameters": [
           {
@@ -7929,6 +8125,7 @@
     },
     "/settings/units/seed-defaults": {
       "post": {
+        "description": "Creates the standard set of units (NOS, KGS, MTR, PCS, etc.) for the org if they don't already exist. Safe to call repeatedly — existing units are skipped based on `(org_id, symbol)`. Typically invoked once during onboarding.",
         "operationId": "UnitsController_seed",
         "parameters": [],
         "responses": {
@@ -7952,6 +8149,7 @@
     },
     "/profile": {
       "get": {
+        "description": "Returns the authenticated user's profile fields — name, email, phone and avatar URL. This is the user-scoped view; for the post-login bootstrap that also returns org memberships call `GET /auth/me`.",
         "operationId": "ProfileController_getProfile",
         "parameters": [],
         "responses": {
@@ -7970,6 +8168,7 @@
         ]
       },
       "patch": {
+        "description": "Patches mutable fields on the user profile. Email changes are unique-checked across the platform and will 409 if another account already owns the address. To set a new avatar from an image upload, use `POST /profile/avatar` instead.",
         "operationId": "ProfileController_updateProfile",
         "parameters": [],
         "requestBody": {
@@ -8020,6 +8219,7 @@
     },
     "/profile/password": {
       "patch": {
+        "description": "Self-service password change for the authenticated user. The `current_password` is verified before the new one is applied — passing the wrong current password returns 401. Equivalent to `POST /auth/change-password`.",
         "operationId": "ProfileController_changePassword",
         "parameters": [],
         "requestBody": {
@@ -8065,6 +8265,7 @@
     },
     "/profile/avatar": {
       "post": {
+        "description": "Accepts a base64 data URL, uploads the decoded image to R2 storage, and persists the public URL on the user record as `avatar_url`. The previous avatar is replaced (not deleted from storage) — old keys are reaped by a periodic cleanup job.",
         "operationId": "ProfileController_uploadAvatar",
         "parameters": [],
         "requestBody": {
@@ -8105,6 +8306,7 @@
     },
     "/data-transfer/export/contacts": {
       "get": {
+        "description": "Streams all customers and vendors as a single file (CSV by default, XLSX if `format=xlsx`). The schema matches the import template, so a round-trip export → edit → import is supported. Response is sent with a `Content-Disposition: attachment` header.",
         "operationId": "DataTransferController_exportContacts",
         "parameters": [
           {
@@ -8142,6 +8344,7 @@
     },
     "/data-transfer/export/invoices": {
       "get": {
+        "description": "Exports sales invoices (header + line-level rows) in the supplied `format` (csv or xlsx). Optional `from` / `to` dates narrow the export to a window; omit both for everything. Sent as a file download.",
         "operationId": "DataTransferController_exportInvoices",
         "parameters": [
           {
@@ -8196,6 +8399,7 @@
     },
     "/data-transfer/export/products": {
       "get": {
+        "description": "Exports the product catalogue (services and items) in the supplied `format`. Schema matches the import template for round-tripping. File is streamed as an attachment.",
         "operationId": "DataTransferController_exportProducts",
         "parameters": [
           {
@@ -8232,6 +8436,7 @@
     },
     "/data-transfer/export/journal-entries": {
       "get": {
+        "description": "Exports posted journal entries with one row per line item so a full ledger replay is possible offline. Supports `from` / `to` date filters and `format=csv|xlsx`.",
         "operationId": "DataTransferController_exportJournalEntries",
         "parameters": [
           {
@@ -8286,6 +8491,7 @@
     },
     "/data-transfer/export/chart-of-accounts": {
       "get": {
+        "description": "Exports the full chart of accounts (including system + user-defined accounts) in the supplied `format`. Useful for sharing the COA with an external CA or copying it to another org.",
         "operationId": "DataTransferController_exportChartOfAccounts",
         "parameters": [
           {
@@ -8322,6 +8528,7 @@
     },
     "/data-transfer/export/all": {
       "get": {
+        "description": "Bundles every supported entity (contacts, products, invoices, bills, journals, COA, payments, etc.) into a single ZIP archive named `kontafy_backup_<date>.zip`. Use this as the org's full-data snapshot for archival or migration.",
         "operationId": "DataTransferController_exportAll",
         "parameters": [],
         "responses": {
@@ -8345,6 +8552,7 @@
     },
     "/data-transfer/import/contacts": {
       "post": {
+        "description": "Bulk-loads customers / vendors from an uploaded CSV or XLSX matching the template (see `GET /data-transfer/import/template/contacts`). Returns a per-row summary of `total`, `imported`, `skipped`, and `errors`. File size is capped at 10 MB.",
         "operationId": "DataTransferController_importContacts",
         "parameters": [],
         "requestBody": {
@@ -8384,6 +8592,7 @@
     },
     "/data-transfer/import/products": {
       "post": {
+        "description": "Bulk-loads products / services from an uploaded CSV or XLSX file. Returns per-row import results. To preview without committing, use the dry-run endpoint `POST /data-transfer/import/validate`.",
         "operationId": "DataTransferController_importProducts",
         "parameters": [],
         "requestBody": {
@@ -8423,6 +8632,7 @@
     },
     "/data-transfer/import/opening-balances": {
       "post": {
+        "description": "Bulk-loads opening balances against accounts identified by code or name. Just like the bulk-edit endpoint in `/books/accounts`, the import validates that total debits equal total credits and posts a balanced opening journal — partial imports are rejected.",
         "operationId": "DataTransferController_importOpeningBalances",
         "parameters": [],
         "requestBody": {
@@ -8462,6 +8672,7 @@
     },
     "/data-transfer/import/tally": {
       "post": {
+        "description": "Migrates books from Tally by parsing the standard Tally XML export. Brings across ledgers (mapped to accounts), vouchers (mapped to journal entries), and stock items. Existing data in the org is preserved; collisions are reported in the response.",
         "operationId": "DataTransferController_importTally",
         "parameters": [],
         "requestBody": {
@@ -8501,6 +8712,7 @@
     },
     "/data-transfer/import/busy": {
       "post": {
+        "description": "Migrates books from Busy by ingesting its CSV export format. Maps Busy masters into Kontafy accounts / contacts / products and replays the transaction set as journals. Per-row errors are returned in the response so you can fix and re-upload.",
         "operationId": "DataTransferController_importBusy",
         "parameters": [],
         "requestBody": {
@@ -8540,6 +8752,7 @@
     },
     "/data-transfer/import/sales_invoices": {
       "post": {
+        "description": "Imports sales invoices where each invoice may span multiple rows in the file (one per line item). Rows are grouped by invoice number, the totals validated, and each group posted as a single invoice with the matching journal entry. Idempotent on invoice number — re-uploading the same file skips already-imported invoices.",
         "operationId": "DataTransferController_importSalesInvoices",
         "parameters": [],
         "requestBody": {
@@ -8579,6 +8792,7 @@
     },
     "/data-transfer/import/purchase_bills": {
       "post": {
+        "description": "Imports vendor bills with multi-row line items grouped by bill number, mirroring the sales-invoices runner. Each group posts as a single purchase bill plus its expense / inventory journal entry. Re-running with the same file is idempotent by bill number.",
         "operationId": "DataTransferController_importPurchaseBills",
         "parameters": [],
         "requestBody": {
@@ -8618,6 +8832,7 @@
     },
     "/data-transfer/import/payments_received": {
       "post": {
+        "description": "Imports inbound payments (receipts) from customers, each row mapping to a payment that reduces the receivable on the linked invoice and credits the bank/cash account. Per-row validation errors are returned without aborting the rest of the batch.",
         "operationId": "DataTransferController_importPaymentsReceived",
         "parameters": [],
         "requestBody": {
@@ -8657,6 +8872,7 @@
     },
     "/data-transfer/import/payments_made": {
       "post": {
+        "description": "Imports outbound payments to vendors, each row mapping to a payment that reduces the payable on the linked bill and debits the bank/cash account. Returns per-row results so partial successes are visible.",
         "operationId": "DataTransferController_importPaymentsMade",
         "parameters": [],
         "requestBody": {
@@ -8696,6 +8912,7 @@
     },
     "/data-transfer/import/journal_entries": {
       "post": {
+        "description": "Imports multi-line journal entries grouped by entry number. Each group is validated for balanced debits/credits and posted directly to the ledger, updating account balances. Idempotent on entry number so re-uploading the same file does not double-post.",
         "operationId": "DataTransferController_importJournalEntries",
         "parameters": [],
         "requestBody": {
@@ -8735,6 +8952,7 @@
     },
     "/data-transfer/import/expenses": {
       "post": {
+        "description": "Imports expense rows in bulk — each row creates an approved expense (default status) and posts a journal debiting the expense account and crediting the bank/cash account chosen by the bank picker column. Idempotent on the row's unique reference / receipt number.",
         "operationId": "DataTransferController_importExpenses",
         "parameters": [],
         "requestBody": {
@@ -8774,6 +8992,7 @@
     },
     "/data-transfer/import/template/{type}": {
       "get": {
+        "description": "Streams a pre-formatted XLSX template with the required columns and a sample row for the supplied `type` (contacts, products, opening_balances, sales_invoices, purchase_bills, payments_received, payments_made, expenses, journal_entries). Use the downloaded file as the starting point for any of the `POST /data-transfer/import/*` endpoints.",
         "operationId": "DataTransferController_getImportTemplate",
         "parameters": [
           {
@@ -8806,6 +9025,7 @@
     },
     "/data-transfer/import/validate": {
       "post": {
+        "description": "Parses the uploaded file and runs format / schema checks for the supplied `type` without writing anything. Returns total rows, a preview, and any structural errors so the user can correct the file before committing via the real import endpoint. Note: transaction types receive a permissive dry-run — full per-group validation still happens at actual import time.",
         "operationId": "DataTransferController_validateImport",
         "parameters": [],
         "requestBody": {
@@ -8859,6 +9079,7 @@
     },
     "/ai/cash-flow-forecast": {
       "get": {
+        "description": "Returns projected cash inflows and outflows for the next 30, 60 and 90 days based on historical receivables/payables patterns and pending invoices. Powered by Anthropic Claude — gated by the `cashFlowForecast` AI setting, so disabling it on `/ai/settings` causes this endpoint to return an empty forecast.",
         "operationId": "AiController_getCashFlowForecast",
         "parameters": [],
         "responses": {
@@ -8882,6 +9103,7 @@
     },
     "/ai/insights": {
       "get": {
+        "description": "Generates a fresh batch of narrative insights (revenue trends, expense anomalies, customer concentration, etc.) by analysing the org's recent transactional data. Each insight is also persisted so it can be surfaced as a dashboard widget via `GET /ai/stored-insights`.",
         "operationId": "AiController_getInsights",
         "parameters": [],
         "responses": {
@@ -8905,6 +9127,7 @@
     },
     "/ai/anomalies": {
       "get": {
+        "description": "Scans the most recent journal entries, invoices and bills for outliers — unusually large amounts, duplicate-looking entries, atypical vendors, etc. Returns a flagged list with severity and a suggested action. Gated by the `anomalyDetection` AI setting.",
         "operationId": "AiController_getAnomalies",
         "parameters": [],
         "responses": {
@@ -8928,6 +9151,7 @@
     },
     "/ai/categorize-transaction": {
       "post": {
+        "description": "Takes a bank transaction narration and amount and returns the most likely chart-of-accounts category plus a confidence score. Used by the bank-import wizard to pre-fill the account column. Gated by the `transactionCategorization` AI setting.",
         "operationId": "AiController_categorizeTransaction",
         "parameters": [],
         "requestBody": {
@@ -8975,6 +9199,7 @@
     },
     "/ai/reconciliation-suggest": {
       "post": {
+        "description": "Given an unmatched bank-statement line (`transactionId`), returns the most plausible book-side journal entries to reconcile against, scored by amount and date proximity. Used by the bank reconciliation screen to speed up manual matching. Gated by the `reconciliationAssist` AI setting.",
         "operationId": "AiController_suggestReconciliation",
         "parameters": [],
         "requestBody": {
@@ -9018,6 +9243,7 @@
     },
     "/ai/settings": {
       "get": {
+        "description": "Returns the per-feature AI toggles for the org (`cashFlowForecast`, `anomalyDetection`, `insightGeneration`, `transactionCategorization`, `reconciliationAssist`). Disabled features still respond to API calls but return empty payloads — surface these flags in the UI to keep users in sync.",
         "operationId": "AiController_getSettings",
         "parameters": [],
         "responses": {
@@ -9039,6 +9265,7 @@
         ]
       },
       "patch": {
+        "description": "Patches the AI feature toggles. Disabling a feature stops upstream Claude calls immediately; re-enabling does not retroactively backfill data — new insights are generated only on subsequent requests. Useful for orgs that want to control AI spend or comply with data-residency policies.",
         "operationId": "AiController_updateSettings",
         "parameters": [],
         "requestBody": {
@@ -9094,6 +9321,7 @@
     },
     "/ai/stored-insights": {
       "get": {
+        "description": "Returns the most recent non-dismissed insights persisted by previous `/ai/insights` calls, capped by `limit` (default 5). Cheap to call repeatedly — no Claude tokens are spent. Use this to render the dashboard widget without triggering a fresh AI run on every page load.",
         "operationId": "AiController_getStoredInsights",
         "parameters": [
           {
@@ -9126,6 +9354,7 @@
     },
     "/ai/dismiss-insight": {
       "post": {
+        "description": "Marks an insight as dismissed so it stops appearing in the dashboard widget. Dismissal is per-org, not per-user — once any team member dismisses an insight it is hidden for everyone. The insight row is retained for analytics, just flagged.",
         "operationId": "AiController_dismissInsight",
         "parameters": [],
         "requestBody": {
@@ -9169,6 +9398,7 @@
     },
     "/ca/invite": {
       "post": {
+        "description": "Sends an email invitation to a Chartered Accountant offering scoped, read-only (or annotation/approval) access to this organization's books. `permissions` is a string array of capability flags (e.g. `read_journals`, `approve_entries`). The CA must accept via `POST /ca/accept-invite` before any access is granted.",
         "operationId": "CaPortalController_inviteCA",
         "parameters": [],
         "requestBody": {
@@ -9220,6 +9450,7 @@
     },
     "/ca/accept-invite": {
       "post": {
+        "description": "Called by the CA (logged into their own Kontafy account) to consume the single-use invite token. On success the CA is linked to the inviting organization with the permissions specified in the invite, and the org appears in `GET /ca/clients`.",
         "operationId": "CaPortalController_acceptInvite",
         "parameters": [],
         "requestBody": {
@@ -9259,6 +9490,7 @@
     },
     "/ca/revoke/{userId}": {
       "delete": {
+        "description": "Immediately terminates a CA's access to this organization. The CA can no longer fetch client data or post annotations / approvals. Existing annotations and approval history are preserved for audit.",
         "operationId": "CaPortalController_revokeAccess",
         "parameters": [
           {
@@ -9291,6 +9523,7 @@
     },
     "/ca/connected": {
       "get": {
+        "description": "Returns every CA currently linked to this org with their name, email, granted permissions, and connection date. Used by the business owner's \"CA Access\" settings page.",
         "operationId": "CaPortalController_getConnectedCAs",
         "parameters": [],
         "responses": {
@@ -9314,6 +9547,7 @@
     },
     "/ca/clients": {
       "get": {
+        "description": "Returns the list of client organizations the authenticated CA can view, each with the org name, the permissions granted, and high-level KPIs for the CA portal landing page. Note: this endpoint is CA-scoped — it does not require the `X-Org-Id` header.",
         "operationId": "CaPortalController_getClients",
         "parameters": [],
         "responses": {
@@ -9334,6 +9568,7 @@
     },
     "/ca/clients/{orgId}/summary": {
       "get": {
+        "description": "Returns the CA dashboard view of a single client — financial summaries, GST filings status, pending approvals, and recent activity. Access is gated by the CA-org link; calling for an org the CA is not connected to returns 403.",
         "operationId": "CaPortalController_getClientSummary",
         "parameters": [
           {
@@ -9363,6 +9598,7 @@
     },
     "/ca/clients/{orgId}/export": {
       "get": {
+        "description": "Builds a year-end data pack (P&L, balance sheet, trial balance, ledger dumps, GST summaries) for the supplied `fy` and returns the bundle for the CA to file with the authorities. The CA must have `export_data` permission on the client org.",
         "operationId": "CaPortalController_exportClientData",
         "parameters": [
           {
@@ -9401,6 +9637,7 @@
     },
     "/ca/annotations": {
       "post": {
+        "description": "Lets the CA pin a comment to any entity in the client's books (journal entry, invoice, expense, etc.). Annotations are visible to the business owner and show up on the related entity's detail page, providing a lightweight feedback channel without modifying the underlying record.",
         "operationId": "CaPortalController_addAnnotation",
         "parameters": [],
         "requestBody": {
@@ -9455,6 +9692,7 @@
         ]
       },
       "get": {
+        "description": "Returns CA annotations for the supplied `orgId`. Optionally narrow by `entityType` (e.g. journal_entry) and `entityId` to fetch comments for a single document. Each result includes the author CA, timestamp, and comment body.",
         "operationId": "CaPortalController_getAnnotations",
         "parameters": [
           {
@@ -9500,6 +9738,7 @@
     },
     "/ca/approvals": {
       "get": {
+        "description": "Returns the journal entries flagged for CA review in the supplied `orgId`. Each row includes the entry header, lines, and the user who submitted it — feeds the CA portal's approval queue UI.",
         "operationId": "CaPortalController_getApprovalQueue",
         "parameters": [
           {
@@ -9529,6 +9768,7 @@
     },
     "/ca/approvals/{journalEntryId}": {
       "post": {
+        "description": "Records the CA's decision on a pending journal entry. `approved: true` transitions the entry to approved (and posts it if the org's workflow requires CA sign-off); `approved: false` flags it back to the submitter as rejected. The optional `comment` is stored as an annotation and surfaced to the owner.",
         "operationId": "CaPortalController_approveEntry",
         "parameters": [
           {
@@ -9587,6 +9827,7 @@
     },
     "/commerce/connect": {
       "post": {
+        "description": "Stores encrypted API credentials for a supported platform (Amazon, Flipkart, Shopify, etc.) on the org. Validates the credentials with a probe call before saving, so a successful response means the link is ready for the next sync.",
         "operationId": "CommerceController_connectPlatform",
         "parameters": [],
         "responses": {
@@ -9610,6 +9851,7 @@
     },
     "/commerce/disconnect/{platform}": {
       "delete": {
+        "description": "Removes the stored credentials and disables further automated syncs for the named platform. Already-synced orders and settlements remain in the books — this only severs the live link.",
         "operationId": "CommerceController_disconnectPlatform",
         "parameters": [
           {
@@ -9642,6 +9884,7 @@
     },
     "/commerce/sync/{platform}": {
       "post": {
+        "description": "Kicks off an immediate pull from the supplied platform. The `type` discriminator in the body chooses between an orders sync and a settlements sync. Runs synchronously for small windows; longer windows return a sync-run id you can track via `GET /commerce/sync-history/:platform`.",
         "operationId": "CommerceController_syncPlatform",
         "parameters": [
           {
@@ -9674,6 +9917,7 @@
     },
     "/commerce/status": {
       "get": {
+        "description": "Returns one entry per supported platform with whether it is currently connected, the time of the last successful sync, and any pending credential errors. Used to render the e-commerce settings page tiles.",
         "operationId": "CommerceController_getStatus",
         "parameters": [],
         "responses": {
@@ -9697,6 +9941,7 @@
     },
     "/commerce/orders": {
       "get": {
+        "description": "Returns paginated orders pulled from connected platforms. Supports filters on platform, status, date range, and free-text search over order id / customer name. Each order carries SKU-level line items and the linked invoice id (if one was auto-generated).",
         "operationId": "CommerceController_getOrders",
         "parameters": [],
         "responses": {
@@ -9720,6 +9965,7 @@
     },
     "/commerce/sync-history/{platform}": {
       "get": {
+        "description": "Returns past sync runs for the supplied platform with start/end times, type (orders / settlements), record counts, and final status. Use this to debug missing rows or to verify that the scheduled background sync is firing.",
         "operationId": "CommerceController_getSyncHistory",
         "parameters": [
           {
@@ -9752,6 +9998,7 @@
     },
     "/commerce/dashboard": {
       "get": {
+        "description": "Returns aggregate analytics across all connected platforms: GMV trend, top-selling SKUs, channel mix, return rate, and settlement reconciliation status. Used to drive the e-commerce overview page.",
         "operationId": "CommerceController_getDashboard",
         "parameters": [],
         "responses": {
@@ -9775,6 +10022,7 @@
     },
     "/einvoice/generate/{invoiceId}": {
       "post": {
+        "description": "Submits the supplied invoice to the GST e-invoice portal via the configured GSP and stores the returned IRN, ack number, and signed QR code on the invoice. Idempotent — calling again on an already-registered invoice returns the existing IRN without a fresh submission.",
         "operationId": "EInvoiceController_generate",
         "parameters": [
           {
@@ -9807,6 +10055,7 @@
     },
     "/einvoice/bulk-generate": {
       "post": {
+        "description": "Enqueues a list of invoice ids for asynchronous e-invoice generation. Returns immediately with a queue acknowledgement; track per-invoice progress via `GET /einvoice/status/:invoiceId` or the bulk dashboard. Use this whenever the caller has more than a handful of invoices to register.",
         "operationId": "EInvoiceController_bulkGenerate",
         "parameters": [],
         "responses": {
@@ -9830,6 +10079,7 @@
     },
     "/einvoice/status/{invoiceId}": {
       "get": {
+        "description": "Returns the current e-invoice state (pending, generated, cancelled, failed) along with the IRN, ack details, signed QR, and any portal error text. Use this to poll progress after a bulk generation run.",
         "operationId": "EInvoiceController_getStatus",
         "parameters": [
           {
@@ -9862,6 +10112,7 @@
     },
     "/einvoice/cancel/{invoiceId}": {
       "post": {
+        "description": "Cancels a previously generated e-invoice with the GST portal. The portal enforces a 24-hour window from IRN generation — cancellations after that will be rejected. `reason` is a numeric code (1: duplicate, 2: data entry mistake, etc.) and `remarks` provides free-text justification.",
         "operationId": "EInvoiceController_cancel",
         "parameters": [
           {
@@ -9894,6 +10145,7 @@
     },
     "/einvoice/list": {
       "get": {
+        "description": "Returns a paginated list of invoices that have an e-invoice attempt on record. Filters: `status` (pending, generated, cancelled, failed), `from` / `to` date range, and free-text `search` over IRN, invoice number, or customer name.",
         "operationId": "EInvoiceController_list",
         "parameters": [],
         "responses": {
@@ -9917,6 +10169,7 @@
     },
     "/einvoice/dashboard": {
       "get": {
+        "description": "Returns headline counts for the e-invoice dashboard — total generated, pending, cancelled, failed, plus the daily generation trend. Used as the landing card on the e-invoicing section.",
         "operationId": "EInvoiceController_dashboard",
         "parameters": [],
         "responses": {
@@ -9940,6 +10193,7 @@
     },
     "/eway-bill/generate/{invoiceId}": {
       "post": {
+        "description": "Submits an e-way bill request for the supplied invoice (transport mode, vehicle, dispatch / supply addresses come from the body). Returns the EWB number and validity. Required for inter-state movement of goods above the configured value threshold.",
         "operationId": "EInvoiceController_generateEwayBill",
         "parameters": [
           {
@@ -9972,6 +10226,7 @@
     },
     "/eway-bill/status/{invoiceId}": {
       "get": {
+        "description": "Returns the e-way bill number, validity, current status, and any portal error for the invoice. Use to confirm the EWB is active before goods leave the warehouse.",
         "operationId": "EInvoiceController_getEwayBillStatus",
         "parameters": [
           {
@@ -10004,6 +10259,7 @@
     },
     "/eway-bill/{id}/extend": {
       "patch": {
+        "description": "Extends an existing e-way bill before it expires. Caller supplies the new validity hours, transport reason, and current vehicle location. Can only be invoked in the eligible window per the GST portal rules.",
         "operationId": "EInvoiceController_extendEwayBill",
         "parameters": [
           {
@@ -10036,6 +10292,7 @@
     },
     "/eway-bill/cancel/{id}": {
       "post": {
+        "description": "Cancels an active e-way bill with the GST portal. `reason` is the portal-defined numeric code and `remarks` carries free-text explanation. Cancellations are only accepted within 24 hours of generation and before the goods have been verified in transit.",
         "operationId": "EInvoiceController_cancelEwayBill",
         "parameters": [
           {
@@ -10068,6 +10325,7 @@
     },
     "/eway-bill/list": {
       "get": {
+        "description": "Returns a paginated list of e-way bills attached to the org's invoices, filterable by `status`, `from` / `to` generation dates, and free-text `search` over EWB number / invoice number / customer.",
         "operationId": "EInvoiceController_listEwayBills",
         "parameters": [],
         "responses": {
@@ -10091,6 +10349,7 @@
     },
     "/einvoice/settings": {
       "get": {
+        "description": "Returns the org's GST Suvidha Provider configuration: provider name, GSTIN, authentication mode, and feature toggles. Sensitive credentials are redacted in the response.",
         "operationId": "EInvoiceController_getSettings",
         "parameters": [],
         "responses": {
@@ -10112,6 +10371,7 @@
         ]
       },
       "patch": {
+        "description": "Updates the GSP credentials and feature flags used by the e-invoice / e-way bill flows. Credentials are encrypted at rest. Changes take effect immediately on the next generation request.",
         "operationId": "EInvoiceController_updateSettings",
         "parameters": [],
         "responses": {
@@ -10135,6 +10395,7 @@
     },
     "/reports/general-ledger": {
       "get": {
+        "description": "Returns account-wise debit/credit movements with opening and closing balances for a date range. Supports filters via `account_id`, `from_date`, `to_date`, `page` and `limit`. The same data drives the General Ledger drill-down screen.",
         "operationId": "ReportsController_getGeneralLedger",
         "parameters": [],
         "responses": {
@@ -10158,6 +10419,7 @@
     },
     "/reports/day-book": {
       "get": {
+        "description": "Chronological list of every journal entry posted in the window, mirroring the traditional Tally Day Book. Filters: `from_date`, `to_date`, `page`, `limit`. Each row carries narration, source document reference and the full ledger line items.",
         "operationId": "ReportsController_getDayBook",
         "parameters": [],
         "responses": {
@@ -10181,6 +10443,7 @@
     },
     "/reports/receivable-aging": {
       "get": {
+        "description": "Buckets unpaid customer invoices by age (0-30 / 31-60 / 61-90 / 90+ days) as of the supplied `as_of_date`. Optional `customer_id` filter narrows to a single party. Used to identify slow-paying customers and prioritise collection calls.",
         "operationId": "ReportsController_getReceivableAging",
         "parameters": [],
         "responses": {
@@ -10204,6 +10467,7 @@
     },
     "/reports/payable-aging": {
       "get": {
+        "description": "Buckets unpaid vendor bills by age (0-30 / 31-60 / 61-90 / 90+ days) as of `as_of_date`. Optional `vendor_id` filter restricts to a single supplier. Use this to plan outgoing payments and avoid penalty interest on overdue bills.",
         "operationId": "ReportsController_getPayableAging",
         "parameters": [],
         "responses": {
@@ -10227,6 +10491,7 @@
     },
     "/reports/sales-register": {
       "get": {
+        "description": "Itemised list of every sales invoice in the date range with taxable value, GST split and total. Filters: `from_date`, `to_date`, `customer_id`, `page`, `limit`. Forms the basis of GSTR-1 outward supply reconciliation.",
         "operationId": "ReportsController_getSalesRegister",
         "parameters": [],
         "responses": {
@@ -10250,6 +10515,7 @@
     },
     "/reports/purchase-register": {
       "get": {
+        "description": "Itemised list of every purchase bill in the date range with taxable value, input GST split and total. Filters: `from_date`, `to_date`, `vendor_id`, `page`, `limit`. Used to reconcile input tax credit against GSTR-2B.",
         "operationId": "ReportsController_getPurchaseRegister",
         "parameters": [],
         "responses": {
@@ -10273,6 +10539,7 @@
     },
     "/reports/stock-summary": {
       "get": {
+        "description": "Closing quantity and valuation per product as of `as_of_date`, with optional `warehouse_id` and `product_id` filters. Valuation uses the org's configured costing method (weighted average by default).",
         "operationId": "ReportsController_getStockSummary",
         "parameters": [],
         "responses": {
@@ -10296,6 +10563,7 @@
     },
     "/reports/stock-movement": {
       "get": {
+        "description": "Inwards/outwards/transfer ledger per product across the date range. Filters: `product_id`, `warehouse_id`, `from_date`, `to_date`, `movement_type`. Each row links back to its source document (invoice / purchase / adjustment).",
         "operationId": "ReportsController_getStockMovement",
         "parameters": [],
         "responses": {
@@ -10319,6 +10587,7 @@
     },
     "/reports/gst-summary": {
       "get": {
+        "description": "Aggregates output GST from sales and input GST from purchases for the period, broken down by CGST / SGST / IGST / Cess, and shows the net liability. Filters: `from_date`, `to_date`. Useful as a quick pre-filing sanity check before pulling the full GSTR-3B from `GET /tax/gst/returns/gstr3b/compute`.",
         "operationId": "ReportsController_getGstSummary",
         "parameters": [],
         "responses": {
@@ -10342,6 +10611,7 @@
     },
     "/reports/tds-summary": {
       "get": {
+        "description": "TDS deducted grouped by section (194C, 194J, 194I, etc.) for the period, with vendor counts and total deduction. Filters: `from_date`, `to_date`, optional `section`. Used to assemble quarterly TDS returns (24Q/26Q).",
         "operationId": "ReportsController_getTdsSummary",
         "parameters": [],
         "responses": {
@@ -10365,6 +10635,7 @@
     },
     "/reports/export": {
       "post": {
+        "description": "Generates a file for any of the reports above. The body specifies `report` (one of `general-ledger`, `day-book`, `receivable-aging`, etc.), `format` (`pdf` | `xlsx` | `csv`) and the same filter fields the corresponding GET endpoint accepts. Returns the binary file with a `Content-Disposition: attachment` header.",
         "operationId": "ReportsController_exportReport",
         "parameters": [],
         "responses": {
@@ -10388,6 +10659,7 @@
     },
     "/branches": {
       "post": {
+        "description": "Adds a new physical branch / location to the organization. The `is_main` flag is exclusive — setting it to true demotes the existing main branch to non-main. Branch `code` is auto-generated if omitted and is used as a short prefix on document numbering.",
         "operationId": "BranchController_create",
         "parameters": [],
         "responses": {
@@ -10409,6 +10681,7 @@
         ]
       },
       "get": {
+        "description": "Returns a paginated list of branches in the org. Filters: `search` (matches branch name / code / city) and `is_active` (true / false / omit for all). Useful for populating branch pickers and the branches admin page.",
         "operationId": "BranchController_findAll",
         "parameters": [
           {
@@ -10465,6 +10738,7 @@
     },
     "/branches/{id}": {
       "get": {
+        "description": "Returns one branch record with its address block, contact info, and main-branch flag. Use the companion `/:id/summary` and `/:id/stock` endpoints for financial / inventory roll-ups.",
         "operationId": "BranchController_findOne",
         "parameters": [
           {
@@ -10495,6 +10769,7 @@
         ]
       },
       "patch": {
+        "description": "Updates editable fields on a branch (name, code, address, contact info, manager, main flag). Promoting a branch to `is_main: true` automatically demotes the previous main branch so the org always has exactly one main location.",
         "operationId": "BranchController_update",
         "parameters": [
           {
@@ -10525,6 +10800,7 @@
         ]
       },
       "delete": {
+        "description": "Soft-deletes a branch by flipping `is_active` to false — historical documents remain intact and continue to reference the branch. The main branch cannot be deactivated; reassign the main flag first. Reactivate later by `PATCH /:id` with `is_active: true`.",
         "operationId": "BranchController_remove",
         "parameters": [
           {
@@ -10557,6 +10833,7 @@
     },
     "/branches/{id}/summary": {
       "get": {
+        "description": "Returns branch-scoped revenue, expenses, and profit totals plus key counts (invoices issued, bills received) for the optional `from`-`to` window. Defaults to the current fiscal year when dates are omitted.",
         "operationId": "BranchController_getSummary",
         "parameters": [
           {
@@ -10605,6 +10882,7 @@
     },
     "/branches/{id}/stock": {
       "get": {
+        "description": "Returns the current on-hand quantity for every product at this branch with valuation rate and stock value. Supports pagination and `search` over product name / SKU. Quantities are computed from branch-tagged stock movements.",
         "operationId": "BranchController_getStock",
         "parameters": [
           {
@@ -10661,6 +10939,7 @@
     },
     "/budgets": {
       "post": {
+        "description": "Creates a budget for a fiscal year (or custom date range) with per-account target lines split into monthly or quarterly buckets. Defaults to `draft` status — activate it later by `PATCH /:id` with `status: active`. Once active, the `/variance` report compares posted ledger figures against budget lines.",
         "operationId": "BudgetController_create",
         "parameters": [],
         "responses": {
@@ -10682,6 +10961,7 @@
         ]
       },
       "get": {
+        "description": "Returns a paginated list of budgets for the org. Filters: `status` (draft, active, archived) and `fiscal_year` (e.g. \"2025-26\"). Each row carries header totals only — call `GET /:id` for the per-account line items.",
         "operationId": "BudgetController_findAll",
         "parameters": [
           {
@@ -10738,6 +11018,7 @@
     },
     "/budgets/summary": {
       "get": {
+        "description": "Returns roll-up totals (planned vs actual revenue / expense / surplus) across every budget currently in `active` status. Useful as a single-card widget on the budgets landing page.",
         "operationId": "BudgetController_getSummary",
         "parameters": [],
         "responses": {
@@ -10761,6 +11042,7 @@
     },
     "/budgets/variance": {
       "get": {
+        "description": "Returns each budgeted account line with its planned amount, actual amount from the ledger for the period, absolute variance, and percentage variance. Optional filters: `budget_id` (defaults to the active budget for the period) and `from` / `to` to override the budget's own date window.",
         "operationId": "BudgetController_getVariance",
         "parameters": [
           {
@@ -10809,6 +11091,7 @@
     },
     "/budgets/{id}": {
       "get": {
+        "description": "Returns the budget header plus all per-account budget lines with their monthly/quarterly splits. Use this to drive the budget edit form.",
         "operationId": "BudgetController_findOne",
         "parameters": [
           {
@@ -10839,6 +11122,7 @@
         ]
       },
       "patch": {
+        "description": "Updates the budget header and/or replaces its line items. Pass `status: active` to publish a draft — variance reports will then pick it up. Pass `status: archived` to retire a budget without deleting it.",
         "operationId": "BudgetController_update",
         "parameters": [
           {
@@ -10869,6 +11153,7 @@
         ]
       },
       "delete": {
+        "description": "Hard-deletes a budget that is still in `draft` status, along with its line items. Active or archived budgets cannot be deleted to preserve historical comparisons — archive them via `PATCH /:id` with `status: archived` instead.",
         "operationId": "BudgetController_remove",
         "parameters": [
           {
@@ -10901,6 +11186,7 @@
     },
     "/subscription/plans": {
       "get": {
+        "description": "Returns the static catalog of plans (free, starter, pro, business, etc.) with monthly/annual pricing in INR and the feature limits attached to each. Use this to render the pricing page and the upgrade modal.",
         "operationId": "SubscriptionController_listPlans",
         "parameters": [],
         "responses": {
@@ -10924,6 +11210,7 @@
     },
     "/subscription/current": {
       "get": {
+        "description": "Returns the active subscription record for the org — plan id, status, current period start/end, cancel-at-period-end flag and the linked Razorpay subscription id. Used to drive the billing tab and feature-gating throughout the app.",
         "operationId": "SubscriptionController_getCurrentSubscription",
         "parameters": [],
         "responses": {
@@ -10947,6 +11234,7 @@
     },
     "/subscription/checkout": {
       "post": {
+        "description": "Initiates a Razorpay subscription/order and returns the checkout payload the frontend needs to launch the hosted payment modal. After successful payment Razorpay calls back to `POST /subscription/webhook`, which is what actually flips the org's plan — do not change plan state from the client.",
         "operationId": "SubscriptionController_createCheckout",
         "parameters": [],
         "responses": {
@@ -10970,6 +11258,7 @@
     },
     "/subscription/webhook": {
       "post": {
+        "description": "Public endpoint that Razorpay calls for `subscription.activated`, `subscription.charged`, `subscription.cancelled`, `payment.failed` and related events. The HMAC signature in `X-Razorpay-Signature` is verified against the raw body before processing — invalid signatures return 400 and are ignored. Always responds 200 on success so Razorpay does not retry.",
         "operationId": "SubscriptionController_handleWebhook",
         "parameters": [
           {
@@ -11002,6 +11291,7 @@
     },
     "/subscription/upgrade": {
       "post": {
+        "description": "Switches the org's subscription to a higher-tier plan. The change is effective immediately and Razorpay raises a pro-rated charge for the remainder of the current billing cycle. New feature limits are applied as soon as the webhook confirms the payment.",
         "operationId": "SubscriptionController_upgradePlan",
         "parameters": [],
         "responses": {
@@ -11025,6 +11315,7 @@
     },
     "/subscription/downgrade": {
       "post": {
+        "description": "Schedules a downgrade to a lower-tier plan. The org keeps current-plan features until the period ends, then transitions to the target plan at renewal. The pending change can be cancelled by calling `POST /subscription/upgrade` back to the original plan before the period end.",
         "operationId": "SubscriptionController_downgradePlan",
         "parameters": [],
         "responses": {
@@ -11048,6 +11339,7 @@
     },
     "/subscription/cancel": {
       "post": {
+        "description": "Cancels the active Razorpay subscription. Pass `cancelAtPeriodEnd: true` to keep paid features until the current period ends, or `false` to terminate immediately. The org falls back to the free plan once cancellation takes effect.",
         "operationId": "SubscriptionController_cancelSubscription",
         "parameters": [],
         "responses": {
@@ -11071,6 +11363,7 @@
     },
     "/subscription/invoices": {
       "get": {
+        "description": "Returns the list of past Razorpay payments for this org's subscription, with amount, status, period and a link to the Razorpay-hosted receipt PDF. Drives the \"Billing history\" table on the Settings → Billing screen.",
         "operationId": "SubscriptionController_getBillingInvoices",
         "parameters": [],
         "responses": {
@@ -11094,6 +11387,7 @@
     },
     "/subscription/usage": {
       "get": {
+        "description": "Returns metered usage counters (invoices issued this month, team members, storage used, etc.) compared against the limits of the current plan. Use this to render usage bars and surface upgrade prompts when the org is approaching a cap.",
         "operationId": "SubscriptionController_getUsage",
         "parameters": [],
         "responses": {
@@ -11117,6 +11411,7 @@
     },
     "/superadmin/dashboard": {
       "get": {
+        "description": "Returns platform-wide KPIs for the superadmin console — total orgs, total users, MRR, plan-mix breakdown and recent signup/activity counters. Requires superadmin privilege; ordinary org members cannot reach this endpoint.",
         "operationId": "SuperadminController_getDashboard",
         "parameters": [],
         "responses": {
@@ -11132,6 +11427,7 @@
     },
     "/superadmin/organizations": {
       "get": {
+        "description": "Paginated listing of every organization on the platform. Supported filters: `search` (matches name, legal name, GSTIN), `plan`, `page`, `limit`. Each row includes owner contact info and subscription summary.",
         "operationId": "SuperadminController_listOrganizations",
         "parameters": [
           {
@@ -11178,6 +11474,7 @@
         ]
       },
       "post": {
+        "description": "Superadmin shortcut to provision an org for a customer. Either pass an existing `owner_user_id` or supply `owner_email` + `owner_password` + `owner_full_name` to create the user inline. Seeds default chart of accounts and attaches the chosen plan; useful for onboarding enterprise customers without the self-serve signup flow.",
         "operationId": "SuperadminController_createOrganization",
         "parameters": [],
         "requestBody": {
@@ -11267,6 +11564,7 @@
     },
     "/superadmin/organizations/{id}": {
       "get": {
+        "description": "Returns the full record for an org including members, subscription state and ad-hoc metadata. Bypasses the usual member-of-org guard — superadmins can view any tenant.",
         "operationId": "SuperadminController_getOrganization",
         "parameters": [
           {
@@ -11289,6 +11587,7 @@
         ]
       },
       "patch": {
+        "description": "Superadmin-only patch for the org name, plan or `settings` JSON blob. Use this for manual plan overrides (e.g. enterprise contracts) that bypass the Razorpay billing flow.",
         "operationId": "SuperadminController_updateOrganization",
         "parameters": [
           {
@@ -11335,6 +11634,7 @@
         ]
       },
       "delete": {
+        "description": "Hard-deletes an org along with all its members, accounts, transactions and stored documents. Irreversible — there is no undo. Prefer `PATCH /superadmin/organizations/:id/status` with `is_active: false` for routine deactivations.",
         "operationId": "SuperadminController_deleteOrganization",
         "parameters": [
           {
@@ -11359,6 +11659,7 @@
     },
     "/superadmin/organizations/{id}/status": {
       "patch": {
+        "description": "Flips `is_active` on an org. Deactivating immediately blocks every member from logging into that tenant; existing sessions return 403 on the next request. The optional `reason` is stored on the audit log for later review.",
         "operationId": "SuperadminController_setOrganizationStatus",
         "parameters": [
           {
@@ -11406,6 +11707,7 @@
     },
     "/superadmin/organizations/{id}/seed-accounts": {
       "post": {
+        "description": "Re-seeds the standard Indian chart of accounts on an existing org. Safe to call repeatedly — accounts are upserted by code, so existing balances and journal links are preserved. Useful for orgs created before a chart-of-accounts update was rolled out.",
         "operationId": "SuperadminController_seedOrgAccounts",
         "parameters": [
           {
@@ -11430,6 +11732,7 @@
     },
     "/superadmin/organizations/{id}/backfill-journals": {
       "post": {
+        "description": "Walks every invoice, bill, payment and receipt for the org and posts any missing double-entry journal entry. Idempotent — documents that already have a linked journal are skipped. Use this exactly once after migrating an old org onto the auto-posting code path; running it again is safe but no-op.",
         "operationId": "SuperadminController_backfillJournals",
         "parameters": [
           {
@@ -11454,6 +11757,7 @@
     },
     "/superadmin/users": {
       "get": {
+        "description": "Paginated listing of every user account on the platform. Supports `search` (name or email), `page` and `limit`. Each row carries last-login timestamp and the list of orgs the user belongs to.",
         "operationId": "SuperadminController_listUsers",
         "parameters": [
           {
@@ -11494,6 +11798,7 @@
     },
     "/superadmin/users/{id}": {
       "get": {
+        "description": "Returns a single platform user with full identity, status, login history and org memberships. Used to triage support cases without going through that user's own session.",
         "operationId": "SuperadminController_getUser",
         "parameters": [
           {
@@ -11518,6 +11823,7 @@
     },
     "/superadmin/admins": {
       "get": {
+        "description": "Returns every user holding superadmin privilege along with who granted them and when. The list is small (Kontafy ops team) — use it to audit elevated access.",
         "operationId": "SuperadminController_listSuperadmins",
         "parameters": [],
         "responses": {
@@ -11531,6 +11837,7 @@
         ]
       },
       "post": {
+        "description": "Elevates a user to superadmin so they can access this entire `/superadmin` namespace and any org. The action is recorded on the audit log with the granter's id. The target user must already exist on the platform.",
         "operationId": "SuperadminController_grantSuperadmin",
         "parameters": [],
         "requestBody": {
@@ -11566,6 +11873,7 @@
     },
     "/superadmin/admins/{userId}": {
       "delete": {
+        "description": "Removes the superadmin role from a user; their org memberships and platform account are untouched. They lose access to the `/superadmin` namespace on their next request.",
         "operationId": "SuperadminController_revokeSuperadmin",
         "parameters": [
           {
@@ -11590,6 +11898,7 @@
     },
     "/superadmin/audit-log": {
       "get": {
+        "description": "Paginated stream of every privileged action — superadmin grants, org status flips, plan overrides, ticket assignments, etc. Supports `page` and `limit`. Use it for security review and incident forensics.",
         "operationId": "SuperadminController_getAuditLog",
         "parameters": [
           {
@@ -11622,6 +11931,7 @@
     },
     "/superadmin/tickets": {
       "get": {
+        "description": "Paginated cross-tenant view of every support ticket. Filters: `status` (`open` / `in_progress` / `resolved` / `closed`), `priority`, `search` (subject / description / requester), `page`, `limit`. Use this from the staff inbox; org users only see their own tickets via `GET /support/tickets`.",
         "operationId": "SuperadminController_listTickets",
         "parameters": [
           {
@@ -11678,6 +11988,7 @@
     },
     "/superadmin/tickets/{id}": {
       "get": {
+        "description": "Returns the ticket plus every message exchanged on it. Unlike the org-scoped equivalent at `GET /support/tickets/:id`, this works for any tenant — the superadmin guard bypasses the per-org membership check.",
         "operationId": "SuperadminController_getTicket",
         "parameters": [
           {
@@ -11700,6 +12011,7 @@
         ]
       },
       "patch": {
+        "description": "Staff-side patch for triaging a ticket — change `status` (`open` → `in_progress` → `resolved` → `closed`), bump `priority` or reassign to another superadmin via `assigned_to` (pass `null` to unassign). Each change is audited on the ticket history.",
         "operationId": "SuperadminController_updateTicket",
         "parameters": [
           {
@@ -11749,6 +12061,7 @@
     },
     "/superadmin/tickets/{id}/messages": {
       "post": {
+        "description": "Appends a staff-authored message to the ticket thread; the requesting org sees it in their support inbox. The message is flagged as `is_staff: true` so the UI renders it with Kontafy branding. Customer replies use `POST /support/tickets/:id/messages` instead.",
         "operationId": "SuperadminController_replyAsStaff",
         "parameters": [
           {
@@ -11792,6 +12105,7 @@
     },
     "/support/tickets": {
       "post": {
+        "description": "Opens a new support ticket for the current org. Status defaults to `open` and an initial message is created from the supplied `description`. Optional `category` (e.g. billing, accounting, technical) and `priority` (`low` / `normal` / `high`) help staff triage; replies happen through `POST /support/tickets/:id/messages`.",
         "operationId": "SupportController_createTicket",
         "parameters": [],
         "requestBody": {
@@ -11845,6 +12159,7 @@
         ]
       },
       "get": {
+        "description": "Returns the tickets opened by this org, with an optional `status` filter. Strictly scoped to the caller's org — for the cross-tenant staff view use `GET /superadmin/tickets`.",
         "operationId": "SupportController_listTickets",
         "parameters": [
           {
@@ -11877,6 +12192,7 @@
     },
     "/support/tickets/{id}": {
       "get": {
+        "description": "Returns the ticket along with every message exchanged on it, in chronological order. Org members only see tickets belonging to their org; superadmins (auto-detected from the caller's identity) can view any ticket on the platform.",
         "operationId": "SupportController_getTicket",
         "parameters": [
           {
@@ -11909,6 +12225,7 @@
     },
     "/support/tickets/{id}/messages": {
       "post": {
+        "description": "Appends a message to the ticket thread on behalf of the org member. The message is flagged `is_staff: false` and shows up immediately in the Kontafy staff inbox. Sending a reply on a `resolved` or `closed` ticket re-opens it.",
         "operationId": "SupportController_reply",
         "parameters": [
           {

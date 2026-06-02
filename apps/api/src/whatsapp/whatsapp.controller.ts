@@ -25,7 +25,11 @@ export class WhatsAppController {
   constructor(private readonly whatsappService: WhatsAppService) {}
 
   @Post('send-invoice')
-  @ApiOperation({ summary: 'Send invoice via WhatsApp' })
+  @ApiOperation({
+    summary: 'Send invoice via WhatsApp',
+    description:
+      'Sends an invoice to the supplied phone number via the WhatsApp Business API, attaching the invoice PDF and a short message. The send is logged against the customer contact so it shows up in `GET /whatsapp/messages/:contactId`. Delivery status flows back asynchronously through the webhook.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -52,7 +56,11 @@ export class WhatsAppController {
   }
 
   @Post('send-reminder')
-  @ApiOperation({ summary: 'Send payment reminder via WhatsApp' })
+  @ApiOperation({
+    summary: 'Send payment reminder via WhatsApp',
+    description:
+      'Pushes a polite payment-reminder message for an overdue invoice to the customer\'s registered WhatsApp number. Phone number is read from the customer record on the invoice; if missing, the request returns a 400. For batch reminders across every overdue invoice use `POST /whatsapp/bulk-reminders`.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -74,7 +82,11 @@ export class WhatsAppController {
   }
 
   @Post('send-receipt')
-  @ApiOperation({ summary: 'Send payment receipt via WhatsApp' })
+  @ApiOperation({
+    summary: 'Send payment receipt via WhatsApp',
+    description:
+      'Sends a payment confirmation receipt for a recorded payment to the customer\'s WhatsApp number. Useful as the final touch in a closed-loop billing flow — `send-invoice` → customer pays → `send-receipt`.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -96,13 +108,21 @@ export class WhatsAppController {
   }
 
   @Post('bulk-reminders')
-  @ApiOperation({ summary: 'Send reminders for all overdue invoices' })
+  @ApiOperation({
+    summary: 'Send reminders for all overdue invoices',
+    description:
+      'Sweeps every overdue invoice for the org and fires a WhatsApp reminder to each customer that has a phone number on file. Customers without a phone number are skipped silently. Returns a summary of sent / skipped / failed counts.',
+  })
   async bulkReminders(@OrgId() orgId: string) {
     return this.whatsappService.sendBulkReminders(orgId);
   }
 
   @Get('messages/:contactId')
-  @ApiOperation({ summary: 'Get WhatsApp message history for a contact' })
+  @ApiOperation({
+    summary: 'Get WhatsApp message history for a contact',
+    description:
+      'Returns the chronological message log between this org and a single customer/vendor contact, including delivery status (`sent` / `delivered` / `read` / `failed`). Drives the per-contact conversation pane.',
+  })
   async getMessageHistory(
     @OrgId() orgId: string,
     @Param('contactId') contactId: string,
@@ -111,20 +131,32 @@ export class WhatsAppController {
   }
 
   @Get('stats')
-  @ApiOperation({ summary: 'Get WhatsApp messaging stats' })
+  @ApiOperation({
+    summary: 'Get WhatsApp messaging stats',
+    description:
+      'Returns aggregate counters for the org — total messages sent, delivery rate, read rate and breakdown by message type (invoice / reminder / receipt). Used on the WhatsApp dashboard tab.',
+  })
   async getStats(@OrgId() orgId: string) {
     return this.whatsappService.getStats(orgId);
   }
 
   @Get('recent')
-  @ApiOperation({ summary: 'Get recent WhatsApp messages' })
+  @ApiOperation({
+    summary: 'Get recent WhatsApp messages',
+    description:
+      'Returns the latest WhatsApp messages across all contacts in the org, with recipient and delivery status. Powers the "Recent activity" feed on the WhatsApp dashboard.',
+  })
   async getRecentMessages(@OrgId() orgId: string) {
     return this.whatsappService.getRecentMessages(orgId);
   }
 
   @Public()
   @Post('webhook')
-  @ApiOperation({ summary: 'WhatsApp delivery status webhook (public)' })
+  @ApiOperation({
+    summary: 'WhatsApp delivery status webhook (public)',
+    description:
+      'Public callback URL invoked by the WhatsApp Business API to deliver message status updates (`sent` / `delivered` / `read` / `failed`) and inbound user replies. The handler updates the matching message log row so downstream stats and conversation panes stay in sync.',
+  })
   async webhook(@Body() body: any) {
     const parsed = WebhookPayloadSchema.safeParse(body);
     if (!parsed.success) {

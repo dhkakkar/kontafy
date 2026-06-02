@@ -23,13 +23,21 @@ export class OrganizationController {
   constructor(private readonly orgService: OrganizationService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List organizations for the current user' })
+  @ApiOperation({
+    summary: 'List organizations for the current user',
+    description:
+      'Returns every organization the authenticated user is a member of along with their role in each. The result also drives the org-switcher in the UI — pick one id and pass it as `X-Org-Id` on subsequent requests to scope data access.',
+  })
   async list(@CurrentUser() user: CurrentUserPayload) {
     return this.orgService.listByUser(user.sub);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new organization' })
+  @ApiOperation({
+    summary: 'Create a new organization',
+    description:
+      'Provisions a fresh organization with the caller as the `owner` member. As part of bootstrap the default chart of accounts is seeded and a starter subscription record is created. The returned `id` should be used as `X-Org-Id` on subsequent calls.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -66,7 +74,11 @@ export class OrganizationController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get organization details' })
+  @ApiOperation({
+    summary: 'Get organization details',
+    description:
+      'Returns the full organization record including legal identifiers (GSTIN, PAN, CIN), address, and the `settings` JSON blob. The caller must be a member of the org — otherwise a 403 is returned.',
+  })
   @ApiSecurity('org-id')
   async findOne(@Param('id') id: string, @CurrentUser('sub') userId: string) {
     return this.orgService.findOne(id, userId);
@@ -75,7 +87,11 @@ export class OrganizationController {
   @Patch(':id')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Update organization' })
+  @ApiOperation({
+    summary: 'Update organization',
+    description:
+      'Patches identity, contact and settings fields on the organization. Only `owner` and `admin` members may call this. Most invoice-config and tax-specific edits should go through `PATCH /settings/*` instead — this endpoint is the low-level escape hatch.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -119,7 +135,11 @@ export class OrganizationController {
   }
 
   @Get(':id/members')
-  @ApiOperation({ summary: 'List organization members' })
+  @ApiOperation({
+    summary: 'List organization members',
+    description:
+      'Returns every user attached to the org with their role and any custom permissions. Useful for rendering the team/people page and for client-side role-gating decisions.',
+  })
   @ApiSecurity('org-id')
   async listMembers(@Param('id') id: string, @CurrentUser('sub') userId: string) {
     return this.orgService.listMembers(id, userId);
@@ -128,7 +148,11 @@ export class OrganizationController {
   @Post(':id/members')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Invite a member to the organization' })
+  @ApiOperation({
+    summary: 'Invite a member to the organization',
+    description:
+      'Adds an existing platform user to the org with the given role and optional permission overrides. The target user must already have a Kontafy account — for email-first onboarding use `POST /settings/users/invite` instead, which sends a sign-up link.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -152,7 +176,11 @@ export class OrganizationController {
   @Patch(':id/members/:memberId')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Update member role/permissions' })
+  @ApiOperation({
+    summary: 'Update member role/permissions',
+    description:
+      'Changes a member\'s role (e.g. promote `accountant` to `admin`) or overrides the default permission set for the role. Demoting the last `owner` is rejected — every org must keep at least one owner.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -174,7 +202,11 @@ export class OrganizationController {
   @Delete(':id/members/:memberId')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Remove member from organization' })
+  @ApiOperation({
+    summary: 'Remove member from organization',
+    description:
+      'Detaches the user from this org without deleting their platform account. The user immediately loses access to org-scoped data on their next request. Owners cannot be removed — transfer ownership via `PATCH /organizations/:id/members/:memberId` first.',
+  })
   @ApiSecurity('org-id')
   async removeMember(
     @Param('id') orgId: string,

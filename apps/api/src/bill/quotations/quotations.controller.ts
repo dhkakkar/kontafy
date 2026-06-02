@@ -21,7 +21,11 @@ export class QuotationsController {
   constructor(private readonly quotationsService: QuotationsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new quotation' })
+  @ApiOperation({
+    summary: 'Create a new quotation',
+    description:
+      'Creates a quotation in `draft` status with an auto-generated quotation number. Server-side computes line totals and tax based on `is_igst` and `place_of_supply`. Quotations are pre-sale documents and never post to the books — convert to an invoice via `POST /:id/convert-to-invoice` once the customer accepts.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -88,7 +92,11 @@ export class QuotationsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List quotations with filtering and pagination' })
+  @ApiOperation({
+    summary: 'List quotations with filtering and pagination',
+    description:
+      'Returns paginated quotations for the org. Filter by `status` (draft / sent / accepted / rejected / expired / converted) and free-text `search` over quotation number, contact name and notes. Drives the quotations list page.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false })
@@ -104,13 +112,21 @@ export class QuotationsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get quotation details with items' })
+  @ApiOperation({
+    summary: 'Get quotation details with items',
+    description:
+      'Returns the full quotation including line items, tax breakdown, validity date and a reference to the invoice it has been converted into (if any). Used by the quotation detail page and the quotation PDF render.',
+  })
   async findOne(@OrgId() orgId: string, @Param('id') id: string) {
     return this.quotationsService.findOne(orgId, id);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a quotation (draft/sent only)' })
+  @ApiOperation({
+    summary: 'Update a quotation (draft/sent only)',
+    description:
+      'Patches a quotation and recalculates line / tax / grand totals. Editing is allowed only while the quotation is in `draft` or `sent`. Once accepted, rejected, expired or converted, the document is locked — to revise, duplicate it into a new quotation instead.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -127,7 +143,11 @@ export class QuotationsController {
   }
 
   @Patch(':id/status')
-  @ApiOperation({ summary: 'Update quotation status' })
+  @ApiOperation({
+    summary: 'Update quotation status',
+    description:
+      'Transitions a quotation between draft, sent, accepted, rejected, expired and converted. `converted` is normally set automatically when the quotation is turned into an invoice. No journal posting occurs — quotations are pre-sale documents.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -146,7 +166,11 @@ export class QuotationsController {
   }
 
   @Post(':id/convert-to-invoice')
-  @ApiOperation({ summary: 'Convert a quotation to an invoice' })
+  @ApiOperation({
+    summary: 'Convert a quotation to an invoice',
+    description:
+      'Creates a new invoice (in `draft` status) from this quotation\'s line items and contact, then marks the quotation as `converted`. The invoice posts to the books only when its status is moved away from draft. Cancelled or already-converted quotations cannot be converted.',
+  })
   async convertToInvoice(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -156,7 +180,11 @@ export class QuotationsController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete a draft quotation' })
+  @ApiOperation({
+    summary: 'Delete a draft quotation',
+    description:
+      'Hard-deletes a quotation and its line items. Only quotations in `draft` status can be deleted — for sent or accepted ones, set the status to rejected or expired instead so the number sequence stays in the audit trail.',
+  })
   async remove(@OrgId() orgId: string, @Param('id') id: string) {
     return this.quotationsService.remove(orgId, id);
   }

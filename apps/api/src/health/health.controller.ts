@@ -10,7 +10,11 @@ export class HealthController {
 
   @Public()
   @Get()
-  @ApiOperation({ summary: 'Health check endpoint' })
+  @ApiOperation({
+    summary: 'Health check endpoint',
+    description:
+      'Returns a JSON probe with `status`, API `version`, current `timestamp`, and a per-dependency status map (currently `database`). Always responds with 200 — inspect the `services.database` value to detect a degraded DB. Used by load balancers and uptime monitors; no auth required.',
+  })
   async check() {
     let dbStatus = 'ok';
     try {

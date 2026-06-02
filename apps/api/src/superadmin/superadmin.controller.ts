@@ -29,7 +29,11 @@ export class SuperadminController {
   // ── Dashboard ──────────────────────────────────────────────
 
   @Get('dashboard')
-  @ApiOperation({ summary: 'Platform dashboard stats' })
+  @ApiOperation({
+    summary: 'Platform dashboard stats',
+    description:
+      'Returns platform-wide KPIs for the superadmin console — total orgs, total users, MRR, plan-mix breakdown and recent signup/activity counters. Requires superadmin privilege; ordinary org members cannot reach this endpoint.',
+  })
   async getDashboard() {
     return this.service.getDashboard();
   }
@@ -37,7 +41,11 @@ export class SuperadminController {
   // ── Organizations ──────────────────────────────────────────
 
   @Get('organizations')
-  @ApiOperation({ summary: 'List all organizations' })
+  @ApiOperation({
+    summary: 'List all organizations',
+    description:
+      'Paginated listing of every organization on the platform. Supported filters: `search` (matches name, legal name, GSTIN), `plan`, `page`, `limit`. Each row includes owner contact info and subscription summary.',
+  })
   async listOrganizations(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -53,7 +61,11 @@ export class SuperadminController {
   }
 
   @Post('organizations')
-  @ApiOperation({ summary: 'Create organization with specified owner' })
+  @ApiOperation({
+    summary: 'Create organization with specified owner',
+    description:
+      'Superadmin shortcut to provision an org for a customer. Either pass an existing `owner_user_id` or supply `owner_email` + `owner_password` + `owner_full_name` to create the user inline. Seeds default chart of accounts and attaches the chosen plan; useful for onboarding enterprise customers without the self-serve signup flow.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -99,13 +111,21 @@ export class SuperadminController {
   }
 
   @Get('organizations/:id')
-  @ApiOperation({ summary: 'Get organization detail' })
+  @ApiOperation({
+    summary: 'Get organization detail',
+    description:
+      'Returns the full record for an org including members, subscription state and ad-hoc metadata. Bypasses the usual member-of-org guard — superadmins can view any tenant.',
+  })
   async getOrganization(@Param('id') id: string) {
     return this.service.getOrganization(id);
   }
 
   @Patch('organizations/:id')
-  @ApiOperation({ summary: 'Update organization' })
+  @ApiOperation({
+    summary: 'Update organization',
+    description:
+      'Superadmin-only patch for the org name, plan or `settings` JSON blob. Use this for manual plan overrides (e.g. enterprise contracts) that bypass the Razorpay billing flow.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -124,7 +144,11 @@ export class SuperadminController {
   }
 
   @Patch('organizations/:id/status')
-  @ApiOperation({ summary: 'Activate or deactivate organization' })
+  @ApiOperation({
+    summary: 'Activate or deactivate organization',
+    description:
+      'Flips `is_active` on an org. Deactivating immediately blocks every member from logging into that tenant; existing sessions return 403 on the next request. The optional `reason` is stored on the audit log for later review.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -145,6 +169,8 @@ export class SuperadminController {
   @Post('organizations/:id/seed-accounts')
   @ApiOperation({
     summary: 'Seed default chart of accounts for an existing org (idempotent)',
+    description:
+      'Re-seeds the standard Indian chart of accounts on an existing org. Safe to call repeatedly — accounts are upserted by code, so existing balances and journal links are preserved. Useful for orgs created before a chart-of-accounts update was rolled out.',
   })
   async seedOrgAccounts(@Param('id') id: string) {
     return this.service.seedOrgAccounts(id);
@@ -154,13 +180,19 @@ export class SuperadminController {
   @ApiOperation({
     summary:
       'Backfill journal entries for invoices and payments that were created before auto-posting was wired in',
+    description:
+      'Walks every invoice, bill, payment and receipt for the org and posts any missing double-entry journal entry. Idempotent — documents that already have a linked journal are skipped. Use this exactly once after migrating an old org onto the auto-posting code path; running it again is safe but no-op.',
   })
   async backfillJournals(@Param('id') id: string) {
     return this.service.backfillJournals(id);
   }
 
   @Delete('organizations/:id')
-  @ApiOperation({ summary: 'Delete organization' })
+  @ApiOperation({
+    summary: 'Delete organization',
+    description:
+      'Hard-deletes an org along with all its members, accounts, transactions and stored documents. Irreversible — there is no undo. Prefer `PATCH /superadmin/organizations/:id/status` with `is_active: false` for routine deactivations.',
+  })
   async deleteOrganization(@Param('id') id: string) {
     return this.service.deleteOrganization(id);
   }
@@ -168,7 +200,11 @@ export class SuperadminController {
   // ── Users ──────────────────────────────────────────────────
 
   @Get('users')
-  @ApiOperation({ summary: 'List all platform users' })
+  @ApiOperation({
+    summary: 'List all platform users',
+    description:
+      'Paginated listing of every user account on the platform. Supports `search` (name or email), `page` and `limit`. Each row carries last-login timestamp and the list of orgs the user belongs to.',
+  })
   async listUsers(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -182,7 +218,11 @@ export class SuperadminController {
   }
 
   @Get('users/:id')
-  @ApiOperation({ summary: 'Get user detail' })
+  @ApiOperation({
+    summary: 'Get user detail',
+    description:
+      'Returns a single platform user with full identity, status, login history and org memberships. Used to triage support cases without going through that user\'s own session.',
+  })
   async getUser(@Param('id') id: string) {
     return this.service.getUser(id);
   }
@@ -190,13 +230,21 @@ export class SuperadminController {
   // ── Superadmins ────────────────────────────────────────────
 
   @Get('admins')
-  @ApiOperation({ summary: 'List all superadmins' })
+  @ApiOperation({
+    summary: 'List all superadmins',
+    description:
+      'Returns every user holding superadmin privilege along with who granted them and when. The list is small (Kontafy ops team) — use it to audit elevated access.',
+  })
   async listSuperadmins() {
     return this.service.listSuperadmins();
   }
 
   @Post('admins')
-  @ApiOperation({ summary: 'Grant superadmin to a user' })
+  @ApiOperation({
+    summary: 'Grant superadmin to a user',
+    description:
+      'Elevates a user to superadmin so they can access this entire `/superadmin` namespace and any org. The action is recorded on the audit log with the granter\'s id. The target user must already exist on the platform.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -214,7 +262,11 @@ export class SuperadminController {
   }
 
   @Delete('admins/:userId')
-  @ApiOperation({ summary: 'Revoke superadmin from a user' })
+  @ApiOperation({
+    summary: 'Revoke superadmin from a user',
+    description:
+      'Removes the superadmin role from a user; their org memberships and platform account are untouched. They lose access to the `/superadmin` namespace on their next request.',
+  })
   async revokeSuperadmin(@Param('userId') userId: string) {
     return this.service.revokeSuperadmin(userId);
   }
@@ -222,7 +274,11 @@ export class SuperadminController {
   // ── Audit Log ──────────────────────────────────────────────
 
   @Get('audit-log')
-  @ApiOperation({ summary: 'Platform-wide audit log' })
+  @ApiOperation({
+    summary: 'Platform-wide audit log',
+    description:
+      'Paginated stream of every privileged action — superadmin grants, org status flips, plan overrides, ticket assignments, etc. Supports `page` and `limit`. Use it for security review and incident forensics.',
+  })
   async getAuditLog(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -236,7 +292,11 @@ export class SuperadminController {
   // ── Support Tickets ────────────────────────────────────────
 
   @Get('tickets')
-  @ApiOperation({ summary: 'List all support tickets across the platform' })
+  @ApiOperation({
+    summary: 'List all support tickets across the platform',
+    description:
+      'Paginated cross-tenant view of every support ticket. Filters: `status` (`open` / `in_progress` / `resolved` / `closed`), `priority`, `search` (subject / description / requester), `page`, `limit`. Use this from the staff inbox; org users only see their own tickets via `GET /support/tickets`.',
+  })
   async listTickets(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -254,7 +314,11 @@ export class SuperadminController {
   }
 
   @Get('tickets/:id')
-  @ApiOperation({ summary: 'Get ticket detail with full message thread' })
+  @ApiOperation({
+    summary: 'Get ticket detail with full message thread',
+    description:
+      'Returns the ticket plus every message exchanged on it. Unlike the org-scoped equivalent at `GET /support/tickets/:id`, this works for any tenant — the superadmin guard bypasses the per-org membership check.',
+  })
   async getTicket(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload,
@@ -266,7 +330,11 @@ export class SuperadminController {
   }
 
   @Patch('tickets/:id')
-  @ApiOperation({ summary: 'Update ticket status / priority / assignee' })
+  @ApiOperation({
+    summary: 'Update ticket status / priority / assignee',
+    description:
+      'Staff-side patch for triaging a ticket — change `status` (`open` → `in_progress` → `resolved` → `closed`), bump `priority` or reassign to another superadmin via `assigned_to` (pass `null` to unassign). Each change is audited on the ticket history.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -290,7 +358,11 @@ export class SuperadminController {
   }
 
   @Post('tickets/:id/messages')
-  @ApiOperation({ summary: 'Reply on a ticket as staff' })
+  @ApiOperation({
+    summary: 'Reply on a ticket as staff',
+    description:
+      'Appends a staff-authored message to the ticket thread; the requesting org sees it in their support inbox. The message is flagged as `is_staff: true` so the UI renders it with Kontafy branding. Customer replies use `POST /support/tickets/:id/messages` instead.',
+  })
   @ApiBody({
     schema: {
       type: 'object',

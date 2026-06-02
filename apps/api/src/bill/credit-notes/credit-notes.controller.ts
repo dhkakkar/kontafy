@@ -21,7 +21,11 @@ export class CreditNotesController {
   constructor(private readonly creditNotesService: CreditNotesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List credit notes with filtering and pagination' })
+  @ApiOperation({
+    summary: 'List credit notes with filtering and pagination',
+    description:
+      'Returns paginated credit notes for the org. Supports filtering by `status` (draft / issued / applied / partially_applied / cancelled), `contact_id`, date range (`from`/`to`) and free-text `search` over credit-note number and notes.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false })
@@ -51,13 +55,21 @@ export class CreditNotesController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get credit note details with items' })
+  @ApiOperation({
+    summary: 'Get credit note details with items',
+    description:
+      'Returns the full credit note including its line items, tax breakdown and any allocations against invoices. Used by the credit note detail page and as the source for the credit-note PDF render.',
+  })
   async findOne(@OrgId() orgId: string, @Param('id') id: string) {
     return this.creditNotesService.findOne(orgId, id);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new credit note' })
+  @ApiOperation({
+    summary: 'Create a new credit note',
+    description:
+      'Creates a credit note in `draft` status — items and tax totals are computed server-side from the supplied line items. Drafts do not affect the books; call `POST /:id/apply` to allocate the credit against one or more invoices, which is what actually posts the reversing journal entry.',
+  })
   async create(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -67,7 +79,11 @@ export class CreditNotesController {
   }
 
   @Post(':id/apply')
-  @ApiOperation({ summary: 'Apply credit note against an invoice' })
+  @ApiOperation({
+    summary: 'Apply credit note against an invoice',
+    description:
+      'Allocates this credit note\'s available balance against the supplied invoice(s), reducing each invoice\'s `balance_due` and posting the reversing AR journal. The credit note transitions to `applied` (fully used) or `partially_applied` (balance remaining), and each touched invoice may flip to `paid` or `partially_paid`.',
+  })
   async apply(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -77,7 +93,11 @@ export class CreditNotesController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a draft credit note' })
+  @ApiOperation({
+    summary: 'Update a draft credit note',
+    description:
+      'Patches a credit note while it is still in `draft`. Once a credit note has been applied, paid or cancelled it is locked — to correct an applied note you must reverse the allocation first or issue a new credit / debit note.',
+  })
   async update(
     @OrgId() orgId: string,
     @Param('id') id: string,

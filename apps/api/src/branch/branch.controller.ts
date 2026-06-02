@@ -21,7 +21,11 @@ export class BranchController {
   constructor(private readonly branchService: BranchService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new branch' })
+  @ApiOperation({
+    summary: 'Create a new branch',
+    description:
+      'Adds a new physical branch / location to the organization. The `is_main` flag is exclusive — setting it to true demotes the existing main branch to non-main. Branch `code` is auto-generated if omitted and is used as a short prefix on document numbering.',
+  })
   async create(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -40,7 +44,11 @@ export class BranchController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all branches for the organization' })
+  @ApiOperation({
+    summary: 'List all branches for the organization',
+    description:
+      'Returns a paginated list of branches in the org. Filters: `search` (matches branch name / code / city) and `is_active` (true / false / omit for all). Useful for populating branch pickers and the branches admin page.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false })
@@ -61,13 +69,21 @@ export class BranchController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get branch details' })
+  @ApiOperation({
+    summary: 'Get branch details',
+    description:
+      'Returns one branch record with its address block, contact info, and main-branch flag. Use the companion `/:id/summary` and `/:id/stock` endpoints for financial / inventory roll-ups.',
+  })
   async findOne(@OrgId() orgId: string, @Param('id') id: string) {
     return this.branchService.findOne(orgId, id);
   }
 
   @Get(':id/summary')
-  @ApiOperation({ summary: 'Get branch P&L summary' })
+  @ApiOperation({
+    summary: 'Get branch P&L summary',
+    description:
+      'Returns branch-scoped revenue, expenses, and profit totals plus key counts (invoices issued, bills received) for the optional `from`-`to` window. Defaults to the current fiscal year when dates are omitted.',
+  })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
   async getSummary(
@@ -80,7 +96,11 @@ export class BranchController {
   }
 
   @Get(':id/stock')
-  @ApiOperation({ summary: 'Get branch stock levels' })
+  @ApiOperation({
+    summary: 'Get branch stock levels',
+    description:
+      'Returns the current on-hand quantity for every product at this branch with valuation rate and stock value. Supports pagination and `search` over product name / SKU. Quantities are computed from branch-tagged stock movements.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false })
@@ -95,7 +115,11 @@ export class BranchController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a branch' })
+  @ApiOperation({
+    summary: 'Update a branch',
+    description:
+      'Updates editable fields on a branch (name, code, address, contact info, manager, main flag). Promoting a branch to `is_main: true` automatically demotes the previous main branch so the org always has exactly one main location.',
+  })
   async update(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -105,7 +129,11 @@ export class BranchController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Deactivate a branch (soft delete)' })
+  @ApiOperation({
+    summary: 'Deactivate a branch (soft delete)',
+    description:
+      'Soft-deletes a branch by flipping `is_active` to false — historical documents remain intact and continue to reference the branch. The main branch cannot be deactivated; reassign the main flag first. Reactivate later by `PATCH /:id` with `is_active: true`.',
+  })
   async remove(@OrgId() orgId: string, @Param('id') id: string) {
     return this.branchService.remove(orgId, id);
   }

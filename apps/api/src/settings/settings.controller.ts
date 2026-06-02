@@ -26,7 +26,11 @@ export class SettingsController {
   // ───────────────────────────────────────────────────────
 
   @Get('organization')
-  @ApiOperation({ summary: 'Get organization profile' })
+  @ApiOperation({
+    summary: 'Get organization profile',
+    description:
+      'Returns the organization\'s identity block — legal name, GSTIN/PAN/CIN, address, contacts, fiscal year start and the extended profile metadata stashed in `settings.profile` (TAN, website, incorporation date, etc.). Drives the "Organization" tab in Settings.',
+  })
   @ApiSecurity('org-id')
   async getOrganization(
     @OrgId() orgId: string,
@@ -38,7 +42,11 @@ export class SettingsController {
   @Patch('organization')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Update organization profile' })
+  @ApiOperation({
+    summary: 'Update organization profile',
+    description:
+      'Patches identity, contact and accounting fields on the org. Fields without dedicated columns (TAN, website, incorporation/registration dates, books-begin-from) are persisted under `settings.profile` so the schema stays stable while the surface area grows. Restricted to `owner` and `admin`.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -99,7 +107,11 @@ export class SettingsController {
   @Post('organization/logo')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Upload organization logo (data URL)' })
+  @ApiOperation({
+    summary: 'Upload organization logo (data URL)',
+    description:
+      'Accepts a base64 data URL, uploads the image to R2 and writes the resulting URL to `Organization.logo_url`. The logo is embedded in invoice PDFs, share links and the docs portal. Restricted to `owner` and `admin`.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -127,7 +139,11 @@ export class SettingsController {
   // ───────────────────────────────────────────────────────
 
   @Get('users')
-  @ApiOperation({ summary: 'List organization members with roles' })
+  @ApiOperation({
+    summary: 'List organization members with roles',
+    description:
+      'Returns each member of the org along with their role, joined date and last activity. Pending invitations also appear (with status `invited`) so the Team Members screen can show "Invite sent" rows.',
+  })
   @ApiSecurity('org-id')
   async listMembers(
     @OrgId() orgId: string,
@@ -139,7 +155,11 @@ export class SettingsController {
   @Post('users/invite')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Invite user by email' })
+  @ApiOperation({
+    summary: 'Invite user by email',
+    description:
+      'Sends a signed invite link to the supplied email. If the user already has a Kontafy account they are added as a member directly; otherwise the invite carries through to a one-click sign-up flow. Restricted to `owner` and `admin`.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -162,7 +182,11 @@ export class SettingsController {
   @Patch('users/:id/role')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Change member role' })
+  @ApiOperation({
+    summary: 'Change member role',
+    description:
+      'Promotes or demotes a member between `owner`, `admin`, `accountant` and `viewer`. Demoting the last `owner` is rejected — promote someone else first. Restricted to `owner` and `admin`.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -184,7 +208,11 @@ export class SettingsController {
   @Delete('users/:id')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Remove member from organization' })
+  @ApiOperation({
+    summary: 'Remove member from organization',
+    description:
+      'Revokes the user\'s access to this org but keeps their platform account intact. The user is signed out of the org on their next request. The last `owner` cannot be removed. Restricted to `owner` and `admin`.',
+  })
   @ApiSecurity('org-id')
   async removeMember(
     @OrgId() orgId: string,
@@ -198,7 +226,11 @@ export class SettingsController {
   // ───────────────────────────────────────────────────────
 
   @Get('invoice-config')
-  @ApiOperation({ summary: 'Get invoice numbering, prefix, terms, bank details' })
+  @ApiOperation({
+    summary: 'Get invoice numbering, prefix, terms, bank details',
+    description:
+      'Returns the invoice configuration block: prefix, next sequence number, payment terms, default T&C / notes, and the multi-bank account list. These values populate the New Invoice form and the PDF template.',
+  })
   @ApiSecurity('org-id')
   async getInvoiceConfig(
     @OrgId() orgId: string,
@@ -210,7 +242,11 @@ export class SettingsController {
   @Patch('invoice-config')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin', 'accountant')
-  @ApiOperation({ summary: 'Update invoice configuration' })
+  @ApiOperation({
+    summary: 'Update invoice configuration',
+    description:
+      'Updates invoice prefix, sequence, terms and bank accounts. When `bank_accounts` is supplied the primary entry is mirrored into the legacy flat `bank_*` fields so older PDF templates still render. Any new bank with a non-zero `opening_balance` auto-creates a 1102.NNN sub-ledger under "Bank Accounts" and posts an opening journal entry. Restricted to `owner`, `admin` and `accountant`.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -301,7 +337,11 @@ export class SettingsController {
   // ───────────────────────────────────────────────────────
 
   @Get('capital')
-  @ApiOperation({ summary: 'Get authorized / paid-up capital structure' })
+  @ApiOperation({
+    summary: 'Get authorized / paid-up capital structure',
+    description:
+      'Returns the company\'s share-capital block (authorized capital, authorized shares, face value, paid-up capital, issued shares, share type). Persisted under `settings.capital` and surfaced on statutory documents and the ROC compliance dashboard.',
+  })
   @ApiSecurity('org-id')
   async getCapitalStructure(
     @OrgId() orgId: string,
@@ -313,7 +353,11 @@ export class SettingsController {
   @Patch('capital')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Update authorized / paid-up capital structure' })
+  @ApiOperation({
+    summary: 'Update authorized / paid-up capital structure',
+    description:
+      'Replaces the share-capital settings on the organization. No journal entries are auto-posted — capital ledger movements must still be recorded via Journal Entries. Restricted to `owner` and `admin`.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -349,7 +393,11 @@ export class SettingsController {
   // ───────────────────────────────────────────────────────
 
   @Get('directors')
-  @ApiOperation({ summary: 'List directors / signatories' })
+  @ApiOperation({
+    summary: 'List directors / signatories',
+    description:
+      'Returns the configured directors / authorised signatories with their identity details and KYC document links. The list feeds compliance forms (DIR-3 KYC, board resolutions) and signature blocks on outgoing PDFs.',
+  })
   @ApiSecurity('org-id')
   async getDirectors(
     @OrgId() orgId: string,
@@ -361,7 +409,11 @@ export class SettingsController {
   @Patch('directors')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Replace the directors list (whole-array PATCH)' })
+  @ApiOperation({
+    summary: 'Replace the directors list (whole-array PATCH)',
+    description:
+      'Overwrites the entire `settings.directors` array — there is no per-director PATCH, callers must merge their changes client-side and submit the full list. Document URLs already uploaded via `POST /settings/director-documents` should be preserved verbatim. Restricted to `owner` and `admin`.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {
@@ -389,6 +441,8 @@ export class SettingsController {
   @ApiOperation({
     summary:
       'Upload a director KYC document (PAN/Aadhaar/DIN letter/signature/photo) to R2',
+    description:
+      'Accepts a base64 data URL, uploads the file to R2 under the org/director namespace and returns the public URL. Persist the returned URL inside the director object yourself and call `PATCH /settings/directors` to save — this endpoint only handles the upload, not the linkage. Restricted to `owner` and `admin`.',
   })
   @ApiSecurity('org-id')
   @ApiBody({
@@ -420,7 +474,11 @@ export class SettingsController {
   // ───────────────────────────────────────────────────────
 
   @Get('tax')
-  @ApiOperation({ summary: 'Get tax/GST settings' })
+  @ApiOperation({
+    summary: 'Get tax/GST settings',
+    description:
+      'Returns the org\'s GST registration block (GSTIN, PAN, registration type, filing frequency, place of supply) plus TDS flags. These settings drive default tax computation on new invoices/bills and gate the TDS module.',
+  })
   @ApiSecurity('org-id')
   async getTaxSettings(
     @OrgId() orgId: string,
@@ -432,7 +490,11 @@ export class SettingsController {
   @Patch('tax')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin', 'accountant')
-  @ApiOperation({ summary: 'Update tax/GST settings' })
+  @ApiOperation({
+    summary: 'Update tax/GST settings',
+    description:
+      'Updates GSTIN/PAN, GST registration type, filing frequency, place of supply and TDS toggles. Flipping `enable_tds` from false to true activates TDS section selectors on bill forms. Restricted to `owner`, `admin` and `accountant`.',
+  })
   @ApiSecurity('org-id')
   @ApiBody({
     schema: {

@@ -34,7 +34,11 @@ export class CommerceController {
   // ─── Connection Management ──────────────────────────────────────────
 
   @Post('connect')
-  @ApiOperation({ summary: 'Connect an e-commerce platform' })
+  @ApiOperation({
+    summary: 'Connect an e-commerce platform',
+    description:
+      'Stores encrypted API credentials for a supported platform (Amazon, Flipkart, Shopify, etc.) on the org. Validates the credentials with a probe call before saving, so a successful response means the link is ready for the next sync.',
+  })
   async connectPlatform(
     @OrgId() orgId: string,
     @Body(new ZodValidationPipe(connectPlatformSchema)) body: ConnectPlatformDto,
@@ -43,7 +47,11 @@ export class CommerceController {
   }
 
   @Delete('disconnect/:platform')
-  @ApiOperation({ summary: 'Disconnect an e-commerce platform' })
+  @ApiOperation({
+    summary: 'Disconnect an e-commerce platform',
+    description:
+      'Removes the stored credentials and disables further automated syncs for the named platform. Already-synced orders and settlements remain in the books — this only severs the live link.',
+  })
   async disconnectPlatform(
     @OrgId() orgId: string,
     @Param('platform') platform: string,
@@ -55,7 +63,11 @@ export class CommerceController {
   // ─── Sync ──────────────────────────────────────────────────────────
 
   @Post('sync/:platform')
-  @ApiOperation({ summary: 'Manually trigger a sync for a platform' })
+  @ApiOperation({
+    summary: 'Manually trigger a sync for a platform',
+    description:
+      'Kicks off an immediate pull from the supplied platform. The `type` discriminator in the body chooses between an orders sync and a settlements sync. Runs synchronously for small windows; longer windows return a sync-run id you can track via `GET /commerce/sync-history/:platform`.',
+  })
   async syncPlatform(
     @OrgId() orgId: string,
     @Param('platform') platform: string,
@@ -71,13 +83,21 @@ export class CommerceController {
   // ─── Read Endpoints ────────────────────────────────────────────────
 
   @Get('status')
-  @ApiOperation({ summary: 'Get connection status for all platforms' })
+  @ApiOperation({
+    summary: 'Get connection status for all platforms',
+    description:
+      'Returns one entry per supported platform with whether it is currently connected, the time of the last successful sync, and any pending credential errors. Used to render the e-commerce settings page tiles.',
+  })
   async getStatus(@OrgId() orgId: string) {
     return this.commerceService.getConnectionStatus(orgId);
   }
 
   @Get('orders')
-  @ApiOperation({ summary: 'List synced e-commerce orders' })
+  @ApiOperation({
+    summary: 'List synced e-commerce orders',
+    description:
+      'Returns paginated orders pulled from connected platforms. Supports filters on platform, status, date range, and free-text search over order id / customer name. Each order carries SKU-level line items and the linked invoice id (if one was auto-generated).',
+  })
   async getOrders(
     @OrgId() orgId: string,
     @Query(new ZodValidationPipe(ordersQuerySchema)) query: OrdersQueryDto,
@@ -86,7 +106,11 @@ export class CommerceController {
   }
 
   @Get('sync-history/:platform')
-  @ApiOperation({ summary: 'Get sync run history for a platform' })
+  @ApiOperation({
+    summary: 'Get sync run history for a platform',
+    description:
+      'Returns past sync runs for the supplied platform with start/end times, type (orders / settlements), record counts, and final status. Use this to debug missing rows or to verify that the scheduled background sync is firing.',
+  })
   async getSyncHistory(
     @OrgId() orgId: string,
     @Param('platform') platform: string,
@@ -97,7 +121,11 @@ export class CommerceController {
   }
 
   @Get('dashboard')
-  @ApiOperation({ summary: 'E-commerce dashboard analytics' })
+  @ApiOperation({
+    summary: 'E-commerce dashboard analytics',
+    description:
+      'Returns aggregate analytics across all connected platforms: GMV trend, top-selling SKUs, channel mix, return rate, and settlement reconciliation status. Used to drive the e-commerce overview page.',
+  })
   async getDashboard(@OrgId() orgId: string) {
     return this.commerceService.getDashboard(orgId);
   }

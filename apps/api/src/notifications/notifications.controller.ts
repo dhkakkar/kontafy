@@ -17,7 +17,11 @@ export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List notifications with pagination' })
+  @ApiOperation({
+    summary: 'List notifications with pagination',
+    description:
+      'Returns the authenticated user\'s notifications (newest first) with type, title, body, link, and read state. Pagination via `page` and `limit` (default 20). Scoped to the calling user — the org-id header is required for routing but the list is per-user.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async findAll(
@@ -29,13 +33,21 @@ export class NotificationsController {
   }
 
   @Get('unread-count')
-  @ApiOperation({ summary: 'Get unread notification count for badge' })
+  @ApiOperation({
+    summary: 'Get unread notification count for badge',
+    description:
+      'Returns just the integer count of unread notifications for the current user — cheap to poll from the topbar bell icon without fetching the full list.',
+  })
   async getUnreadCount(@CurrentUser('sub') userId: string) {
     return this.notificationsService.getUnreadCount(userId);
   }
 
   @Patch(':id/read')
-  @ApiOperation({ summary: 'Mark a notification as read' })
+  @ApiOperation({
+    summary: 'Mark a notification as read',
+    description:
+      'Flips `is_read` to true on a single notification and stamps the read time. No-op if the notification is already marked read. Returns the updated record.',
+  })
   async markRead(
     @CurrentUser('sub') userId: string,
     @Param('id') id: string,
@@ -44,7 +56,11 @@ export class NotificationsController {
   }
 
   @Patch('read-all')
-  @ApiOperation({ summary: 'Mark all notifications as read' })
+  @ApiOperation({
+    summary: 'Mark all notifications as read',
+    description:
+      'Bulk-marks every unread notification for the current user as read. Returns the number of rows updated. Use to clear the bell badge when the user opens the notifications drawer.',
+  })
   async markAllRead(@CurrentUser('sub') userId: string) {
     return this.notificationsService.markAllRead(userId);
   }

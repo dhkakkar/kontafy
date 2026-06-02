@@ -24,7 +24,11 @@ export class SupportController {
   ) {}
 
   @Post('tickets')
-  @ApiOperation({ summary: 'Create a new support ticket' })
+  @ApiOperation({
+    summary: 'Create a new support ticket',
+    description:
+      'Opens a new support ticket for the current org. Status defaults to `open` and an initial message is created from the supplied `description`. Optional `category` (e.g. billing, accounting, technical) and `priority` (`low` / `normal` / `high`) help staff triage; replies happen through `POST /support/tickets/:id/messages`.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -52,7 +56,11 @@ export class SupportController {
   }
 
   @Get('tickets')
-  @ApiOperation({ summary: 'List support tickets for the current organization' })
+  @ApiOperation({
+    summary: 'List support tickets for the current organization',
+    description:
+      'Returns the tickets opened by this org, with an optional `status` filter. Strictly scoped to the caller\'s org — for the cross-tenant staff view use `GET /superadmin/tickets`.',
+  })
   listTickets(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -62,7 +70,11 @@ export class SupportController {
   }
 
   @Get('tickets/:id')
-  @ApiOperation({ summary: 'Get ticket detail with full message thread' })
+  @ApiOperation({
+    summary: 'Get ticket detail with full message thread',
+    description:
+      'Returns the ticket along with every message exchanged on it, in chronological order. Org members only see tickets belonging to their org; superadmins (auto-detected from the caller\'s identity) can view any ticket on the platform.',
+  })
   async getTicket(
     @Param('id') id: string,
     @CurrentUser('sub') userId: string,
@@ -72,7 +84,11 @@ export class SupportController {
   }
 
   @Post('tickets/:id/messages')
-  @ApiOperation({ summary: 'Reply on a support ticket' })
+  @ApiOperation({
+    summary: 'Reply on a support ticket',
+    description:
+      'Appends a message to the ticket thread on behalf of the org member. The message is flagged `is_staff: false` and shows up immediately in the Kontafy staff inbox. Sending a reply on a `resolved` or `closed` ticket re-opens it.',
+  })
   @ApiBody({
     schema: {
       type: 'object',

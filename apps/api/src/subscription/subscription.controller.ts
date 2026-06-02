@@ -44,7 +44,11 @@ export class SubscriptionController {
   // ─── Plans ────────────────────────────────────────────────────
 
   @Get('plans')
-  @ApiOperation({ summary: 'List all available subscription plans' })
+  @ApiOperation({
+    summary: 'List all available subscription plans',
+    description:
+      'Returns the static catalog of plans (free, starter, pro, business, etc.) with monthly/annual pricing in INR and the feature limits attached to each. Use this to render the pricing page and the upgrade modal.',
+  })
   listPlans() {
     return this.subscriptionService.listPlans();
   }
@@ -52,7 +56,11 @@ export class SubscriptionController {
   // ─── Current Subscription ─────────────────────────────────────
 
   @Get('current')
-  @ApiOperation({ summary: 'Get current organization subscription details' })
+  @ApiOperation({
+    summary: 'Get current organization subscription details',
+    description:
+      'Returns the active subscription record for the org — plan id, status, current period start/end, cancel-at-period-end flag and the linked Razorpay subscription id. Used to drive the billing tab and feature-gating throughout the app.',
+  })
   async getCurrentSubscription(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -63,7 +71,11 @@ export class SubscriptionController {
   // ─── Checkout ─────────────────────────────────────────────────
 
   @Post('checkout')
-  @ApiOperation({ summary: 'Create a Razorpay checkout session' })
+  @ApiOperation({
+    summary: 'Create a Razorpay checkout session',
+    description:
+      'Initiates a Razorpay subscription/order and returns the checkout payload the frontend needs to launch the hosted payment modal. After successful payment Razorpay calls back to `POST /subscription/webhook`, which is what actually flips the org\'s plan — do not change plan state from the client.',
+  })
   async createCheckout(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -79,7 +91,11 @@ export class SubscriptionController {
   @Public()
   @Post('webhook')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Razorpay webhook handler' })
+  @ApiOperation({
+    summary: 'Razorpay webhook handler',
+    description:
+      'Public endpoint that Razorpay calls for `subscription.activated`, `subscription.charged`, `subscription.cancelled`, `payment.failed` and related events. The HMAC signature in `X-Razorpay-Signature` is verified against the raw body before processing — invalid signatures return 400 and are ignored. Always responds 200 on success so Razorpay does not retry.',
+  })
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers('x-razorpay-signature') signature: string,
@@ -112,7 +128,11 @@ export class SubscriptionController {
   // ─── Upgrade ──────────────────────────────────────────────────
 
   @Post('upgrade')
-  @ApiOperation({ summary: 'Upgrade to a higher plan' })
+  @ApiOperation({
+    summary: 'Upgrade to a higher plan',
+    description:
+      'Switches the org\'s subscription to a higher-tier plan. The change is effective immediately and Razorpay raises a pro-rated charge for the remainder of the current billing cycle. New feature limits are applied as soon as the webhook confirms the payment.',
+  })
   async upgradePlan(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -129,7 +149,11 @@ export class SubscriptionController {
   // ─── Downgrade ────────────────────────────────────────────────
 
   @Post('downgrade')
-  @ApiOperation({ summary: 'Downgrade to a lower plan (effective next billing cycle)' })
+  @ApiOperation({
+    summary: 'Downgrade to a lower plan (effective next billing cycle)',
+    description:
+      'Schedules a downgrade to a lower-tier plan. The org keeps current-plan features until the period ends, then transitions to the target plan at renewal. The pending change can be cancelled by calling `POST /subscription/upgrade` back to the original plan before the period end.',
+  })
   async downgradePlan(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -146,7 +170,11 @@ export class SubscriptionController {
   // ─── Cancel ───────────────────────────────────────────────────
 
   @Post('cancel')
-  @ApiOperation({ summary: 'Cancel subscription' })
+  @ApiOperation({
+    summary: 'Cancel subscription',
+    description:
+      'Cancels the active Razorpay subscription. Pass `cancelAtPeriodEnd: true` to keep paid features until the current period ends, or `false` to terminate immediately. The org falls back to the free plan once cancellation takes effect.',
+  })
   async cancelSubscription(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -164,7 +192,11 @@ export class SubscriptionController {
   // ─── Billing History ──────────────────────────────────────────
 
   @Get('invoices')
-  @ApiOperation({ summary: 'Get billing history / invoices' })
+  @ApiOperation({
+    summary: 'Get billing history / invoices',
+    description:
+      'Returns the list of past Razorpay payments for this org\'s subscription, with amount, status, period and a link to the Razorpay-hosted receipt PDF. Drives the "Billing history" table on the Settings → Billing screen.',
+  })
   async getBillingInvoices(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -175,7 +207,11 @@ export class SubscriptionController {
   // ─── Usage ────────────────────────────────────────────────────
 
   @Get('usage')
-  @ApiOperation({ summary: 'Get current usage vs plan limits' })
+  @ApiOperation({
+    summary: 'Get current usage vs plan limits',
+    description:
+      'Returns metered usage counters (invoices issued this month, team members, storage used, etc.) compared against the limits of the current plan. Use this to render usage bars and surface upgrade prompts when the org is approaching a cap.',
+  })
   async getUsage(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,

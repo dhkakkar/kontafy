@@ -24,7 +24,11 @@ export class StockMovementsController {
   constructor(private readonly stockMovementsService: StockMovementsService) {}
 
   @Get('movements')
-  @ApiOperation({ summary: 'List stock movements with filters' })
+  @ApiOperation({
+    summary: 'List stock movements with filters',
+    description:
+      'Paginated stock ledger. Supported filters: `product_id`, `warehouse_id`, `type` (`purchase_in` / `sale_out` / `adjustment` / `transfer`), `from_date`, `to_date`, `page`, `limit`. Each row references the source document (invoice/bill/adjustment) so you can drill back to the originating transaction.',
+  })
   @ApiQuery({ name: 'product_id', required: false })
   @ApiQuery({ name: 'warehouse_id', required: false })
   @ApiQuery({ name: 'type', required: false, description: 'purchase_in, sale_out, adjustment, transfer' })
@@ -40,7 +44,11 @@ export class StockMovementsController {
   }
 
   @Post('movements')
-  @ApiOperation({ summary: 'Record a stock movement' })
+  @ApiOperation({
+    summary: 'Record a stock movement',
+    description:
+      'Posts an inbound, outbound, adjustment or transfer movement. Stock-on-hand for the affected product/warehouse is updated atomically. Most callers should use this only for manual adjustments and opening stock — invoice/bill posting auto-creates movements for sale_out and purchase_in.',
+  })
   async create(
     @OrgId() orgId: string,
     @Body(new ZodValidationPipe(createStockMovementSchema)) body: CreateStockMovementDto,
@@ -49,7 +57,11 @@ export class StockMovementsController {
   }
 
   @Get('levels')
-  @ApiOperation({ summary: 'Get current stock levels across warehouses' })
+  @ApiOperation({
+    summary: 'Get current stock levels across warehouses',
+    description:
+      'Returns the live quantity-on-hand for every (product, warehouse) pair, with optional `product_id` and `warehouse_id` filters to narrow the slice. Useful for the stock pivot grid and for last-mile fulfilment lookups.',
+  })
   @ApiQuery({ name: 'product_id', required: false })
   @ApiQuery({ name: 'warehouse_id', required: false })
   async getStockLevels(
@@ -61,13 +73,21 @@ export class StockMovementsController {
   }
 
   @Get('low-stock')
-  @ApiOperation({ summary: 'Get products below reorder point' })
+  @ApiOperation({
+    summary: 'Get products below reorder point',
+    description:
+      'Returns every product whose current on-hand quantity is at or below its configured `reorder_point`. Drives the "Low stock" widget on the stock dashboard and the reorder report.',
+  })
   async getLowStock(@OrgId() orgId: string) {
     return this.stockMovementsService.getLowStock(orgId);
   }
 
   @Get('dashboard')
-  @ApiOperation({ summary: 'Get stock dashboard summary' })
+  @ApiOperation({
+    summary: 'Get stock dashboard summary',
+    description:
+      'Aggregated counters for the stock landing page — total products, total warehouses, inventory valuation, low-stock count and recent movement totals. Pre-aggregated server-side to keep the dashboard responsive.',
+  })
   async getDashboard(@OrgId() orgId: string) {
     return this.stockMovementsService.getDashboardSummary(orgId);
   }

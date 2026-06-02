@@ -27,7 +27,11 @@ export class AuditController {
   @Get()
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Get paginated audit log with filters' })
+  @ApiOperation({
+    summary: 'Get paginated audit log with filters',
+    description:
+      'Returns a paginated, time-ordered stream of audit events for the org. Supports filtering by `startDate`/`endDate`, `userId`, `entityType` (e.g. invoice, payment, contact) and `action` (create / update / delete / status_change). Restricted to org owners and admins — staff roles cannot read the audit trail.',
+  })
   @ApiSecurity('org-id')
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -65,7 +69,11 @@ export class AuditController {
   @Get('filters')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Get filter options for audit log' })
+  @ApiOperation({
+    summary: 'Get filter options for audit log',
+    description:
+      'Returns the distinct set of users, entity types and actions that appear in the org\'s audit log, used to populate the dropdowns on the audit page. Cheap to call — the response is suitable for client-side caching for the duration of a session.',
+  })
   @ApiSecurity('org-id')
   async getFilterOptions(
     @OrgId() orgId: string,
@@ -81,7 +89,11 @@ export class AuditController {
   @Get('export')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Export audit log as CSV' })
+  @ApiOperation({
+    summary: 'Export audit log as CSV',
+    description:
+      'Streams the filtered audit log as a CSV download (`Content-Disposition: attachment`). Accepts the same `startDate`/`endDate`/`userId`/`entityType`/`action` filters as the list endpoint but is unpaginated — useful for compliance exports. The filename is stamped with today\'s date.',
+  })
   @ApiSecurity('org-id')
   async exportAuditLog(
     @OrgId() orgId: string,
@@ -115,7 +127,11 @@ export class AuditController {
   @Get(':entityType/:entityId')
   @UseGuards(RoleGuard)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Get full audit history for a specific entity' })
+  @ApiOperation({
+    summary: 'Get full audit history for a specific entity',
+    description:
+      'Returns every audit event recorded against a single entity (e.g. one invoice or one contact), oldest first, so you can render a timeline of who changed what and when. `entityType` matches the audit log\'s recorded type (invoice, payment, contact, etc.); `entityId` is the row\'s UUID.',
+  })
   @ApiSecurity('org-id')
   async getEntityHistory(
     @OrgId() orgId: string,

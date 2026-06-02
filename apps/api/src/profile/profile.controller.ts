@@ -16,13 +16,21 @@ export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiOperation({
+    summary: 'Get current user profile',
+    description:
+      'Returns the authenticated user\'s profile fields — name, email, phone and avatar URL. This is the user-scoped view; for the post-login bootstrap that also returns org memberships call `GET /auth/me`.',
+  })
   async getProfile(@CurrentUser() user: CurrentUserPayload) {
     return this.profileService.getProfile(user.sub);
   }
 
   @Patch()
-  @ApiOperation({ summary: 'Update name, email, phone, avatar' })
+  @ApiOperation({
+    summary: 'Update name, email, phone, avatar',
+    description:
+      'Patches mutable fields on the user profile. Email changes are unique-checked across the platform and will 409 if another account already owns the address. To set a new avatar from an image upload, use `POST /profile/avatar` instead.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -48,7 +56,11 @@ export class ProfileController {
   }
 
   @Patch('password')
-  @ApiOperation({ summary: 'Change password' })
+  @ApiOperation({
+    summary: 'Change password',
+    description:
+      'Self-service password change for the authenticated user. The `current_password` is verified before the new one is applied — passing the wrong current password returns 401. Equivalent to `POST /auth/change-password`.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -71,7 +83,11 @@ export class ProfileController {
   }
 
   @Post('avatar')
-  @ApiOperation({ summary: 'Upload a new avatar image (data URL)' })
+  @ApiOperation({
+    summary: 'Upload a new avatar image (data URL)',
+    description:
+      'Accepts a base64 data URL, uploads the decoded image to R2 storage, and persists the public URL on the user record as `avatar_url`. The previous avatar is replaced (not deleted from storage) — old keys are reaped by a periodic cleanup job.',
+  })
   @ApiBody({
     schema: {
       type: 'object',

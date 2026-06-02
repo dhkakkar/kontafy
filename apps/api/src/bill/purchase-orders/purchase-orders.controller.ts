@@ -21,7 +21,11 @@ export class PurchaseOrdersController {
   constructor(private readonly purchaseOrdersService: PurchaseOrdersService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new purchase order' })
+  @ApiOperation({
+    summary: 'Create a new purchase order',
+    description:
+      'Creates a purchase order in `draft` status with an auto-generated PO number. Server-side computes line totals and tax based on `is_igst` and `place_of_supply`. POs are commitments to buy — they do not post to the books until converted to a purchase bill via `POST /:id/convert-to-bill`.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -90,7 +94,11 @@ export class PurchaseOrdersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List purchase orders with filtering and pagination' })
+  @ApiOperation({
+    summary: 'List purchase orders with filtering and pagination',
+    description:
+      'Returns paginated purchase orders for the org. Filter by `status` (draft / sent / acknowledged / received / cancelled) and free-text `search` over PO number, vendor name and notes. Drives the purchase orders list page.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false })
@@ -106,13 +114,21 @@ export class PurchaseOrdersController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get purchase order details with items' })
+  @ApiOperation({
+    summary: 'Get purchase order details with items',
+    description:
+      'Returns the full purchase order — line items, vendor, delivery address, tax breakdown — plus a reference to the purchase bill it has been converted into (if any). Used by the PO detail page and the PO PDF render.',
+  })
   async findOne(@OrgId() orgId: string, @Param('id') id: string) {
     return this.purchaseOrdersService.findOne(orgId, id);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a purchase order (draft/sent only)' })
+  @ApiOperation({
+    summary: 'Update a purchase order (draft/sent only)',
+    description:
+      'Patches a purchase order and recalculates line / tax / grand totals. Editing is allowed only while the PO is in `draft` or `sent` — once `acknowledged`, `received` or `cancelled`, the document is locked. POs do not post to the books, so there is no journal repost.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -129,7 +145,11 @@ export class PurchaseOrdersController {
   }
 
   @Patch(':id/status')
-  @ApiOperation({ summary: 'Update purchase order status' })
+  @ApiOperation({
+    summary: 'Update purchase order status',
+    description:
+      'Transitions a PO between draft → sent → acknowledged → received (or → cancelled at any prior point). The valid statuses are draft, sent, acknowledged, received and cancelled. Marking `received` is normally done automatically when the PO is converted to a bill.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -148,7 +168,11 @@ export class PurchaseOrdersController {
   }
 
   @Post(':id/convert-to-bill')
-  @ApiOperation({ summary: 'Convert a purchase order to a purchase bill' })
+  @ApiOperation({
+    summary: 'Convert a purchase order to a purchase bill',
+    description:
+      'Creates a new purchase bill (in `draft` status) from this PO\'s line items and vendor, then marks the PO as `received`. The bill posts to the books only when its status is moved away from draft. Cancelled POs cannot be converted.',
+  })
   async convertToBill(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -158,7 +182,11 @@ export class PurchaseOrdersController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete a draft purchase order' })
+  @ApiOperation({
+    summary: 'Delete a draft purchase order',
+    description:
+      'Hard-deletes a PO and its line items. Only POs in `draft` status can be deleted — for sent or acknowledged POs, cancel them via the status endpoint instead so the number stays in the audit trail.',
+  })
   async remove(@OrgId() orgId: string, @Param('id') id: string) {
     return this.purchaseOrdersService.remove(orgId, id);
   }
