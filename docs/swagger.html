@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kontafy API — Swagger UI</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext y='20' font-size='22'%3E%F0%9F%93%92%3C/text%3E%3C/svg%3E" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
+    />
+    <style>
+      :root {
+        --k-bg: #0b1220;
+        --k-fg: #e6ecf5;
+        --k-muted: #8a95a8;
+        --k-accent: #4c8bf5;
+      }
+      body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      header.k-bar {
+        position: sticky; top: 0; z-index: 5;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 18px;
+        background: var(--k-bg); color: var(--k-fg);
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      header.k-bar .k-title { font-weight: 600; }
+      header.k-bar .k-title small { color: var(--k-muted); font-weight: 400; margin-left: 8px; }
+      header.k-bar nav a {
+        color: var(--k-fg); text-decoration: none; margin-left: 14px;
+        font-size: 14px; padding: 6px 10px; border-radius: 6px;
+      }
+      header.k-bar nav a:hover { background: rgba(255,255,255,0.08); }
+      header.k-bar nav a.primary { background: var(--k-accent); }
+      header.k-bar nav a.primary:hover { background: #3b78de; }
+      #swagger-ui { max-width: 1280px; margin: 0 auto; }
+      .swagger-ui .topbar { display: none; }
+    </style>
+  </head>
+  <body>
+    <header class="k-bar">
+      <div class="k-title">
+        Kontafy API
+        <small>Swagger UI</small>
+      </div>
+      <nav>
+        <a href="/">Reference (Redoc)</a>
+        <a href="/openapi.json" class="primary">OpenAPI JSON</a>
+      </nav>
+    </header>
+    <div id="swagger-ui"></div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        window.ui = SwaggerUIBundle({
+          url: '/openapi.json',
+          dom_id: '#swagger-ui',
+          deepLinking: true,
+          persistAuthorization: true,
+          docExpansion: 'none',
+          filter: true,
+          tryItOutEnabled: true,
+          syntaxHighlight: { theme: 'agate' },
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+          layout: 'StandaloneLayout',
+        });
+      });
+    </script>
+  </body>
+</html>

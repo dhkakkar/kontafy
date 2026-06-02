@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kontafy API — Reference</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext y='20' font-size='22'%3E%F0%9F%93%92%3C/text%3E%3C/svg%3E" />
+    <link
+      rel="preconnect"
+      href="https://cdn.redocly.com"
+      crossorigin
+    />
+    <style>
+      :root {
+        --k-bg: #0b1220;
+        --k-fg: #e6ecf5;
+        --k-muted: #8a95a8;
+        --k-accent: #4c8bf5;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+      header.k-bar {
+        position: sticky; top: 0; z-index: 5;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 18px;
+        background: var(--k-bg); color: var(--k-fg);
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      header.k-bar .k-title { font-weight: 600; letter-spacing: 0.1px; }
+      header.k-bar .k-title small { color: var(--k-muted); font-weight: 400; margin-left: 8px; }
+      header.k-bar nav a {
+        color: var(--k-fg); text-decoration: none; margin-left: 14px;
+        font-size: 14px; padding: 6px 10px; border-radius: 6px;
+      }
+      header.k-bar nav a:hover { background: rgba(255,255,255,0.08); }
+      header.k-bar nav a.primary { background: var(--k-accent); }
+      header.k-bar nav a.primary:hover { background: #3b78de; }
+      redoc { display: block; }
+    </style>
+  </head>
+  <body>
+    <header class="k-bar">
+      <div class="k-title">
+        Kontafy API
+        <small>Reference</small>
+      </div>
+      <nav>
+        <a href="/swagger.html">Interactive (Swagger UI)</a>
+        <a href="/openapi.json" class="primary">OpenAPI JSON</a>
+      </nav>
+    </header>
+    <redoc spec-url="/openapi.json" theme='{"colors":{"primary":{"main":"#4c8bf5"}},"typography":{"fontSize":"15px","headings":{"fontWeight":"600"}}}'></redoc>
+    <script src="https://cdn.redocly.com/redoc/latest/bundles/redoc.standalone.js"></script>
+  </body>
+</html>
