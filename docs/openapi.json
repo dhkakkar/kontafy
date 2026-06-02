@@ -225,6 +225,7 @@
     },
     "/auth/signup": {
       "post": {
+        "description": "Creates a new user account. The response includes an `access_token` (valid 1 hour) and a `refresh_token` (valid 30 days) plus the new user object. No organization is attached yet — call `POST /organizations` next or accept an invitation to join an existing org.",
         "operationId": "AuthController_signup",
         "parameters": [],
         "requestBody": {
@@ -270,6 +271,7 @@
     },
     "/auth/login": {
       "post": {
+        "description": "Exchange email + password for an `access_token` (1 hour) and `refresh_token` (30 days). The response also includes the user record and the organizations they are a member of. Use `access_token` as `Authorization: Bearer <token>` and pick one organization id to send as `X-Org-Id` on subsequent requests.",
         "operationId": "AuthController_login",
         "parameters": [],
         "requestBody": {
@@ -310,6 +312,7 @@
     },
     "/auth/refresh": {
       "post": {
+        "description": "Exchange a non-expired `refresh_token` for a new `access_token` (1 hour) and a new `refresh_token` (30 days). Refresh tokens are single-use — the previous one is invalidated as soon as the new pair is issued.",
         "operationId": "AuthController_refresh",
         "parameters": [],
         "requestBody": {
@@ -344,6 +347,7 @@
     },
     "/auth/forgot-password": {
       "post": {
+        "description": "Generates a time-limited reset token and emails it to the user. The endpoint always returns 200 — even if no account matches the email — to avoid leaking whether an email is registered. The user follows the link in the email and submits `POST /auth/reset-password` to complete the reset.",
         "operationId": "AuthController_forgotPassword",
         "parameters": [],
         "requestBody": {
@@ -379,6 +383,7 @@
     },
     "/auth/reset-password": {
       "post": {
+        "description": "Completes the reset flow started by `POST /auth/forgot-password`. The token is single-use and expires shortly after issue. On success, all existing refresh tokens for the user are revoked — every device is signed out and must log in again.",
         "operationId": "AuthController_resetPassword",
         "parameters": [],
         "requestBody": {
@@ -419,6 +424,7 @@
     },
     "/auth/change-password": {
       "post": {
+        "description": "Self-service password change for an authenticated user. The `current_password` is verified against the stored hash before the new password is applied — this protects against an attacker who briefly gains access to a logged-in session.",
         "operationId": "AuthController_changePassword",
         "parameters": [],
         "requestBody": {
@@ -464,6 +470,7 @@
     },
     "/auth/me": {
       "get": {
+        "description": "Returns the user record decoded from the bearer token plus the organizations they belong to (and the role within each). Useful for the post-login bootstrap call that populates a session in your client app.",
         "operationId": "AuthController_getMe",
         "parameters": [],
         "responses": {
@@ -484,6 +491,7 @@
     },
     "/auth/logout": {
       "post": {
+        "description": "Revokes the current session. The access token is short-lived (1 hour) so it dies on its own quickly — but the refresh token lives 30 days, so pass `refresh_token` in the body to invalidate it immediately. Omit the body to only invalidate the access token.",
         "operationId": "AuthController_logout",
         "parameters": [],
         "requestBody": {

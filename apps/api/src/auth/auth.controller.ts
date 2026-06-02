@@ -18,7 +18,11 @@ export class AuthController {
 
   @Public()
   @Post('signup')
-  @ApiOperation({ summary: 'Register new user with email and password' })
+  @ApiOperation({
+    summary: 'Register new user with email and password',
+    description:
+      'Creates a new user account. The response includes an `access_token` (valid 1 hour) and a `refresh_token` (valid 30 days) plus the new user object. No organization is attached yet — call `POST /organizations` next or accept an invitation to join an existing org.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -37,7 +41,11 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with email and password' })
+  @ApiOperation({
+    summary: 'Login with email and password',
+    description:
+      'Exchange email + password for an `access_token` (1 hour) and `refresh_token` (30 days). The response also includes the user record and the organizations they are a member of. Use `access_token` as `Authorization: Bearer <token>` and pick one organization id to send as `X-Org-Id` on subsequent requests.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -55,7 +63,11 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refresh access token' })
+  @ApiOperation({
+    summary: 'Refresh access token',
+    description:
+      'Exchange a non-expired `refresh_token` for a new `access_token` (1 hour) and a new `refresh_token` (30 days). Refresh tokens are single-use — the previous one is invalidated as soon as the new pair is issued.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -72,7 +84,11 @@ export class AuthController {
   @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Send a password reset email' })
+  @ApiOperation({
+    summary: 'Send a password reset email',
+    description:
+      'Generates a time-limited reset token and emails it to the user. The endpoint always returns 200 — even if no account matches the email — to avoid leaking whether an email is registered. The user follows the link in the email and submits `POST /auth/reset-password` to complete the reset.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -89,7 +105,11 @@ export class AuthController {
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reset password using a token from the reset email' })
+  @ApiOperation({
+    summary: 'Reset password using a token from the reset email',
+    description:
+      'Completes the reset flow started by `POST /auth/forgot-password`. The token is single-use and expires shortly after issue. On success, all existing refresh tokens for the user are revoked — every device is signed out and must log in again.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -107,7 +127,11 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Change password for the current user' })
+  @ApiOperation({
+    summary: 'Change password for the current user',
+    description:
+      'Self-service password change for an authenticated user. The `current_password` is verified against the stored hash before the new password is applied — this protects against an attacker who briefly gains access to a logged-in session.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -131,7 +155,11 @@ export class AuthController {
 
   @ApiBearerAuth('access-token')
   @Get('me')
-  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiOperation({
+    summary: 'Get current user profile',
+    description:
+      'Returns the user record decoded from the bearer token plus the organizations they belong to (and the role within each). Useful for the post-login bootstrap call that populates a session in your client app.',
+  })
   async getMe(@CurrentUser() user: CurrentUserPayload) {
     return this.authService.getProfile(user.sub);
   }
@@ -139,7 +167,11 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Sign out current session' })
+  @ApiOperation({
+    summary: 'Sign out current session',
+    description:
+      'Revokes the current session. The access token is short-lived (1 hour) so it dies on its own quickly — but the refresh token lives 30 days, so pass `refresh_token` in the body to invalidate it immediately. Omit the body to only invalidate the access token.',
+  })
   @ApiBody({
     schema: {
       type: 'object',
