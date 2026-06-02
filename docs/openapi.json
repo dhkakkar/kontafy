@@ -10360,11 +10360,11 @@
   ],
   "servers": [
     {
-      "url": "https://api.kontafy.com",
+      "url": "https://api.kontafy.com/v1",
       "description": "Production"
     },
     {
-      "url": "http://localhost:5002",
+      "url": "http://localhost:5002/v1",
       "description": "Local development"
     }
   ],

@@ -38,8 +38,13 @@ async function generate() {
         'and most multi-tenant routes also expect `X-Org-Id: <organization id>`.',
     )
     .setVersion('1.0')
-    .addServer('https://api.kontafy.com', 'Production')
-    .addServer('http://localhost:5002', 'Local development')
+    // Server URLs include the /v1 version prefix that Nest's URI
+    // versioning adds at runtime. Without this, every Try-it-out
+    // request from Swagger UI fires at /auth/login instead of
+    // /v1/auth/login and 404s (or 'Failed to fetch' if the route
+    // doesn't exist outside the version namespace).
+    .addServer('https://api.kontafy.com/v1', 'Production')
+    .addServer('http://localhost:5002/v1', 'Local development')
     .addBearerAuth(
       {
         type: 'http',
