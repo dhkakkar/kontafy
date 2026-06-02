@@ -9,7 +9,7 @@ import {
   Body,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { SuperadminGuard } from '../common/guards/superadmin.guard';
 import { SuperadminOnly } from '../common/decorators/superadmin.decorator';
 import { CurrentUser, CurrentUserPayload } from '../common/decorators/current-user.decorator';
@@ -54,6 +54,28 @@ export class SuperadminController {
 
   @Post('organizations')
   @ApiOperation({ summary: 'Create organization with specified owner' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name: { type: 'string', example: 'Acme Pvt Ltd' },
+        owner_user_id: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+        owner_email: { type: 'string', format: 'email', example: 'owner@acme.com' },
+        owner_password: { type: 'string', example: 'StrongPass#123' },
+        owner_full_name: { type: 'string', example: 'Rahul Sharma' },
+        legal_name: { type: 'string', example: 'Acme Private Limited' },
+        gstin: { type: 'string', example: '29ABCDE1234F1Z5' },
+        pan: { type: 'string', example: 'ABCDE1234F' },
+        email: { type: 'string', format: 'email', example: 'contact@acme.com' },
+        phone: { type: 'string', example: '+919876543210' },
+        business_type: { type: 'string', example: 'Private Limited' },
+        industry: { type: 'string', example: 'Technology' },
+        plan: { type: 'string', example: 'pro' },
+        fiscal_year_start: { type: 'number', example: 4 },
+      },
+    },
+  })
   async createOrganization(
     @Body()
     body: {
@@ -84,6 +106,16 @@ export class SuperadminController {
 
   @Patch('organizations/:id')
   @ApiOperation({ summary: 'Update organization' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'Acme Pvt Ltd' },
+        plan: { type: 'string', example: 'pro' },
+        settings: { type: 'object', additionalProperties: true },
+      },
+    },
+  })
   async updateOrganization(
     @Param('id') id: string,
     @Body() body: { name?: string; plan?: string; settings?: any },
@@ -93,6 +125,16 @@ export class SuperadminController {
 
   @Patch('organizations/:id/status')
   @ApiOperation({ summary: 'Activate or deactivate organization' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['is_active'],
+      properties: {
+        is_active: { type: 'boolean', example: false },
+        reason: { type: 'string', example: 'Non-payment of subscription dues.' },
+      },
+    },
+  })
   async setOrganizationStatus(
     @Param('id') id: string,
     @Body() body: { is_active: boolean; reason?: string },
@@ -155,6 +197,15 @@ export class SuperadminController {
 
   @Post('admins')
   @ApiOperation({ summary: 'Grant superadmin to a user' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['user_id'],
+      properties: {
+        user_id: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+      },
+    },
+  })
   async grantSuperadmin(
     @Body() body: { user_id: string },
     @CurrentUser() user: CurrentUserPayload,
@@ -216,6 +267,20 @@ export class SuperadminController {
 
   @Patch('tickets/:id')
   @ApiOperation({ summary: 'Update ticket status / priority / assignee' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', example: 'in_progress' },
+        priority: { type: 'string', example: 'high' },
+        assigned_to: {
+          type: 'string',
+          nullable: true,
+          example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f',
+        },
+      },
+    },
+  })
   async updateTicket(
     @Param('id') id: string,
     @Body()
@@ -226,6 +291,15 @@ export class SuperadminController {
 
   @Post('tickets/:id/messages')
   @ApiOperation({ summary: 'Reply on a ticket as staff' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['body'],
+      properties: {
+        body: { type: 'string', example: 'Thanks for the details, we are looking into it.' },
+      },
+    },
+  })
   async replyAsStaff(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload,

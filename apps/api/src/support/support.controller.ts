@@ -7,7 +7,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiBody } from '@nestjs/swagger';
 import { SupportService } from './support.service';
 import { OrgId } from '../common/decorators/org-id.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -25,6 +25,18 @@ export class SupportController {
 
   @Post('tickets')
   @ApiOperation({ summary: 'Create a new support ticket' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['subject', 'description'],
+      properties: {
+        subject: { type: 'string', example: 'Unable to generate GST report' },
+        description: { type: 'string', example: 'The GSTR-1 export fails with a 500 error.' },
+        category: { type: 'string', example: 'billing' },
+        priority: { type: 'string', example: 'high' },
+      },
+    },
+  })
   createTicket(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -61,6 +73,15 @@ export class SupportController {
 
   @Post('tickets/:id/messages')
   @ApiOperation({ summary: 'Reply on a support ticket' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['body'],
+      properties: {
+        body: { type: 'string', example: 'Thanks, please share a screenshot of the error.' },
+      },
+    },
+  })
   async reply(
     @Param('id') id: string,
     @CurrentUser('sub') userId: string,

@@ -7,7 +7,7 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { DeliveryChallansService } from './delivery-challans.service';
 import { OrgId } from '../../common/decorators/org-id.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -65,6 +65,15 @@ export class DeliveryChallansController {
 
   @Patch(':id/status')
   @ApiOperation({ summary: 'Update delivery challan status' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['status'],
+      properties: {
+        status: { type: 'string', example: 'delivered' },
+      },
+    },
+  })
   async updateStatus(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -75,6 +84,13 @@ export class DeliveryChallansController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a draft delivery challan' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      additionalProperties: true,
+      description: 'Partial delivery challan fields to update.',
+    },
+  })
   async update(
     @OrgId() orgId: string,
     @Param('id') id: string,

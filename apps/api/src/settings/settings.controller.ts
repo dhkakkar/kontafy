@@ -8,7 +8,7 @@ import {
   Param,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiBody } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { CurrentUser, CurrentUserPayload } from '../common/decorators/current-user.decorator';
 import { OrgId } from '../common/decorators/org-id.decorator';
@@ -40,6 +40,31 @@ export class SettingsController {
   @Roles('owner', 'admin')
   @ApiOperation({ summary: 'Update organization profile' })
   @ApiSecurity('org-id')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'Acme Pvt Ltd' },
+        legal_name: { type: 'string', example: 'Acme Private Limited' },
+        gstin: { type: 'string', example: '29ABCDE1234F1Z5' },
+        pan: { type: 'string', example: 'ABCDE1234F' },
+        cin: { type: 'string', example: 'U72200KA2010PTC053718' },
+        address: { type: 'object', additionalProperties: true },
+        phone: { type: 'string', example: '+919876543210' },
+        email: { type: 'string', format: 'email', example: 'contact@acme.com' },
+        logo_url: { type: 'string', format: 'uri', example: 'https://cdn.kontafy.com/logos/abc.png' },
+        fiscal_year_start: { type: 'number', example: 4 },
+        business_type: { type: 'string', example: 'Private Limited' },
+        industry: { type: 'string', example: 'Technology' },
+        currency: { type: 'string', example: 'INR' },
+        tan: { type: 'string', example: 'BLRA12345B' },
+        website: { type: 'string', format: 'uri', example: 'https://acme.com' },
+        date_of_incorporation: { type: 'string', format: 'date', example: '2010-04-15' },
+        gst_registration_date: { type: 'string', format: 'date', example: '2017-07-01' },
+        books_begin_from: { type: 'string', format: 'date', example: '2025-04-01' },
+      },
+    },
+  })
   async updateOrganization(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -76,6 +101,19 @@ export class SettingsController {
   @Roles('owner', 'admin')
   @ApiOperation({ summary: 'Upload organization logo (data URL)' })
   @ApiSecurity('org-id')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['data_url'],
+      properties: {
+        data_url: {
+          type: 'string',
+          description: 'Image as a base64 data URL',
+          example: 'data:image/png;base64,iVBORw0KGgo...',
+        },
+      },
+    },
+  })
   async uploadLogo(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -103,6 +141,16 @@ export class SettingsController {
   @Roles('owner', 'admin')
   @ApiOperation({ summary: 'Invite user by email' })
   @ApiSecurity('org-id')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email', 'role'],
+      properties: {
+        email: { type: 'string', format: 'email', example: 'newuser@example.com' },
+        role: { type: 'string', example: 'accountant' },
+      },
+    },
+  })
   async inviteUser(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -116,6 +164,15 @@ export class SettingsController {
   @Roles('owner', 'admin')
   @ApiOperation({ summary: 'Change member role' })
   @ApiSecurity('org-id')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['role'],
+      properties: {
+        role: { type: 'string', example: 'admin' },
+      },
+    },
+  })
   async updateMemberRole(
     @OrgId() orgId: string,
     @Param('id') memberId: string,
@@ -155,6 +212,46 @@ export class SettingsController {
   @Roles('owner', 'admin', 'accountant')
   @ApiOperation({ summary: 'Update invoice configuration' })
   @ApiSecurity('org-id')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        invoice_prefix: { type: 'string', example: 'INV-' },
+        next_invoice_number: { type: 'number', example: 1001 },
+        default_payment_terms: { type: 'number', example: 30 },
+        default_terms_conditions: { type: 'string', example: 'Payment due within 30 days.' },
+        default_notes: { type: 'string', example: 'Thank you for your business.' },
+        bank_name: { type: 'string', example: 'HDFC Bank' },
+        bank_account_number: { type: 'string', example: '50100123456789' },
+        bank_ifsc: { type: 'string', example: 'HDFC0001234' },
+        bank_branch: { type: 'string', example: 'MG Road, Bangalore' },
+        bank_accounts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['bank_name', 'account_number', 'ifsc'],
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              bank_name: { type: 'string', example: 'HDFC Bank' },
+              account_name: { type: 'string', example: 'Acme Pvt Ltd' },
+              account_number: { type: 'string', example: '50100123456789' },
+              ifsc: { type: 'string', example: 'HDFC0001234' },
+              branch: { type: 'string', example: 'MG Road, Bangalore' },
+              account_type: { type: 'string', example: 'current' },
+              upi_id: { type: 'string', example: 'acme@hdfcbank' },
+              swift_code: { type: 'string', example: 'HDFCINBB' },
+              is_primary: { type: 'boolean', example: true },
+              show_full_number: { type: 'boolean', example: false },
+              opening_balance: { type: 'number', example: 0 },
+              opening_dr_cr: { type: 'string', enum: ['Dr', 'Cr'], example: 'Dr' },
+              opening_date: { type: 'string', format: 'date', example: '2025-04-01' },
+              account_id: { type: 'string', nullable: true },
+            },
+          },
+        },
+      },
+    },
+  })
   async updateInvoiceConfig(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -218,6 +315,19 @@ export class SettingsController {
   @Roles('owner', 'admin')
   @ApiOperation({ summary: 'Update authorized / paid-up capital structure' })
   @ApiSecurity('org-id')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        authorized_capital: { type: 'number', example: 1000000 },
+        authorized_shares: { type: 'number', example: 100000 },
+        face_value: { type: 'number', example: 10 },
+        paid_up_capital: { type: 'number', example: 500000 },
+        issued_shares: { type: 'number', example: 50000 },
+        share_type: { type: 'string', example: 'equity' },
+      },
+    },
+  })
   async updateCapitalStructure(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -253,6 +363,18 @@ export class SettingsController {
   @Roles('owner', 'admin')
   @ApiOperation({ summary: 'Replace the directors list (whole-array PATCH)' })
   @ApiSecurity('org-id')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['directors'],
+      properties: {
+        directors: {
+          type: 'array',
+          items: { type: 'object', additionalProperties: true },
+        },
+      },
+    },
+  })
   async updateDirectors(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -269,6 +391,21 @@ export class SettingsController {
       'Upload a director KYC document (PAN/Aadhaar/DIN letter/signature/photo) to R2',
   })
   @ApiSecurity('org-id')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['director_id', 'doc_type', 'data_url'],
+      properties: {
+        director_id: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+        doc_type: { type: 'string', example: 'pan' },
+        data_url: {
+          type: 'string',
+          description: 'Document as a base64 data URL',
+          example: 'data:application/pdf;base64,JVBERi0xLjQK...',
+        },
+      },
+    },
+  })
   async uploadDirectorDocument(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -297,6 +434,21 @@ export class SettingsController {
   @Roles('owner', 'admin', 'accountant')
   @ApiOperation({ summary: 'Update tax/GST settings' })
   @ApiSecurity('org-id')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        gstin: { type: 'string', example: '29ABCDE1234F1Z5' },
+        pan: { type: 'string', example: 'ABCDE1234F' },
+        gst_registration_type: { type: 'string', example: 'regular' },
+        filing_frequency: { type: 'string', example: 'monthly' },
+        place_of_supply: { type: 'string', example: '29-Karnataka' },
+        enable_tds: { type: 'boolean', example: false },
+        tds_tan: { type: 'string', example: 'BLRA12345B' },
+        default_tds_section: { type: 'string', example: '194J' },
+      },
+    },
+  })
   async updateTaxSettings(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,

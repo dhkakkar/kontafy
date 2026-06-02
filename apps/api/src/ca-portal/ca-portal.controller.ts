@@ -7,7 +7,7 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { CaPortalService, CaPermission } from './ca-portal.service';
 import { OrgId } from '../common/decorators/org-id.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -24,6 +24,19 @@ export class CaPortalController {
   @Post('invite')
   @ApiSecurity('org-id')
   @ApiOperation({ summary: 'Invite a CA to access organization data' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email', 'permissions'],
+      properties: {
+        email: { type: 'string', format: 'email', example: 'ca@example.com' },
+        permissions: {
+          type: 'array',
+          items: { type: 'string', example: 'read_journals' },
+        },
+      },
+    },
+  })
   async inviteCA(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -34,6 +47,15 @@ export class CaPortalController {
 
   @Post('accept-invite')
   @ApiOperation({ summary: 'Accept a CA invitation' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['token'],
+      properties: {
+        token: { type: 'string', description: 'Invitation token from the CA invite email' },
+      },
+    },
+  })
   async acceptInvite(
     @CurrentUser('sub') userId: string,
     @Body() body: { token: string },
@@ -90,6 +112,18 @@ export class CaPortalController {
 
   @Post('annotations')
   @ApiOperation({ summary: 'Add a CA annotation on a financial entity' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['orgId', 'entityType', 'entityId', 'comment'],
+      properties: {
+        orgId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+        entityType: { type: 'string', example: 'journal_entry' },
+        entityId: { type: 'string', format: 'uuid', example: '11111111-2222-3333-4444-555555555555' },
+        comment: { type: 'string', example: 'Please reclassify under utilities.' },
+      },
+    },
+  })
   async addAnnotation(
     @CurrentUser('sub') userId: string,
     @Body()
@@ -137,6 +171,17 @@ export class CaPortalController {
 
   @Post('approvals/:journalEntryId')
   @ApiOperation({ summary: 'Approve or reject a journal entry' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['orgId', 'approved'],
+      properties: {
+        orgId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+        approved: { type: 'boolean', example: true },
+        comment: { type: 'string', example: 'Approved after verification.' },
+      },
+    },
+  })
   async approveEntry(
     @CurrentUser('sub') userId: string,
     @Param('journalEntryId') journalEntryId: string,

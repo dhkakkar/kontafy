@@ -6,7 +6,7 @@ import {
   Param,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiBody } from '@nestjs/swagger';
 import { WhatsAppService } from './whatsapp.service';
 import { OrgId } from '../common/decorators/org-id.decorator';
 import { Public } from '../common/decorators/public.decorator';
@@ -26,6 +26,16 @@ export class WhatsAppController {
 
   @Post('send-invoice')
   @ApiOperation({ summary: 'Send invoice via WhatsApp' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['invoiceId', 'phoneNumber'],
+      properties: {
+        invoiceId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+        phoneNumber: { type: 'string', example: '+919876543210' },
+      },
+    },
+  })
   async sendInvoice(
     @OrgId() orgId: string,
     @Body() body: { invoiceId: string; phoneNumber: string },
@@ -43,6 +53,15 @@ export class WhatsAppController {
 
   @Post('send-reminder')
   @ApiOperation({ summary: 'Send payment reminder via WhatsApp' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['invoiceId'],
+      properties: {
+        invoiceId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+      },
+    },
+  })
   async sendReminder(
     @OrgId() orgId: string,
     @Body() body: { invoiceId: string },
@@ -56,6 +75,15 @@ export class WhatsAppController {
 
   @Post('send-receipt')
   @ApiOperation({ summary: 'Send payment receipt via WhatsApp' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['paymentId'],
+      properties: {
+        paymentId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+      },
+    },
+  })
   async sendReceipt(
     @OrgId() orgId: string,
     @Body() body: { paymentId: string },

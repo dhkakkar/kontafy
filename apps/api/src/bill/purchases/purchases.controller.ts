@@ -7,7 +7,7 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { PurchasesService } from './purchases.service';
 import { OrgId } from '../../common/decorators/org-id.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -87,6 +87,15 @@ export class PurchasesController {
 
   @Patch(':id/status')
   @ApiOperation({ summary: 'Transition a purchase bill status (draft → sent / cancelled / …)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['status'],
+      properties: {
+        status: { type: 'string', example: 'sent' },
+      },
+    },
+  })
   async updateStatus(
     @OrgId() orgId: string,
     @Param('id') id: string,

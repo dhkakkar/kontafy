@@ -11,6 +11,7 @@ import {
   ApiOperation,
   ApiBearerAuth,
   ApiSecurity,
+  ApiBody,
 } from '@nestjs/swagger';
 import { AiService } from './ai.service';
 import { OrgId } from '../common/decorators/org-id.decorator';
@@ -50,6 +51,16 @@ export class AiController {
 
   @Post('categorize-transaction')
   @ApiOperation({ summary: 'AI-suggest account category for a bank transaction' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['description', 'amount'],
+      properties: {
+        description: { type: 'string', example: 'UPI/AMAZON RETAIL/STATIONERY' },
+        amount: { type: 'number', example: 1499 },
+      },
+    },
+  })
   async categorizeTransaction(
     @OrgId() orgId: string,
     @Body() body: { description: string; amount: number },
@@ -65,6 +76,15 @@ export class AiController {
 
   @Post('reconciliation-suggest')
   @ApiOperation({ summary: 'Suggest matching journal entries for bank reconciliation' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['transactionId'],
+      properties: {
+        transactionId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+      },
+    },
+  })
   async suggestReconciliation(
     @OrgId() orgId: string,
     @Body() body: { transactionId: string },
@@ -82,6 +102,18 @@ export class AiController {
 
   @Patch('settings')
   @ApiOperation({ summary: 'Enable/disable individual AI features' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        cashFlowForecast: { type: 'boolean', example: true },
+        anomalyDetection: { type: 'boolean', example: true },
+        insightGeneration: { type: 'boolean', example: true },
+        transactionCategorization: { type: 'boolean', example: true },
+        reconciliationAssist: { type: 'boolean', example: true },
+      },
+    },
+  })
   async updateSettings(
     @OrgId() orgId: string,
     @Body()
@@ -109,6 +141,15 @@ export class AiController {
 
   @Post('dismiss-insight')
   @ApiOperation({ summary: 'Dismiss an AI insight' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['insightId'],
+      properties: {
+        insightId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+      },
+    },
+  })
   async dismissInsight(
     @OrgId() orgId: string,
     @Body() body: { insightId: string },

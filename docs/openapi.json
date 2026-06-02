@@ -522,6 +522,32 @@
       "post": {
         "operationId": "EmailController_sendInvoiceEmail",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "invoiceId",
+                  "toEmail"
+                ],
+                "properties": {
+                  "invoiceId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "toEmail": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "client@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -545,6 +571,32 @@
       "post": {
         "operationId": "EmailController_sendReminderEmail",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "invoiceId",
+                  "toEmail"
+                ],
+                "properties": {
+                  "invoiceId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "toEmail": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "client@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -568,6 +620,32 @@
       "post": {
         "operationId": "EmailController_sendReceiptEmail",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "paymentId",
+                  "toEmail"
+                ],
+                "properties": {
+                  "paymentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "toEmail": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "client@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -801,6 +879,58 @@
       "post": {
         "operationId": "OrganizationController_create",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Acme Pvt Ltd"
+                  },
+                  "legal_name": {
+                    "type": "string",
+                    "example": "Acme Private Limited"
+                  },
+                  "gstin": {
+                    "type": "string",
+                    "example": "29ABCDE1234F1Z5"
+                  },
+                  "pan": {
+                    "type": "string",
+                    "example": "ABCDE1234F"
+                  },
+                  "business_type": {
+                    "type": "string",
+                    "example": "Private Limited"
+                  },
+                  "industry": {
+                    "type": "string",
+                    "example": "Technology"
+                  },
+                  "address": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+919876543210"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "contact@acme.com"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -860,6 +990,68 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Acme Pvt Ltd"
+                  },
+                  "legal_name": {
+                    "type": "string",
+                    "example": "Acme Private Limited"
+                  },
+                  "gstin": {
+                    "type": "string",
+                    "example": "29ABCDE1234F1Z5"
+                  },
+                  "pan": {
+                    "type": "string",
+                    "example": "ABCDE1234F"
+                  },
+                  "cin": {
+                    "type": "string",
+                    "example": "U72200KA2010PTC053718"
+                  },
+                  "business_type": {
+                    "type": "string",
+                    "example": "Private Limited"
+                  },
+                  "industry": {
+                    "type": "string",
+                    "example": "Technology"
+                  },
+                  "address": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+919876543210"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "contact@acme.com"
+                  },
+                  "logo_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://cdn.kontafy.com/logos/abc.png"
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -922,6 +1114,35 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "user_id",
+                  "role"
+                ],
+                "properties": {
+                  "user_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "role": {
+                    "type": "string",
+                    "example": "accountant"
+                  },
+                  "permissions": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -962,6 +1183,26 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "example": "admin"
+                  },
+                  "permissions": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -1931,6 +2172,116 @@
       "post": {
         "operationId": "InvoicesController_create",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "contact_id",
+                  "date",
+                  "items"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "sale"
+                  },
+                  "contact_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-06-01"
+                  },
+                  "due_date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-06-30"
+                  },
+                  "place_of_supply": {
+                    "type": "string",
+                    "example": "29-Karnataka"
+                  },
+                  "is_igst": {
+                    "type": "boolean",
+                    "example": false
+                  },
+                  "notes": {
+                    "type": "string",
+                    "example": "Thank you for your business."
+                  },
+                  "terms": {
+                    "type": "string",
+                    "example": "Payment due within 30 days."
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "description",
+                        "quantity",
+                        "rate"
+                      ],
+                      "properties": {
+                        "product_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "description": {
+                          "type": "string",
+                          "example": "Consulting services"
+                        },
+                        "hsn_code": {
+                          "type": "string",
+                          "example": "998314"
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "example": 10
+                        },
+                        "unit": {
+                          "type": "string",
+                          "example": "hours"
+                        },
+                        "rate": {
+                          "type": "number",
+                          "example": 1500
+                        },
+                        "discount_pct": {
+                          "type": "number",
+                          "example": 0
+                        },
+                        "cgst_rate": {
+                          "type": "number",
+                          "example": 9
+                        },
+                        "sgst_rate": {
+                          "type": "number",
+                          "example": 9
+                        },
+                        "igst_rate": {
+                          "type": "number",
+                          "example": 0
+                        },
+                        "cess_rate": {
+                          "type": "number",
+                          "example": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -1993,6 +2344,18 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Partial invoice fields to update."
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2055,6 +2418,25 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "sent"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -3144,6 +3526,25 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "sent"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -3440,6 +3841,111 @@
       "post": {
         "operationId": "QuotationsController_create",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "contact_id",
+                  "date",
+                  "items"
+                ],
+                "properties": {
+                  "contact_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-06-01"
+                  },
+                  "validity_date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-06-30"
+                  },
+                  "place_of_supply": {
+                    "type": "string",
+                    "example": "29-Karnataka"
+                  },
+                  "is_igst": {
+                    "type": "boolean",
+                    "example": false
+                  },
+                  "notes": {
+                    "type": "string",
+                    "example": "Valid for 30 days."
+                  },
+                  "terms": {
+                    "type": "string",
+                    "example": "Payment due within 15 days."
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "description",
+                        "quantity",
+                        "rate"
+                      ],
+                      "properties": {
+                        "product_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "description": {
+                          "type": "string",
+                          "example": "Web development - hourly"
+                        },
+                        "hsn_code": {
+                          "type": "string",
+                          "example": "998314"
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "example": 10
+                        },
+                        "unit": {
+                          "type": "string",
+                          "example": "hours"
+                        },
+                        "rate": {
+                          "type": "number",
+                          "example": 1500
+                        },
+                        "discount_pct": {
+                          "type": "number",
+                          "example": 0
+                        },
+                        "cgst_rate": {
+                          "type": "number",
+                          "example": 9
+                        },
+                        "sgst_rate": {
+                          "type": "number",
+                          "example": 9
+                        },
+                        "igst_rate": {
+                          "type": "number",
+                          "example": 0
+                        },
+                        "cess_rate": {
+                          "type": "number",
+                          "example": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -3556,6 +4062,18 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Partial quotation fields to update."
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -3618,6 +4136,25 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "sent"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -3673,6 +4210,115 @@
       "post": {
         "operationId": "PurchaseOrdersController_create",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "contact_id",
+                  "date",
+                  "items"
+                ],
+                "properties": {
+                  "contact_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-06-01"
+                  },
+                  "delivery_date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-06-10"
+                  },
+                  "shipping_address": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "place_of_supply": {
+                    "type": "string",
+                    "example": "29-Karnataka"
+                  },
+                  "is_igst": {
+                    "type": "boolean",
+                    "example": false
+                  },
+                  "notes": {
+                    "type": "string",
+                    "example": "Deliver to backside gate."
+                  },
+                  "terms": {
+                    "type": "string",
+                    "example": "Net 30 days."
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "description",
+                        "quantity",
+                        "rate"
+                      ],
+                      "properties": {
+                        "product_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "description": {
+                          "type": "string",
+                          "example": "A4 Copier Paper - 80 GSM"
+                        },
+                        "hsn_code": {
+                          "type": "string",
+                          "example": "4802"
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "example": 10
+                        },
+                        "unit": {
+                          "type": "string",
+                          "example": "reams"
+                        },
+                        "rate": {
+                          "type": "number",
+                          "example": 250
+                        },
+                        "discount_pct": {
+                          "type": "number",
+                          "example": 5
+                        },
+                        "cgst_rate": {
+                          "type": "number",
+                          "example": 9
+                        },
+                        "sgst_rate": {
+                          "type": "number",
+                          "example": 9
+                        },
+                        "igst_rate": {
+                          "type": "number",
+                          "example": 0
+                        },
+                        "cess_rate": {
+                          "type": "number",
+                          "example": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -3789,6 +4435,18 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Partial purchase order fields to update."
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -3851,6 +4509,25 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "sent"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -4362,6 +5039,18 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Partial delivery challan fields to update."
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -4394,6 +5083,25 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "delivered"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -5636,6 +6344,31 @@
       "post": {
         "operationId": "WhatsAppController_sendInvoice",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "invoiceId",
+                  "phoneNumber"
+                ],
+                "properties": {
+                  "invoiceId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "+919876543210"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -5659,6 +6392,26 @@
       "post": {
         "operationId": "WhatsAppController_sendReminder",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "invoiceId"
+                ],
+                "properties": {
+                  "invoiceId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -5682,6 +6435,26 @@
       "post": {
         "operationId": "WhatsAppController_sendReceipt",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "paymentId"
+                ],
+                "properties": {
+                  "paymentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -6253,6 +7026,96 @@
       "patch": {
         "operationId": "SettingsController_updateOrganization",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Acme Pvt Ltd"
+                  },
+                  "legal_name": {
+                    "type": "string",
+                    "example": "Acme Private Limited"
+                  },
+                  "gstin": {
+                    "type": "string",
+                    "example": "29ABCDE1234F1Z5"
+                  },
+                  "pan": {
+                    "type": "string",
+                    "example": "ABCDE1234F"
+                  },
+                  "cin": {
+                    "type": "string",
+                    "example": "U72200KA2010PTC053718"
+                  },
+                  "address": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+919876543210"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "contact@acme.com"
+                  },
+                  "logo_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://cdn.kontafy.com/logos/abc.png"
+                  },
+                  "fiscal_year_start": {
+                    "type": "number",
+                    "example": 4
+                  },
+                  "business_type": {
+                    "type": "string",
+                    "example": "Private Limited"
+                  },
+                  "industry": {
+                    "type": "string",
+                    "example": "Technology"
+                  },
+                  "currency": {
+                    "type": "string",
+                    "example": "INR"
+                  },
+                  "tan": {
+                    "type": "string",
+                    "example": "BLRA12345B"
+                  },
+                  "website": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://acme.com"
+                  },
+                  "date_of_incorporation": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2010-04-15"
+                  },
+                  "gst_registration_date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2017-07-01"
+                  },
+                  "books_begin_from": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2025-04-01"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -6276,6 +7139,26 @@
       "post": {
         "operationId": "SettingsController_uploadLogo",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "data_url"
+                ],
+                "properties": {
+                  "data_url": {
+                    "type": "string",
+                    "description": "Image as a base64 data URL",
+                    "example": "data:image/png;base64,iVBORw0KGgo..."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -6322,6 +7205,31 @@
       "post": {
         "operationId": "SettingsController_inviteUser",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "role"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "newuser@example.com"
+                  },
+                  "role": {
+                    "type": "string",
+                    "example": "accountant"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -6354,6 +7262,25 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "example": "admin"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -6430,6 +7357,132 @@
       "patch": {
         "operationId": "SettingsController_updateInvoiceConfig",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "invoice_prefix": {
+                    "type": "string",
+                    "example": "INV-"
+                  },
+                  "next_invoice_number": {
+                    "type": "number",
+                    "example": 1001
+                  },
+                  "default_payment_terms": {
+                    "type": "number",
+                    "example": 30
+                  },
+                  "default_terms_conditions": {
+                    "type": "string",
+                    "example": "Payment due within 30 days."
+                  },
+                  "default_notes": {
+                    "type": "string",
+                    "example": "Thank you for your business."
+                  },
+                  "bank_name": {
+                    "type": "string",
+                    "example": "HDFC Bank"
+                  },
+                  "bank_account_number": {
+                    "type": "string",
+                    "example": "50100123456789"
+                  },
+                  "bank_ifsc": {
+                    "type": "string",
+                    "example": "HDFC0001234"
+                  },
+                  "bank_branch": {
+                    "type": "string",
+                    "example": "MG Road, Bangalore"
+                  },
+                  "bank_accounts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "bank_name",
+                        "account_number",
+                        "ifsc"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "bank_name": {
+                          "type": "string",
+                          "example": "HDFC Bank"
+                        },
+                        "account_name": {
+                          "type": "string",
+                          "example": "Acme Pvt Ltd"
+                        },
+                        "account_number": {
+                          "type": "string",
+                          "example": "50100123456789"
+                        },
+                        "ifsc": {
+                          "type": "string",
+                          "example": "HDFC0001234"
+                        },
+                        "branch": {
+                          "type": "string",
+                          "example": "MG Road, Bangalore"
+                        },
+                        "account_type": {
+                          "type": "string",
+                          "example": "current"
+                        },
+                        "upi_id": {
+                          "type": "string",
+                          "example": "acme@hdfcbank"
+                        },
+                        "swift_code": {
+                          "type": "string",
+                          "example": "HDFCINBB"
+                        },
+                        "is_primary": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "show_full_number": {
+                          "type": "boolean",
+                          "example": false
+                        },
+                        "opening_balance": {
+                          "type": "number",
+                          "example": 0
+                        },
+                        "opening_dr_cr": {
+                          "type": "string",
+                          "enum": [
+                            "Dr",
+                            "Cr"
+                          ],
+                          "example": "Dr"
+                        },
+                        "opening_date": {
+                          "type": "string",
+                          "format": "date",
+                          "example": "2025-04-01"
+                        },
+                        "account_id": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -6474,6 +7527,42 @@
       "patch": {
         "operationId": "SettingsController_updateCapitalStructure",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "authorized_capital": {
+                    "type": "number",
+                    "example": 1000000
+                  },
+                  "authorized_shares": {
+                    "type": "number",
+                    "example": 100000
+                  },
+                  "face_value": {
+                    "type": "number",
+                    "example": 10
+                  },
+                  "paid_up_capital": {
+                    "type": "number",
+                    "example": 500000
+                  },
+                  "issued_shares": {
+                    "type": "number",
+                    "example": 50000
+                  },
+                  "share_type": {
+                    "type": "string",
+                    "example": "equity"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -6518,6 +7607,28 @@
       "patch": {
         "operationId": "SettingsController_updateDirectors",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "directors"
+                ],
+                "properties": {
+                  "directors": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -6541,6 +7652,37 @@
       "post": {
         "operationId": "SettingsController_uploadDirectorDocument",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "director_id",
+                  "doc_type",
+                  "data_url"
+                ],
+                "properties": {
+                  "director_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "doc_type": {
+                    "type": "string",
+                    "example": "pan"
+                  },
+                  "data_url": {
+                    "type": "string",
+                    "description": "Document as a base64 data URL",
+                    "example": "data:application/pdf;base64,JVBERi0xLjQK..."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -6585,6 +7727,50 @@
       "patch": {
         "operationId": "SettingsController_updateTaxSettings",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "gstin": {
+                    "type": "string",
+                    "example": "29ABCDE1234F1Z5"
+                  },
+                  "pan": {
+                    "type": "string",
+                    "example": "ABCDE1234F"
+                  },
+                  "gst_registration_type": {
+                    "type": "string",
+                    "example": "regular"
+                  },
+                  "filing_frequency": {
+                    "type": "string",
+                    "example": "monthly"
+                  },
+                  "place_of_supply": {
+                    "type": "string",
+                    "example": "29-Karnataka"
+                  },
+                  "enable_tds": {
+                    "type": "boolean",
+                    "example": false
+                  },
+                  "tds_tan": {
+                    "type": "string",
+                    "example": "BLRA12345B"
+                  },
+                  "default_tds_section": {
+                    "type": "string",
+                    "example": "194J"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -6778,6 +7964,36 @@
       "patch": {
         "operationId": "ProfileController_updateProfile",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Rahul Sharma"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "rahul@example.com"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+919876543210"
+                  },
+                  "avatar_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://cdn.kontafy.com/avatars/abc.png"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -6798,6 +8014,31 @@
       "patch": {
         "operationId": "ProfileController_changePassword",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "current_password",
+                  "new_password"
+                ],
+                "properties": {
+                  "current_password": {
+                    "type": "string",
+                    "example": "OldPass#123"
+                  },
+                  "new_password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "example": "NewStrongPass#123"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -6818,6 +8059,26 @@
       "post": {
         "operationId": "ProfileController_uploadAvatar",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "data_url"
+                ],
+                "properties": {
+                  "data_url": {
+                    "type": "string",
+                    "description": "Image as a base64 data URL",
+                    "example": "data:image/png;base64,iVBORw0KGgo..."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -7661,6 +8922,30 @@
       "post": {
         "operationId": "AiController_categorizeTransaction",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "description",
+                  "amount"
+                ],
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "example": "UPI/AMAZON RETAIL/STATIONERY"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "example": 1499
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -7684,6 +8969,26 @@
       "post": {
         "operationId": "AiController_suggestReconciliation",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "transactionId"
+                ],
+                "properties": {
+                  "transactionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -7728,6 +9033,38 @@
       "patch": {
         "operationId": "AiController_updateSettings",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cashFlowForecast": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "anomalyDetection": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "insightGeneration": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "transactionCategorization": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "reconciliationAssist": {
+                    "type": "boolean",
+                    "example": true
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -7783,6 +9120,26 @@
       "post": {
         "operationId": "AiController_dismissInsight",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "insightId"
+                ],
+                "properties": {
+                  "insightId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -7806,6 +9163,34 @@
       "post": {
         "operationId": "CaPortalController_inviteCA",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "permissions"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "ca@example.com"
+                  },
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "read_journals"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -7829,6 +9214,25 @@
       "post": {
         "operationId": "CaPortalController_acceptInvite",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "Invitation token from the CA invite email"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -7991,6 +9395,42 @@
       "post": {
         "operationId": "CaPortalController_addAnnotation",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "orgId",
+                  "entityType",
+                  "entityId",
+                  "comment"
+                ],
+                "properties": {
+                  "orgId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "entityType": {
+                    "type": "string",
+                    "example": "journal_entry"
+                  },
+                  "entityId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "11111111-2222-3333-4444-555555555555"
+                  },
+                  "comment": {
+                    "type": "string",
+                    "example": "Please reclassify under utilities."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -8092,6 +9532,35 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "orgId",
+                  "approved"
+                ],
+                "properties": {
+                  "orgId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "approved": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "comment": {
+                    "type": "string",
+                    "example": "Approved after verification."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -9703,6 +11172,80 @@
       "post": {
         "operationId": "SuperadminController_createOrganization",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Acme Pvt Ltd"
+                  },
+                  "owner_user_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  },
+                  "owner_email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "owner@acme.com"
+                  },
+                  "owner_password": {
+                    "type": "string",
+                    "example": "StrongPass#123"
+                  },
+                  "owner_full_name": {
+                    "type": "string",
+                    "example": "Rahul Sharma"
+                  },
+                  "legal_name": {
+                    "type": "string",
+                    "example": "Acme Private Limited"
+                  },
+                  "gstin": {
+                    "type": "string",
+                    "example": "29ABCDE1234F1Z5"
+                  },
+                  "pan": {
+                    "type": "string",
+                    "example": "ABCDE1234F"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "contact@acme.com"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+919876543210"
+                  },
+                  "business_type": {
+                    "type": "string",
+                    "example": "Private Limited"
+                  },
+                  "industry": {
+                    "type": "string",
+                    "example": "Technology"
+                  },
+                  "plan": {
+                    "type": "string",
+                    "example": "pro"
+                  },
+                  "fiscal_year_start": {
+                    "type": "number",
+                    "example": 4
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -9749,6 +11292,30 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Acme Pvt Ltd"
+                  },
+                  "plan": {
+                    "type": "string",
+                    "example": "pro"
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -9795,6 +11362,29 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "is_active"
+                ],
+                "properties": {
+                  "is_active": {
+                    "type": "boolean",
+                    "example": false
+                  },
+                  "reason": {
+                    "type": "string",
+                    "example": "Non-payment of subscription dues."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -9935,6 +11525,26 @@
       "post": {
         "operationId": "SuperadminController_grantSuperadmin",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "user_id"
+                ],
+                "properties": {
+                  "user_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -10093,6 +11703,31 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "in_progress"
+                  },
+                  "priority": {
+                    "type": "string",
+                    "example": "high"
+                  },
+                  "assigned_to": {
+                    "type": "string",
+                    "nullable": true,
+                    "example": "8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -10117,6 +11752,25 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "example": "Thanks for the details, we are looking into it."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -10132,6 +11786,38 @@
       "post": {
         "operationId": "SupportController_createTicket",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subject",
+                  "description"
+                ],
+                "properties": {
+                  "subject": {
+                    "type": "string",
+                    "example": "Unable to generate GST report"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "The GSTR-1 export fails with a 500 error."
+                  },
+                  "category": {
+                    "type": "string",
+                    "example": "billing"
+                  },
+                  "priority": {
+                    "type": "string",
+                    "example": "high"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -10226,6 +11912,25 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "example": "Thanks, please share a screenshot of the error."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""

@@ -5,7 +5,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiBody } from '@nestjs/swagger';
 import { EmailService } from './email.service';
 import { OrgId } from '../common/decorators/org-id.decorator';
 
@@ -19,6 +19,16 @@ export class EmailController {
   @Post('send-invoice')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send invoice email with PDF attachment' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['invoiceId', 'toEmail'],
+      properties: {
+        invoiceId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+        toEmail: { type: 'string', format: 'email', example: 'client@example.com' },
+      },
+    },
+  })
   async sendInvoiceEmail(
     @OrgId() orgId: string,
     @Body() body: { invoiceId: string; toEmail: string },
@@ -37,6 +47,16 @@ export class EmailController {
   @Post('send-reminder')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send payment reminder email' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['invoiceId', 'toEmail'],
+      properties: {
+        invoiceId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+        toEmail: { type: 'string', format: 'email', example: 'client@example.com' },
+      },
+    },
+  })
   async sendReminderEmail(
     @OrgId() orgId: string,
     @Body() body: { invoiceId: string; toEmail: string },
@@ -55,6 +75,16 @@ export class EmailController {
   @Post('send-receipt')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send payment receipt email' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['paymentId', 'toEmail'],
+      properties: {
+        paymentId: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+        toEmail: { type: 'string', format: 'email', example: 'client@example.com' },
+      },
+    },
+  })
   async sendReceiptEmail(
     @OrgId() orgId: string,
     @Body() body: { paymentId: string; toEmail: string },

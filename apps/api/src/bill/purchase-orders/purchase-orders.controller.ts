@@ -8,7 +8,7 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiSecurity, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { OrgId } from '../../common/decorators/org-id.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -22,6 +22,42 @@ export class PurchaseOrdersController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new purchase order' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['contact_id', 'date', 'items'],
+      properties: {
+        contact_id: { type: 'string', format: 'uuid', example: '8b6b0c1e-2f5a-4b3c-9d8e-1a2b3c4d5e6f' },
+        date: { type: 'string', format: 'date', example: '2026-06-01' },
+        delivery_date: { type: 'string', format: 'date', example: '2026-06-10' },
+        shipping_address: { type: 'object', additionalProperties: true },
+        place_of_supply: { type: 'string', example: '29-Karnataka' },
+        is_igst: { type: 'boolean', example: false },
+        notes: { type: 'string', example: 'Deliver to backside gate.' },
+        terms: { type: 'string', example: 'Net 30 days.' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['description', 'quantity', 'rate'],
+            properties: {
+              product_id: { type: 'string', format: 'uuid' },
+              description: { type: 'string', example: 'A4 Copier Paper - 80 GSM' },
+              hsn_code: { type: 'string', example: '4802' },
+              quantity: { type: 'number', example: 10 },
+              unit: { type: 'string', example: 'reams' },
+              rate: { type: 'number', example: 250 },
+              discount_pct: { type: 'number', example: 5 },
+              cgst_rate: { type: 'number', example: 9 },
+              sgst_rate: { type: 'number', example: 9 },
+              igst_rate: { type: 'number', example: 0 },
+              cess_rate: { type: 'number', example: 0 },
+            },
+          },
+        },
+      },
+    },
+  })
   async create(
     @OrgId() orgId: string,
     @CurrentUser('sub') userId: string,
@@ -77,6 +113,13 @@ export class PurchaseOrdersController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a purchase order (draft/sent only)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      additionalProperties: true,
+      description: 'Partial purchase order fields to update.',
+    },
+  })
   async update(
     @OrgId() orgId: string,
     @Param('id') id: string,
@@ -87,6 +130,15 @@ export class PurchaseOrdersController {
 
   @Patch(':id/status')
   @ApiOperation({ summary: 'Update purchase order status' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['status'],
+      properties: {
+        status: { type: 'string', example: 'sent' },
+      },
+    },
+  })
   async updateStatus(
     @OrgId() orgId: string,
     @Param('id') id: string,
