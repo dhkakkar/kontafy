@@ -27,12 +27,16 @@ export class SettingsService {
     // 1102.NNN sub-ledger via AccountsService.createBankSubLedger.
     private readonly accountsService: AccountsService,
   ) {
+    // R2_* env vars populated at boot from OpenBao — see
+    // apps/api/src/common/bao/fetch-r2-creds.ts.
     this.s3 = new S3Client({
       region: 'auto',
-      endpoint: 'https://08c5215e60e39dc2fbb3fb67ae7359a5.r2.cloudflarestorage.com',
+      endpoint:
+        process.env.R2_ENDPOINT ||
+        'https://08c5215e60e39dc2fbb3fb67ae7359a5.r2.cloudflarestorage.com',
       credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID || '0bd5fa4925a7b2172467c4b1976bb65a',
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || 'ada1bfa44238f83b2097bb6b23d7ed17594bf46c62bdbbcba3e8ec00e6b40bcd',
+        accessKeyId: process.env.R2_ACCESS_KEY_ID as string,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY as string,
       },
       forcePathStyle: true,
     });

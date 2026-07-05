@@ -12,10 +12,18 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { AuditInterceptor } from './audit/audit.interceptor';
 import { AuditService } from './audit/audit.service';
 import { initSentry } from './common/sentry';
+import { fetchR2CredentialsFromBao } from './common/bao/fetch-r2-creds';
 
 async function bootstrap() {
   // Initialize Sentry before anything else
   initSentry();
+
+  // Pull the delegated Cloudflare R2 credentials from OpenBao and
+  // stitch them into process.env before any module instantiates an
+  // S3Client. Runs against BAO_ADDR using an AppRole (BAO_ROLE_ID /
+  // BAO_SECRET_ID); if any of those are missing we skip and rely on
+  // whatever R2_* env vars are already set.
+  await fetchR2CredentialsFromBao();
   const logger = pino({
     level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
     transport:
