@@ -343,10 +343,36 @@ model Invoice {
   payment_links       PaymentLink[]
   marketplace_orders  MarketplaceOrder[]
 
+  // GST-compliant numbering: sequence restarts at 1 at the start of each
+  // financial year (Apr 1 – Mar 31 for India). `fy` is stored as "YYYY-YY"
+  // (e.g. "2026-27") and derived from `date`, so a back-dated invoice
+  // enters the series of the FY its date falls in. `sequence` is the
+  // 1-based number within (org_id, type, fy). Nullable during backfill;
+  // required for all new rows.
+  fy       String? @db.VarChar(7)
+  sequence Int?
+
+  @@unique([org_id, type, fy, sequence], name: "invoice_unique_fy_sequence")
+  @@unique([org_id, invoice_number], name: "invoice_unique_number")
   @@index([org_id, status, date])
   @@index([org_id, contact_id])
   @@index([org_id, type])
   @@map("invoices")
+}
+
+// Per-organization, per-type, per-financial-year counter for invoice
+// numbering. Updated with an atomic UPSERT inside the same transaction
+// that creates the invoice — see InvoicesService.generateInvoiceNumber.
+// `next_sequence` is the value the *next* invoice will be assigned.
+model InvoiceCounter {
+  org_id         String   @db.Uuid
+  type           String
+  financial_year String   @db.VarChar(7)
+  next_sequence  Int      @default(1)
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@id([org_id, type, financial_year])
+  @@map("invoice_counters")
 }
 
 model InvoiceItem {

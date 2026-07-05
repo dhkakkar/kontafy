@@ -506,6 +506,12 @@ export class SettingsService {
     return {
       invoice_prefix: settings.invoice_prefix || 'INV-',
       next_invoice_number: settings.next_invoice_number || 1,
+      // Zero-pad width for the per-FY sequence. Legal range 1..6, default 2.
+      // See InvoicesService.allocateInvoiceNumber.
+      invoice_sequence_padding: Math.max(
+        1,
+        Math.min(6, Number(settings.invoice_sequence_padding) || 2),
+      ),
       default_payment_terms: settings.default_payment_terms || 30,
       default_terms_conditions: settings.default_terms_conditions || '',
       default_notes: settings.default_notes || '',
@@ -525,6 +531,7 @@ export class SettingsService {
     data: {
       invoice_prefix?: string;
       next_invoice_number?: number;
+      invoice_sequence_padding?: number;
       default_payment_terms?: number;
       default_terms_conditions?: string;
       default_notes?: string;

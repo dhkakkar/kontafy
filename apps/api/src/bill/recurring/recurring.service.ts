@@ -6,13 +6,17 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeLineItemGst } from '../../common/utils/gst.util';
+import { InvoicesService } from '../invoices/invoices.service';
 import { CreateRecurringInvoiceDto, UpdateRecurringInvoiceDto } from './dto/recurring.dto';
 
 @Injectable()
 export class RecurringService {
   private readonly logger = new Logger(RecurringService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoicesService: InvoicesService,
+  ) {}
 
   /**
    * Create a recurring invoice template.
@@ -461,17 +465,22 @@ export class RecurringService {
     const dueDate = new Date(today);
     dueDate.setDate(dueDate.getDate() + (recurring.payment_terms_days || 30));
 
-    // Generate invoice number
-    const invoiceNumber = await this.generateInvoiceNumber(
-      recurring.org_id,
-      'sale',
-    );
-
     await this.prisma.$transaction(async (tx) => {
+      // Delegate number allocation to InvoicesService so recurring
+      // invoices land in the same per-FY series (and use the org's
+      // configured prefix) as manually-created ones.
+      const allocated = await this.invoicesService.allocateInvoiceNumber(
+        tx,
+        recurring.org_id,
+        'sale',
+        today,
+      );
       const invoice = await tx.invoice.create({
         data: {
           org_id: recurring.org_id,
-          invoice_number: invoiceNumber,
+          invoice_number: allocated.number,
+          fy: allocated.fy,
+          sequence: allocated.sequence,
           type: 'sale',
           status: recurring.auto_send ? 'sent' : 'draft',
           contact_id: recurring.contact_id,
@@ -546,30 +555,10 @@ export class RecurringService {
     return next;
   }
 
-  /**
-   * Generate invoice number (duplicated from InvoicesService for encapsulation).
-   */
-  private async generateInvoiceNumber(orgId: string, type: string): Promise<string> {
-    const prefix = type === 'sale' ? 'INV' : type === 'purchase' ? 'BILL' : type === 'credit_note' ? 'CN' : 'DN';
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    const fyStart = month >= 4 ? year : year - 1;
-    const fyEnd = fyStart + 1;
-    const fyString = `${String(fyStart).slice(2)}-${String(fyEnd).slice(2)}`;
-
-    const fyStartDate = new Date(`${fyStart}-04-01`);
-    const fyEndDate = new Date(`${fyEnd}-03-31`);
-
-    const count = await this.prisma.invoice.count({
-      where: {
-        org_id: orgId,
-        type,
-        date: { gte: fyStartDate, lte: fyEndDate },
-      },
-    });
-
-    const sequence = String(count + 1).padStart(4, '0');
-    return `${prefix}/${fyString}/${sequence}`;
-  }
+  // The generateInvoiceNumber helper that used to live here was a stale
+  // duplicate of the one in InvoicesService (ignored the org's configured
+  // prefix, used non-atomic count+1 for the sequence). It's been removed
+  // and generateInvoiceFromRecurring now calls InvoicesService.allocateInvoiceNumber
+  // instead, so recurring invoices share the same per-FY series as
+  // manually-created ones.
 }

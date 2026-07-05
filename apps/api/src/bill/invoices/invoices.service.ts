@@ -4,6 +4,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeLineItemGst, isInterStateSupply } from '../../common/utils/gst.util';
 import { JournalPostingService } from '../../books/journal-posting/journal-posting.service';
@@ -218,15 +219,11 @@ export class InvoicesService {
       isIgst = await this.computeIsIgst(orgId, data.place_of_supply);
     }
 
-    // Generate invoice number. Pass the invoice date so the FY suffix
-    // matches the period the invoice belongs to — back-dated invoices
-    // (e.g. 05-Apr-2025 entered today in 2026) must land in FY 2025-26,
-    // not the current system date's FY.
-    const invoiceNumber = await this.generateInvoiceNumber(
-      orgId,
-      data.type,
-      data.date ? new Date(data.date) : new Date(),
-    );
+    // The invoice number, FY and per-FY sequence are allocated inside the
+    // same $transaction as the invoice.create() below — see
+    // `allocateInvoiceNumber`. The FY suffix is derived from the invoice
+    // date so back-dated entries land in the right register.
+    const invoiceDate = data.date ? new Date(data.date) : new Date();
 
     // Preload referenced products so the line items can carry the
     // product's master unit (Hour / Project / MON / …) without the
@@ -336,12 +333,22 @@ export class InvoicesService {
       resolvedDueDate = due;
     }
 
-    // Create invoice with items in a transaction
+    // Create invoice with items in a transaction. The number allocation
+    // runs inside the same tx so a concurrent create can't steal our
+    // sequence between the counter bump and the invoice insert.
     const invoice = await this.prisma.$transaction(async (tx) => {
+      const allocated = await this.allocateInvoiceNumber(
+        tx,
+        orgId,
+        data.type,
+        invoiceDate,
+      );
       const inv = await tx.invoice.create({
         data: {
           org_id: orgId,
-          invoice_number: invoiceNumber,
+          invoice_number: allocated.number,
+          fy: allocated.fy,
+          sequence: allocated.sequence,
           type: data.type,
           status: 'draft',
           contact_id: data.contact_id,
@@ -661,17 +668,21 @@ export class InvoicesService {
     }
 
     // Duplicate creates a fresh draft dated today, so today's FY is correct here.
-    const invoiceNumber = await this.generateInvoiceNumber(
-      orgId,
-      original.type,
-      new Date(),
-    );
+    const dupDate = new Date();
 
     const invoice = await this.prisma.$transaction(async (tx) => {
+      const allocated = await this.allocateInvoiceNumber(
+        tx,
+        orgId,
+        original.type,
+        dupDate,
+      );
       const inv = await tx.invoice.create({
         data: {
           org_id: orgId,
-          invoice_number: invoiceNumber,
+          invoice_number: allocated.number,
+          fy: allocated.fy,
+          sequence: allocated.sequence,
           type: original.type,
           status: 'draft',
           contact_id: original.contact_id,
@@ -749,24 +760,46 @@ export class InvoicesService {
   }
 
   /**
-   * Auto-generate invoice number.
+   * Compute the Indian financial year (Apr 1 – Mar 31 by default, or
+   * whatever `fiscal_year_start` month the org has set) that a date
+   * belongs to. Returns "YYYY-YY", e.g. "2026-27".
    *
-   * For sales invoices, if the org has configured an `invoice_prefix` in
-   * Settings → Invoice Config, the number is produced as
-   * `{cleanPrefix}/{NN}/{FY}` (e.g. "SYSCODE/01/2026-27"):
-   *   - cleanPrefix: the configured prefix with a trailing `-`, `/` or `_`
-   *     stripped (so "SYSCODE-" becomes "SYSCODE")
-   *   - NN: `next_invoice_number`, padded to 2 digits
-   *   - FY: the current fiscal year derived from the org's
-   *     `fiscal_year_start` month (default April), like "2026-27"
-   * Otherwise fall back to the short default format like "INV/25-26/0001".
+   * Back-dated invoices intentionally get the FY of their *date*, not
+   * today's FY, so an invoice dated 05-Apr-2025 entered in 2026 still
+   * belongs to FY 2025-26.
    */
-  private async generateInvoiceNumber(
+  static computeFinancialYear(date: Date, fyStartMonth = 4): string {
+    const refMonth = date.getMonth() + 1;
+    const refYear = date.getFullYear();
+    const fyStartYear = refMonth >= fyStartMonth ? refYear : refYear - 1;
+    const fyEndYear = fyStartYear + 1;
+    return `${fyStartYear}-${String(fyEndYear).slice(2)}`;
+  }
+
+  /**
+   * Allocate the next invoice number for (orgId, type, invoiceDate) and
+   * bump the counter in the same transaction.
+   *
+   * The sequence is per-financial-year and restarts at 1 at the start of
+   * each FY — this is the GST-compliant convention. Counter increments
+   * are done via a Postgres atomic UPSERT so concurrent creates never
+   * collide on the same sequence.
+   *
+   * Number format:
+   *   - When the org configures `settings.invoice_prefix` (sales only):
+   *     `PREFIX/<zero-padded-seq>/<fy>`, e.g. "SYSCODEIT/01/2026-27".
+   *   - Otherwise: `<type-default>/<fy>/<zero-padded-seq>`, e.g.
+   *     "INV/2026-27/01".
+   *   Zero-pad width is configurable via `settings.invoice_sequence_padding`
+   *   (default 2, clamped to 1..6).
+   */
+  async allocateInvoiceNumber(
+    tx: Prisma.TransactionClient,
     orgId: string,
     type: string,
     invoiceDate: Date,
-  ): Promise<string> {
-    const org = await this.prisma.organization.findUnique({
+  ): Promise<{ number: string; fy: string; sequence: number }> {
+    const org = await tx.organization.findUnique({
       where: { id: orgId },
       select: { settings: true, fiscal_year_start: true },
     });
@@ -777,68 +810,51 @@ export class InvoicesService {
       settings.invoice_prefix.trim()
         ? (settings.invoice_prefix as string)
         : null;
-    const configuredNext =
-      typeof settings.next_invoice_number === 'number' &&
-      settings.next_invoice_number > 0
-        ? (settings.next_invoice_number as number)
-        : null;
-
-    // Fiscal year is derived from the *invoice's* date, not the system
-    // clock — a back-dated invoice (05-Apr-2025) entered today must
-    // belong to FY 2025-26 even if today is in FY 2026-27.
+    const padWidth = clampPadding(settings.invoice_sequence_padding);
     const fyStartMonth = org?.fiscal_year_start || 4;
-    const refMonth = invoiceDate.getMonth() + 1;
-    const refYear = invoiceDate.getFullYear();
-    const fyStartYear =
-      refMonth >= fyStartMonth ? refYear : refYear - 1;
-    const fyEndYear = fyStartYear + 1;
+    const fy = InvoicesService.computeFinancialYear(invoiceDate, fyStartMonth);
 
-    if (type === 'sale' && configuredPrefix) {
-      const number = configuredNext ?? 1;
-      const padded = String(number).padStart(2, '0');
-      const cleanPrefix = configuredPrefix.replace(/[-\/_\s]+$/, '');
-      const fyLong = `${fyStartYear}-${String(fyEndYear).slice(2)}`;
+    // Atomic counter allocation: UPSERT + increment + RETURNING is the
+    // only race-safe way to hand out a fresh sequence per FY under
+    // concurrent inserts. Two concurrent creates for the same (org, type,
+    // fy) will serialize on the row and each get a distinct number.
+    const rows = await tx.$queryRaw<{ assigned: number }[]>`
+      INSERT INTO invoice_counters (org_id, type, financial_year, next_sequence, updated_at)
+      VALUES (${orgId}::uuid, ${type}, ${fy}, 2, now())
+      ON CONFLICT (org_id, type, financial_year) DO UPDATE
+      SET next_sequence = invoice_counters.next_sequence + 1,
+          updated_at    = now()
+      RETURNING (next_sequence - 1) AS assigned;
+    `;
+    const sequence = Number(rows[0]?.assigned ?? 1);
+    const padded = String(sequence).padStart(padWidth, '0');
 
-      // Bump the counter so the next invoice gets a fresh number. Keeping
-      // this simple (non-transactional) is fine for the current scale;
-      // concurrent creates would just race to claim the same number, which
-      // the unique index on (org_id, invoice_number) would surface as an error.
-      await this.prisma.organization.update({
-        where: { id: orgId },
-        data: {
-          settings: {
-            ...settings,
-            next_invoice_number: number + 1,
-          },
-        },
-      });
+    // Unified format for every invoice type: PREFIX/<seq>/<fy>. If the
+    // org has configured a prefix (sales-only), that takes precedence;
+    // otherwise a type-default is used (INV / BILL / CN / DN).
+    const rawPrefix =
+      type === 'sale' && configuredPrefix
+        ? configuredPrefix.replace(/[-\/_\s]+$/, '')
+        : type === 'sale'
+          ? 'INV'
+          : type === 'purchase'
+            ? 'BILL'
+            : type === 'credit_note'
+              ? 'CN'
+              : 'DN';
+    const invoiceNumber = `${rawPrefix}/${padded}/${fy}`;
 
-      return `${cleanPrefix}/${padded}/${fyLong}`;
-    }
-
-    // Fallback: fiscal-year default
-    const defaultPrefix =
-      type === 'sale'
-        ? 'INV'
-        : type === 'purchase'
-          ? 'BILL'
-          : type === 'credit_note'
-            ? 'CN'
-            : 'DN';
-
-    const fyShort = `${String(fyStartYear).slice(2)}-${String(fyEndYear).slice(2)}`;
-    const fyStartDate = new Date(fyStartYear, fyStartMonth - 1, 1);
-    const fyEndDate = new Date(fyEndYear, fyStartMonth - 1, 0, 23, 59, 59);
-
-    const count = await this.prisma.invoice.count({
-      where: {
-        org_id: orgId,
-        type,
-        date: { gte: fyStartDate, lte: fyEndDate },
-      },
-    });
-
-    const sequence = String(count + 1).padStart(4, '0');
-    return `${defaultPrefix}/${fyShort}/${sequence}`;
+    return { number: invoiceNumber, fy, sequence };
   }
+}
+
+/**
+ * Clamp the invoice sequence padding to a sane range. Default 2 digits
+ * (yields "01" .. "99" and rolls to "100" naturally). Users can raise
+ * this via Settings → Invoice Config; anything <1 or >6 is coerced.
+ */
+function clampPadding(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return 2;
+  return Math.max(1, Math.min(6, Math.trunc(n)));
 }

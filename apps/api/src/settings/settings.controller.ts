@@ -254,6 +254,14 @@ export class SettingsController {
       properties: {
         invoice_prefix: { type: 'string', example: 'INV-' },
         next_invoice_number: { type: 'number', example: 1001 },
+        invoice_sequence_padding: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 6,
+          example: 2,
+          description:
+            'Zero-pad width for the per-FY sequence. Default 2 → "01", "02", … Values <1 or >6 are clamped.',
+        },
         default_payment_terms: { type: 'number', example: 30 },
         default_terms_conditions: { type: 'string', example: 'Payment due within 30 days.' },
         default_notes: { type: 'string', example: 'Thank you for your business.' },
@@ -295,6 +303,7 @@ export class SettingsController {
     body: {
       invoice_prefix?: string;
       next_invoice_number?: number;
+      invoice_sequence_padding?: number;
       default_payment_terms?: number;
       default_terms_conditions?: string;
       default_notes?: string;
